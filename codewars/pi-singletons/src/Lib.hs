@@ -48,9 +48,9 @@ replicate s SZero = VNil
 replicate s (SSucc n) = VCons s $ replicate s n
 
 -- Both vectors must be of equal length
-zipWith :: Vec a n -> Vec b n -> Vec (a, b) n
-zipWith VNil VNil = VNil
-zipWith (VCons a as) (VCons b bs) = VCons (a, b) $ zipWith as bs
+zipWith :: (a -> b -> c) -> Vec a n -> Vec b n -> Vec c n
+zipWith f VNil VNil = VNil
+zipWith f (VCons a as) (VCons b bs) = VCons (f a b) $ zipWith f as bs
 
 (++) :: Vec v m -> Vec v n -> Vec v (Add m n)
 VNil ++ b = b
