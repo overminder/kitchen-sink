@@ -1,0 +1,5 @@
+{
+  "ambientDependencies": {
+    "source-map-support": "github:DefinitelyTyped/DefinitelyTyped/source-map-support/source-map-support.d.ts#0018f1f6c62f7a899c229ce7522e40b47ca43d95"
+  }
+}
