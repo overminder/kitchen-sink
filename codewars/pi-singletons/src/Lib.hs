@@ -1,9 +1,18 @@
-{-# LANGUAGE NoImplicitPrelude, GADTs, DataKinds, TypeFamilies,
-    TypeOperators, RankNTypes, DeriveFunctor, UndecidableInstances #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE NoImplicitPrelude    #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Lib where
 
-import Prelude hiding (drop, take, head, tail, index, zipWith, replicate, map, (++))
+import           Prelude    hiding (drop, head, map, replicate, tail, take,
+                             zipWith, (++))
+
+import           Data.Proxy
 
 data Vec a n where
   VNil :: Vec a Zero
@@ -12,7 +21,7 @@ data Vec a n where
 -- promoted to type level by data kinds
 data Nat = Zero | Succ Nat
 
-data SNat a where
+data SNat (a :: Nat) where
   SZero :: SNat Zero
   SSucc :: SNat a -> SNat (Succ a)
 
@@ -34,6 +43,17 @@ type family (Min (a :: Nat) (b :: Nat)) :: Nat
 type instance (Min Zero n) = Zero
 type instance (Min m Zero) = Zero
 type instance (Min (Succ m) (Succ n)) = Succ (Min m n)
+
+add :: (Add a b ~ c) => SNat a -> SNat b -> SNat c
+add SZero b = b
+add (SSucc a) b = a `add` (SSucc b)
+
+addP :: (Add a b ~ c) => Proxy a -> Proxy b -> Proxy c
+addP _ _ = Proxy :: Proxy (c :: Nat)
+
+fromSNat :: SNat a -> Int
+fromSNat SZero = 0
+fromSNat (SSucc n) = 1 + fromSNat n
 
 map :: (a -> b) -> Vec a n -> Vec b n
 map f VNil = VNil
