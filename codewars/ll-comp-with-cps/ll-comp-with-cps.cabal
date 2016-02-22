@@ -18,13 +18,19 @@ library
   exposed-modules:     Lib
                      , Lang
                      , Lir
-                     , LowerToLir
+                     , Cps
+                     , CpsPpr
+                     , Sample
+                     --, LowerToLir
   build-depends:       base >= 4.7 && < 5
                      , containers >= 0.5
                      , lens >= 4.13
-                     , mtl
+                     , mtl >= 2.2
+                     , pretty >= 1.1
   default-language:    Haskell2010
   default-extensions:  LambdaCase
+                     , DataKinds
+                     , KindSignatures
 
 executable ll-comp-with-cps-exe
   hs-source-dirs:      app

@@ -1,9 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Lir where
 
 import Control.Lens
 import Text.Printf
+import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Map as M
 
@@ -31,28 +35,48 @@ rax, rdx, rbx, rcx, rdi, rsi, r8, r9 :: R64
 kArgRegs :: [R64]
 kArgRegs = [rdi, rsi, rdx, rcx, r8, r9]
 
-data Lir
-  = MovRR LReg LReg
-  | MovRI LReg Imm
-  | Ret
-  | CallR LReg
-  | CmpRR LReg LReg
-  | Jcc Cond
+data Pos = First | Mid | Last
+
+data Lir (a :: Pos) where
+  Label :: LBlockId -> Lir 'First
+  MovRR :: LReg -> LReg -> Lir 'Mid
+  MovRI :: LReg -> Imm -> Lir 'Mid
+  AddRR :: LReg -> LReg -> Lir 'Mid
+  CmpRR :: LReg -> LReg -> Lir 'Mid
+  J :: LBlockId -> Lir 'Last
+  Jcc :: Cond -> LBlockId -> LBlockId -> Lir 'Last
+  CallR :: LReg -> LBlockId -> Lir 'Last
+  CallL :: Label -> LBlockId -> Lir 'Last
+  Ret :: Lir 'Last
+
+data UntypedLir = UntypedLir (forall a. Lir a)
+
+deriving instance Show UntypedLir
 
 -- To GNU Syntax.
-instance Show Lir where
+instance Show (Lir a) where
   show = \case
+    Label bid -> show bid ++ ":"
     MovRR dst src -> showGas "mov" (showGasOp2 dst src)
+    MovRI dst src -> showGas "mov" (showGasOp2 dst src)
+    AddRR dst src -> showGas "add" (showGasOp2 dst src)
     Ret -> "ret"
-    CallR r -> showGas "call" (show r)
+    CallR r exit -> showGas "call" (show r) ++ exitComment [("exit", exit)]
+    CallL lbl exit -> showGas "call" (show lbl) ++ exitComment [("exit", exit)]
     CmpRR dst src -> showGas "cmp" (showGasOp2 dst src)
-    Jcc cond -> "j" ++ show cond
+    J lbl -> showGas "jmp" (show lbl)
+    Jcc cond t f -> "j" ++ show cond ++ exitComment [("t", t), ("f", f)]
 
 showGas :: String -> String -> String
 showGas = printf "%-8s%s"
 
 showGasOp2 :: (Show a, Show b) => a -> b -> String
 showGasOp2 dst src = printf "%s, %s" (show src) (show dst)
+
+exitComment :: [(String, LBlockId)] -> String
+exitComment = (" ;; " ++) . L.intercalate ", " . map showComment
+  where
+    showComment (tag, lbl) = tag ++ " -> " ++ show lbl
 
 data Cond = E | NE | L | LE | G | GE
 
@@ -67,12 +91,21 @@ instance Show Cond where
 
 data Imm
   = I32 Int
-  | ILabel LBlockId
+  | ILabel Label
 
 instance Show Imm where
   show = ('$' :) . \case
     I32 i -> show i
     ILabel l -> show l
+
+data Label
+  = LNamed String
+  | LInternal LBlockId
+
+instance Show Label where
+  show = \case
+    LNamed s -> s
+    LInternal bid -> show bid
 
 newtype LBlockId = LBlockId Int
   deriving (Eq, Ord)
@@ -83,7 +116,8 @@ instance Show LBlockId where
 data LBlock = LBlock {
   _bId :: LBlockId,
   _bArgs :: [LReg],
-  _bIrs :: [Lir]
+  _bIrs :: [Lir 'Mid],
+  _bLastIr :: Lir 'Last
 } deriving (Show)
 
 data LFunction = LFunction {
@@ -92,15 +126,23 @@ data LFunction = LFunction {
   _fEntry :: LBlockId
 } deriving (Show)
 
-data LFrame = LFrame {
-  _frVirtualGen :: Int,
-  _frVarMap :: M.Map Name LReg,
-  _frBlockIdGen :: Int,
+data LBlockBuilderState = LBlockBuilderState {
+  _bsVirtualGen :: Int,
+  _bsVarMap :: M.Map Name LReg,
+  _bsBlockIdGen :: Int,
 
-  _frCurrentBlock :: LBlock,
-  _frFunction :: LFunction
+  _bsIrTrace :: [UntypedLir],
+  _bsCurrent :: Maybe LBlockBuilder,
+  _bsFunction :: LFunction
+} deriving (Show)
+
+data LBlockBuilder = LBlockBuilder {
+   _bbId :: LBlockId,
+   _bbIrs :: [Lir 'Mid],
+   _bbLastIr :: Maybe (Lir 'Last)
 } deriving (Show)
 
 makeLenses ''LBlock
 makeLenses ''LFunction
-makeLenses ''LFrame
+makeLenses ''LBlockBuilderState
+makeLenses ''LBlockBuilder
