@@ -1,9 +1,9 @@
 module CpsPpr where
 
-import Cps
-import Text.PrettyPrint
-import qualified Data.Map as M
-import qualified Data.Set as S
+import           Cps
+import qualified Data.Map         as M
+import qualified Data.Set         as S
+import           Text.PrettyPrint
 
 pprId :: Id -> Doc
 pprId (Id i) = text "v" <> int i
@@ -40,4 +40,5 @@ pprStmt s = case s of
     <+> pprId lhs <+> text "+" <+> pprId rhs <+> pprCont k
   CLit i k r -> text "lit" <+> pprId r <+> equals <+> int i
     <+> pprCont k
+  CNop k -> text "nop" <+> pprCont k
   _ -> error $ "pprStmt: " ++ show s

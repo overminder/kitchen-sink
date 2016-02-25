@@ -1,6 +1,6 @@
 module Lang where
 
-import Data.String (IsString(..))
+import           Data.String (IsString (..))
 
 type Name = String
 

@@ -1,16 +1,16 @@
+{-# LANGUAGE RecursiveDo     #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE RecursiveDo #-}
 
 module Cps where
 
-import Lang
+import           Lang
 
-import Control.Monad.State
-import Control.Lens
-import qualified Data.Map as M
-import qualified Data.Set as S
-import Data.Maybe (fromMaybe)
-import Data.Foldable (foldrM)
+import           Control.Lens
+import           Control.Monad.State
+import           Data.Foldable       (foldrM)
+import qualified Data.Map            as M
+import           Data.Maybe          (fromMaybe)
+import qualified Data.Set            as S
 
 newtype Id = Id Int
   deriving (Show, Eq, Ord)
@@ -20,11 +20,12 @@ newtype CLabel = CLabel Int
   deriving (Show, Eq, Ord)
 
 data CFunction = CFunction {
-  _cfName :: Name,
-  _cfArgs :: [Id],
-  _cfEntry :: CCont,
+  _cfName   :: Name,
+  _cfArgs   :: [Id],
+  _cfEntry  :: CCont,
   _cfLabels :: M.Map CLabel CStmt
 } deriving (Show)
+
 
 data CStmt
   = CRet Id
@@ -34,6 +35,7 @@ data CStmt
   | CCall Id [Id] CCont Id
   | CPrimAdd Id Id CCont Id
   | CLit Int CCont Id
+  | CNop CCont
   deriving (Show)
 
 type VarMap = M.Map Name Id
@@ -42,14 +44,14 @@ type CpsM = State CpsState
 
 data CCont = CCont {
   _ccLabel :: CLabel,
-  _ccUses :: S.Set Id
+  _ccUses  :: S.Set Id
 } deriving (Show)
 
 data CpsState = CpsState {
-  _csVarMap :: VarMap,
-  _csNextId :: Int,
+  _csVarMap    :: VarMap,
+  _csNextId    :: Int,
   _csNextLabel :: Int,
-  _csLabels :: M.Map CLabel CStmt
+  _csLabels    :: M.Map CLabel CStmt
 } deriving (Show)
 
 makeLenses ''CpsState
@@ -85,6 +87,14 @@ cpsStmt s k = case s of
         kRhs <- cpsExpr rhs rhsId kLt
         kLhs <- cpsExpr lhs lhsId kRhs
     return kLhs
+  SIf (EPrimLt lhs rhs) t f -> do
+    lhsId <- newId
+    rhsId <- newId
+    kT <- cpsStmt t k
+    kF <- cpsStmt f k
+    kLt <- addCStmt (CPrimLt lhsId rhsId kT kF)
+    kRhs <- cpsExpr rhs rhsId kLt
+    cpsExpr lhs lhsId kRhs
   _ -> error $ "cpsStmt: " ++ show s
 
 cpsExpr :: Expr -> Id -> CCont -> CpsM CCont
@@ -120,8 +130,31 @@ usesOfStmt s = case s of
   CDef id k r -> k ^. ccUses
   CCall _ _ k _ -> k ^. ccUses
   CLit _ k _ -> k ^. ccUses
-  CPrimLt _ _ t f -> S.empty -- S.union (t ^. ccUses) (f ^. ccUses)
+  CPrimLt _ _ t f -> S.union (t ^. ccUses) (f ^. ccUses)
   CPrimAdd _ _ k _ -> k ^. ccUses
+
+mapStmtId :: (Id -> Id) -> CStmt -> CStmt
+mapStmtId f s = mapK $ case s of
+  CRet r -> CRet (f r)
+  CDef id k r -> CDef (f id) k (f r)
+  CCall f' as k r -> CCall (f f') (map f as) k (f r)
+  CLit i k r -> CLit i k (f r)
+  CPrimLt a b t f' -> CPrimLt (f a) (f b) t f'
+  CPrimAdd a b k r -> CPrimAdd (f a) (f b) k (f r)
+  CNop k -> CNop k
+  where
+    mapK = mapStmtCont (ccUses %~ S.map f)
+
+-- XXX: Use lens?
+mapStmtCont :: (CCont -> CCont) -> CStmt -> CStmt
+mapStmtCont f s = case s of
+   CRet _ -> s
+   CDef u k d -> CDef u (f k) d
+   CCall f' as k r -> CCall f' as (f k) r
+   CLit i k r -> CLit i (f k) r
+   CPrimLt a b t f' -> CPrimLt a b (f t) (f f')
+   CPrimAdd a b k r -> CPrimAdd a b (f k) r
+   CNop k -> CNop (f k)
 
 newCLabel :: CpsM CLabel
 newCLabel = uses csNextLabel CLabel <* (csNextLabel += 1)
@@ -151,7 +184,7 @@ syncUses s = case s of
   CRet v -> addUse v
   CCall f as _ r -> removeUse r . addUses (f:as)
   CLit _ _ r -> removeUse r
-  CPrimLt lhs rhs t f -> id -- XXX
+  CPrimLt lhs rhs _ _ -> addUses [lhs, rhs]
   CPrimAdd a b _ r -> removeUse r . addUses [a, b]
   _ -> error $ "syncUses: " ++ show s
 
