@@ -25,5 +25,5 @@ loopSum = Function "loopSum" ["N"]
 recLoopSum :: Function
 recLoopSum = Function "loopSum" ["N", "i", "s"]
   (SIf (EPrimLt "i" "N")
-       (SRet (ECall "loopSum" ["N", EPrimAdd "i" (ELit 1), EPrimAdd "s" "i"]))
+       (SRet (ECall (gVar "loopSum") ["N", EPrimAdd "i" (ELit 1), EPrimAdd "s" "i"]))
        (SRet "s"))

@@ -7,6 +7,8 @@ import           Text.PrettyPrint
 
 pprId :: Id -> Doc
 pprId (Id i) = text "v" <> int i
+pprId (GlobalId s) = text "$" <> text s
+pprId (RegId s) = text "%" <> text s
 
 pprIds :: [Id] -> Doc
 pprIds = hsep . map pprId

@@ -4,6 +4,11 @@ import           Data.String (IsString (..))
 
 type Name = String
 
+data ScopedName
+  = LocalName Name
+  | GlobalName Name
+    deriving (Show)
+
 data Stmt
   = SWhile Expr Stmt
   | SIf Expr Stmt Stmt
@@ -12,13 +17,16 @@ data Stmt
   | SDef Name Expr
   | SBlock [Stmt]
   | SPrimPrint Expr
-  deriving (Show)
+    deriving (Show)
 
 instance IsString Expr where
-  fromString = EVar
+  fromString = EVar . LocalName
+
+gVar :: String -> Expr
+gVar = EVar . GlobalName
 
 data Expr
-  = EVar Name
+  = EVar ScopedName
   | ELit Int
   | ECall Expr [Expr]
   | EPrimLt Expr Expr

@@ -1,13 +1,40 @@
 module CpsLint where
 
-import Cps
+import           Cps
 
-import Data.Maybe (catMaybes)
-import Control.Arrow (second)
-import qualified Data.Set as S
-import qualified Data.Map as M
-import Data.List (mapAccumR, mapAccumL)
-import Control.Lens
+import           Control.Arrow (second)
+import           Control.Lens
+import           Data.List     (mapAccumL, mapAccumR)
+import qualified Data.Map      as M
+import           Data.Maybe    (catMaybes)
+import qualified Data.Set      as S
+
+x86Regs = words "rax rdx rcx rbx rdi rsi";
+
+lsra :: [String] -> CFunction -> CFunction
+lsra regNames f = f & cfLabels %~ rewriteFwd go (alloc (f ^. cfArgs) (S.toList regs))
+  where
+    regs = S.fromList (map RegId regNames)
+    go regMap stmt = let stmt' = replaceWithRegs regMap stmt
+                         (regMap', _) = contOfStmt allocOut regMap stmt'
+                         stmt'' = replaceWithRegs regMap' stmt'
+                     in (regMap', stmt'')
+
+    replaceWithRegs regMap = mapStmtId (\ v -> M.findWithDefault v v regMap)
+
+    isReg (RegId _) = True
+    isReg _ = False
+
+    notGlobal (GlobalId _) = False
+    notGlobal _ = True
+
+    alloc ids regs = M.fromList (ids `zip` regs)
+
+    allocOut regMap k = let uses = S.filter notGlobal (k ^. ccUses)
+                            (regUses, nonRegUses) = S.partition (`M.member` regMap) uses
+                            regMap' = alloc (S.toList nonRegUses) (S.toList (regs S.\\ regUses))
+                        in (regMap' `M.union` regMap, k)
+
 
 removeMoves :: CFunction -> CFunction
 removeMoves = cfLabels %~ rewriteFwd go M.empty
@@ -24,7 +51,6 @@ removeMoves = cfLabels %~ rewriteFwd go M.empty
       Just u' -> addEq d u' ids
 
     normalizeUses ids' v = M.findWithDefault v v ids'
-
 
 removeNops :: CFunction -> CFunction
 removeNops func = func & cfLabels %~ rewriteMb Bwd go M.empty

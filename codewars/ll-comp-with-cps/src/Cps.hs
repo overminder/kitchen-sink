@@ -1,5 +1,6 @@
 {-# LANGUAGE RecursiveDo     #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections   #-}
 
 module Cps where
 
@@ -12,7 +13,10 @@ import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
 import qualified Data.Set            as S
 
-newtype Id = Id Int
+data Id
+  = Id Int
+  | GlobalId Name
+  | RegId String
   deriving (Show, Eq, Ord)
 
  -- CPS
@@ -36,6 +40,9 @@ data CStmt
   | CPrimAdd Id Id CCont Id
   | CLit Int CCont Id
   | CNop CCont
+    -- Assumes we always restore the same id to the same slot.
+  | CSpill Id CCont
+  | CRestore Id CCont
   deriving (Show)
 
 type VarMap = M.Map Name Id
@@ -63,7 +70,7 @@ runCps f = evalState (cpsFunction f) emptyCpsState
 
 cpsFunction :: Function -> CpsM CFunction
 cpsFunction (Function name args body) = do
-  argIds <- mapM (idForName Use) args
+  argIds <- mapM (idForName Use . LocalName) args
   k <- cpsStmt body (error "cpsFunction: no return")
   lbls <- use csLabels
   return (CFunction name argIds k lbls)
@@ -76,7 +83,7 @@ cpsStmt s k = case s of
     cpsExpr e v k'
   SBlock ss -> foldrM cpsStmt k ss
   SDef n e -> do
-    r <- idForName Def n
+    r <- idForName Def (LocalName n)
     cpsExpr e r k
   SWhile (EPrimLt lhs rhs) b -> do
     lhsId <- newId
@@ -147,22 +154,29 @@ mapStmtId f s = mapK $ case s of
 
 -- XXX: Use lens?
 mapStmtCont :: (CCont -> CCont) -> CStmt -> CStmt
-mapStmtCont f s = case s of
-   CRet _ -> s
-   CDef u k d -> CDef u (f k) d
-   CCall f' as k r -> CCall f' as (f k) r
-   CLit i k r -> CLit i (f k) r
-   CPrimLt a b t f' -> CPrimLt a b (f t) (f f')
-   CPrimAdd a b k r -> CPrimAdd a b (f k) r
-   CNop k -> CNop (f k)
+mapStmtCont f = snd . contOfStmt (\() -> ((),) . f) ()
+
+-- This is basically lens...
+contOfStmt :: (a -> CCont -> (a, CCont)) -> a -> CStmt -> (a, CStmt)
+contOfStmt f a s = case s of
+  CRet _ -> (a, s)
+  CDef u k d -> let (a', k') = f a k in (a', CDef u k' d)
+  CCall f' as k r -> let (a', k'') = f a k in (a', CCall f' as k'' r)
+  CLit i k r -> let (a', k') = f a k in (a', CLit i k' r)
+  CPrimLt a' b t f' -> let (a'', t') = f a t
+                           (a''', f'') = f a'' f'
+                       in (a''', CPrimLt a' b t' f'')
+  CPrimAdd a' b k r -> let (a'', k') = f a k in (a'', CPrimAdd a' b k' r)
+  CNop k -> let (a', k') = f a k in (a', CNop k')
 
 newCLabel :: CpsM CLabel
 newCLabel = uses csNextLabel CLabel <* (csNextLabel += 1)
 
 data UseOrDef = Use | Def
 
-idForName :: UseOrDef -> Name -> CpsM Id
-idForName uod n = case uod of
+idForName :: UseOrDef -> ScopedName -> CpsM Id
+idForName _ (GlobalName n) = return $ GlobalId n
+idForName uod (LocalName n) = case uod of
   Use -> do
     mbId <- uses csVarMap $ M.lookup n
     case mbId of
