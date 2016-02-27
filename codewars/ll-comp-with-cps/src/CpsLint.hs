@@ -4,23 +4,29 @@ import           Cps
 
 import           Control.Arrow (second)
 import           Control.Lens
+import qualified Data.List as L
 import           Data.List     (mapAccumL, mapAccumR)
 import qualified Data.Map      as M
 import           Data.Maybe    (catMaybes)
 import qualified Data.Set      as S
 
-x86Regs = words "rax rdx rcx rbx rdi rsi";
+x86Regs :: [String]
+x86Regs = words "rdi rsi rdx rcx r8 r9"
 
 lsra :: [String] -> CFunction -> CFunction
-lsra regNames f = f & cfLabels %~ rewriteFwd go (alloc (f ^. cfArgs) (S.toList regs))
+lsra regNames f = f & (cfLabels %~ rewriteFwd go entryRegMap)
+                    . (cfArgs .~ map snd allocedArgs)
+                    . (cfEntry %~ mapContId (mapId entryRegMap))
   where
-    regs = S.fromList (map RegId regNames)
-    go regMap stmt = let stmt' = replaceWithRegs regMap stmt
-                         (regMap', _) = contOfStmt allocOut regMap stmt'
-                         stmt'' = replaceWithRegs regMap' stmt'
-                     in (regMap', stmt'')
+    entryRegMap = M.fromList allocedArgs
+    regs = map RegId regNames
+    allocedArgs = zip (f ^. cfArgs) regs
+    go regMap stmt = let (regMap', _) = contOfStmt allocOut regMap stmt
+                         stmt' = replaceWithRegs regMap' stmt
+                     in (regMap', stmt')
 
-    replaceWithRegs regMap = mapStmtId (\ v -> M.findWithDefault v v regMap)
+    mapId regMap v = M.findWithDefault v v regMap
+    replaceWithRegs = mapStmtId . mapId
 
     isReg (RegId _) = True
     isReg _ = False
@@ -30,9 +36,11 @@ lsra regNames f = f & cfLabels %~ rewriteFwd go (alloc (f ^. cfArgs) (S.toList r
 
     alloc ids regs = M.fromList (ids `zip` regs)
 
+    -- Greedily alloc regs for unallocated vregs in the live-out of `k`.
     allocOut regMap k = let uses = S.filter notGlobal (k ^. ccUses)
-                            (regUses, nonRegUses) = S.partition (`M.member` regMap) uses
-                            regMap' = alloc (S.toList nonRegUses) (S.toList (regs S.\\ regUses))
+                            uses' = S.map (\ v -> M.findWithDefault v v regMap) uses
+                            (regUses, nonRegUses) = S.partition isReg uses'
+                            regMap' = alloc (S.toList nonRegUses) (regs L.\\ S.toList regUses)
                         in (regMap' `M.union` regMap, k)
 
 

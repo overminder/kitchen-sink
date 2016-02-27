@@ -150,7 +150,10 @@ mapStmtId f s = mapK $ case s of
   CPrimAdd a b k r -> CPrimAdd (f a) (f b) k (f r)
   CNop k -> CNop k
   where
-    mapK = mapStmtCont (ccUses %~ S.map f)
+    mapK = mapStmtCont (mapContId f)
+
+mapContId :: (Id -> Id) -> CCont -> CCont
+mapContId f = ccUses %~ S.map f
 
 -- XXX: Use lens?
 mapStmtCont :: (CCont -> CCont) -> CStmt -> CStmt
