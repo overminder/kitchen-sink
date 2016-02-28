@@ -10,6 +10,9 @@ import qualified Data.Map      as M
 import           Data.Maybe    (catMaybes)
 import qualified Data.Set      as S
 
+opt = removeNops . removeMoves
+regAlloc = lsra x86Regs
+
 x86Regs :: [String]
 x86Regs = words "rdi rsi rdx rcx r8 r9"
 

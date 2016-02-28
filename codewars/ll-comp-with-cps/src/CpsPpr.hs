@@ -1,46 +1,49 @@
-module CpsPpr where
+module CpsPpr (
+  module CpsPpr,
+  module Text.PrettyPrint.ANSI.Leijen
+  ) where
 
 import           Cps
-import qualified Data.Map         as M
-import qualified Data.Set         as S
-import           Text.PrettyPrint
+import qualified Data.Map                     as M
+import qualified Data.Set                     as S
+import           Text.PrettyPrint.ANSI.Leijen
 
-pprId :: Id -> Doc
-pprId (Id i) = text "v" <> int i
-pprId (GlobalId s) = text "$" <> text s
-pprId (RegId s) = text "%" <> text s
+instance Pretty Id where
+  pretty (Id i) = text "v" <> int i
+  pretty (GlobalId s) = text "$" <> text s
+  pretty (RegId s) = text "%" <> text s
 
 pprIds :: [Id] -> Doc
-pprIds = hsep . map pprId
+pprIds = hsep . map pretty
 
-pprCont :: CCont -> Doc
-pprCont (CCont lbl uses) = text "->" <+>
-  pprLabel lbl <+> text "uses" <+> pprIds (S.toList uses)
+instance Pretty CCont where
+  pretty (CCont lbl uses) = text "->" <+>
+    pretty lbl <+> text "uses" <+> pprIds (S.toList uses)
 
-pprLabel :: CLabel -> Doc
-pprLabel (CLabel i) = text "L" <> int i
+instance Pretty CLabel where
+  pretty (CLabel i) = text "L" <> int i
 
-pprFunction :: CFunction -> Doc
-pprFunction (CFunction name args entry labels) = vcat $
-  (text "cfun" <+> text name <+> hsep (map pprId args) <+> equals
-   <+> pprCont entry) : body
-  where
-    body = map (nest 2 . pprLabelStmt) (M.toList labels)
+instance Pretty CFunction where
+  pretty (CFunction name args entry labels) = vcat $
+    (text "cfun" <+> text name <+> hsep (map pretty args) <+> equals
+    <+> pretty entry) : body
+    where
+      body = map (nest 2 . pprLabelStmt) (M.toList labels)
 
 pprLabelStmt :: (CLabel, CStmt) -> Doc
-pprLabelStmt (lbl, stmt) = pprLabel lbl <> colon <+> pprStmt stmt
+pprLabelStmt (lbl, stmt) = pretty lbl <> colon <+> pretty stmt
 
-pprStmt :: CStmt -> Doc
-pprStmt s = case s of
-  CRet u -> text "ret" <+> pprId u
-  CDef u k d -> text "def" <+> pprId d <+> equals <+> pprId u <+> pprCont k
-  CCall f es k r -> text "call" <+> pprId r <+> equals <+> pprIds (f:es) <+> pprCont k
-  CPrimLt lhs rhs t f -> text "if" <+> pprId lhs <+> text "<"
-    <+> pprId rhs <+> text "true" <+> pprCont t
-    <+> text "false" <+> pprCont f
-  CPrimAdd lhs rhs k r -> text "arith" <+> pprId r <+> equals
-    <+> pprId lhs <+> text "+" <+> pprId rhs <+> pprCont k
-  CLit i k r -> text "lit" <+> pprId r <+> equals <+> int i
-    <+> pprCont k
-  CNop k -> text "nop" <+> pprCont k
-  _ -> error $ "pprStmt: " ++ show s
+instance Pretty CStmt where
+  pretty s = case s of
+    CRet u -> text "ret" <+> pretty u
+    CDef u k d -> text "def" <+> pretty d <+> equals <+> pretty u <+> pretty k
+    CCall f es k r -> text "call" <+> pretty r <+> equals <+> pprIds (f:es) <+> pretty k
+    CPrimLt lhs rhs t f -> text "if" <+> pretty lhs <+> text "<"
+      <+> pretty rhs <+> text "true" <+> pretty t
+      <+> text "false" <+> pretty f
+    CPrimAdd lhs rhs k r -> text "arith" <+> pretty r <+> equals
+      <+> pretty lhs <+> text "+" <+> pretty rhs <+> pretty k
+    CLit i k r -> text "lit" <+> pretty r <+> equals <+> int i
+      <+> pretty k
+    CNop k -> text "nop" <+> pretty k
+    _ -> error $ "pprStmt: " ++ show s
