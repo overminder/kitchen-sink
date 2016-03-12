@@ -7,6 +7,7 @@ import Data.String (IsString(..))
 import qualified Data.Map as M
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Class
+import Control.Monad (forM)
 
 type Name = String
 
@@ -44,9 +45,15 @@ mkBool = \case
   True -> mkInt 1
   False -> mkInt 0
 
+mkClosure :: [Name] -> Expr -> EvalM Node
+mkClosure args body = do
+  env <- ask
+  return (NClosure args env body)
+
 eval :: Expr -> EvalM Node
 eval = \case
   Lit i -> mkInt i
+  Lam vs e -> mkClosure vs e
   Var v -> do
     Just n <- asks (M.lookup v)
     return n
@@ -58,7 +65,7 @@ eval = \case
     rec bs' <- withReaderT (extend bs') $ forM bs $ \(v, e) -> do
           n <- eval e
           return (v, n)
-        withReaderT (extend bs') $ eval body
+    withReaderT (extend bs') $ eval body
   Ap f as -> do
     ans <- mapM eval as
     NClosure argNames env body <- eval f
@@ -92,11 +99,12 @@ intOp op f a b = do
   mkInt (f (av `op` bv))
 
 
+fiboMain :: Expr
 fiboMain = LetRec [("fibo", fibo), ("main", main)] main
   where
     fibo = Lam ["n"] $ If (IntLt "n" (Lit 2))
       "n"
       (IntAdd
-       (Ap "fibo" [IntAdd "n" (Lit -1)])
-       (Ap "fibo" [IntAdd "n" (Lit -2)]))
-    main = 
+       (Ap "fibo" [IntAdd "n" (Lit (-1))])
+       (Ap "fibo" [IntAdd "n" (Lit (-2))]))
+    main = Ap "fibo" [Lit 10]
