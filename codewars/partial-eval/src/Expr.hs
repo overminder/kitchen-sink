@@ -10,7 +10,7 @@ import Data.String (IsString(..))
 import qualified Data.Map as M
 import Control.Monad.Trans.RWS
 import Control.Monad.Trans.Class
-import Control.Monad (forM, forM_, (<=<))
+import Control.Monad (forM, (<=<))
 
 type Name = String
 
@@ -41,7 +41,9 @@ instance IsString Expr where fromString = Var
 data Node
   = NInt Int
   | NClosure [Name] Env Expr
-  | NIndirect NodeId
+
+  -- | Used by LetRec to represent boxes.
+  | NIndirect (Maybe NodeId)
   deriving (Show)
 
 newtype NodeId
@@ -67,8 +69,15 @@ freshNodeId = NodeId <$> use hNextId <* (hNextId += 1)
 setNode :: NodeId -> Node -> EvalM ()
 setNode nid n = hSpace %= M.insert nid n
 
+derefNode0 :: NodeId -> EvalM Node
+derefNode0 = lift <=< (uses hSpace . M.lookup)
+
 derefNode :: NodeId -> EvalM Node
-derefNode = lift <=< (uses hSpace . M.lookup)
+derefNode n = do
+  n' <- derefNode0 n
+  case n' of
+    NIndirect (Just n'') -> derefNode n''
+    _ -> return n'
 
 type EvalM a = RWST Env () Heap Maybe a
 
@@ -94,6 +103,7 @@ mkNode n = do
 withR :: (r -> r') -> RWST r' w s m a -> RWST r w s m a
 withR f = withRWST (\r s -> (f r, s))
 
+-- Without following the indirections.
 eval :: Expr -> EvalM NodeId
 eval = \case
   Lit i -> mkInt i
@@ -105,11 +115,14 @@ eval = \case
   IntLt a b -> intOp (<) b2i a b
   LetRec bs body ->
     do ns <- forM bs $ \(v, e) ->
-         do n <- freshNodeId
+         do n <- mkNode (NIndirect Nothing)
             return (v, (n, e))
        let extend xs = (M.fromList (map (second fst) xs) `M.union`)
        withR (extend ns) $
-             do forM_ ns $ \(_, (n, e)) -> setNode n =<< (NIndirect <$> eval e)
+             do nvals <- forM ns $ \(_, (n, e)) ->
+                  do n' <- NIndirect . Just <$> eval e
+                     return (n, n')
+                mapM_ (uncurry setNode) nvals
                 eval body
   Ap f as -> do
     ans <- mapM eval as
@@ -145,14 +158,14 @@ intOp binOp f a b = do
 
 
 fiboMain :: Expr
-fiboMain = LetRec [("fibo", fibo), ("main", main)] main
+fiboMain = LetRec [("fibo", fibo), ("main", main)] (Ap "main" [])
   where
     fibo = Lam ["n"] $ If (IntLt "n" (Lit 2))
       "n"
       (IntAdd
        (Ap "fibo" [IntAdd "n" (Lit (-1))])
        (Ap "fibo" [IntAdd "n" (Lit (-2))]))
-    main = Ap "fibo" [Lit 10]
+    main = Lam [] $ Ap "fibo" [Lit 10]
 
 evalMain :: Expr -> Maybe Node
 evalMain e = fst <$> evalRWST (derefNode =<< eval e) M.empty emptyHeap
