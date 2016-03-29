@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES6",
+    "module": "commonjs",
+    "noImplicitAny": true,
+    "outDir": ".ts-build",
+    "jsx": "react"
+  },
+  "files": [
+    "src/main.ts",
+    "src/lib.ts",
+    "typings/browser.d.ts"
+  ]
+}

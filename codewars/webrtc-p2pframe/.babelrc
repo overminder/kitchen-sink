@@ -1,0 +1,5 @@
+{
+  "only": ["gen/**/*.js"],
+  "presets": ["es2015"],
+  "plugins": ["transform-runtime", "transform-regenerator"]
+}

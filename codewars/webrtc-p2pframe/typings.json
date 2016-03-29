@@ -1,0 +1,6 @@
+{
+  "ambientDependencies": {
+    "webrtc/mediastream": "registry:dt/webrtc/mediastream#0.0.0+20160317120654",
+    "webrtc/rtcpeerconnection": "registry:dt/webrtc/rtcpeerconnection#0.0.0+20160316155526"
+  }
+}
