@@ -33,7 +33,7 @@ gulp.task('ts-babel', function () {
 
 // Dev
 gulp.task('watch', ['ts-babel'], function() {
-  gulp.watch('src/**/*.ts', ['ts-babel']);
+  gulp.watch('src/**/*.ts*', ['ts-babel']);
 
   var b = watchify(browserify(wOpts));
   var runBundle = bundle.bind(null, b, false);
@@ -56,7 +56,7 @@ function bundle(b, shallMinify) {
     if (shallMinify) {
       return x.pipe(uglify().on('error', gutil.log));
     } else {
-      return x;
+      return x.on('error', gutil.log);
     }
   }
 
