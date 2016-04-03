@@ -1,2 +1,3 @@
 - http://hllvm.group.iteye.com/group/topic/39493
 - http://the.gregor.institute/t/5k/842/reading.html
+- http://darksi.de/d.sea-of-nodes/
