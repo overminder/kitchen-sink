@@ -2,3 +2,4 @@
 - http://the.gregor.institute/t/5k/842/reading.html
 - http://darksi.de/d.sea-of-nodes/
 - http://www.masonchang.com/blog/2010/8/9/sea-of-nodes-compilation-approach.html
+- http://ariya.ofilabs.com/2014/08/javascript-and-v8-turbofan.html
