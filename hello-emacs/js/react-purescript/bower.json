@@ -11,7 +11,10 @@
     "output"
   ],
   "dependencies": {
-    "purescript-console": "^0.1.0"
+    "purescript-console": "^0.1.0",
+    "purescript-prelude": "^0.1.5",
+    "purescript-react": "^0.7.1",
+    "purescript-react-dom": "^0.2.0"
   },
   "resolutions": {
     "purescript-react": "^0.7.1"
