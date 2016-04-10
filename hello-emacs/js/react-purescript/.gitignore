@@ -1,6 +1,6 @@
 output
 node_modules
 bower_components
-.psci
-.psci_modules
+.psci*
 .pulp-cache
+/src/.webpack.js
