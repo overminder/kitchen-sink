@@ -1,0 +1,29 @@
+{
+  "name": "react-native-hello",
+  "version": "1.0.0",
+  "moduleType": [
+    "node"
+  ],
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output"
+  ],
+  "dependencies": {
+    "purescript-react": "0.7.1",
+    "purescript-dom": "^0.2.20",
+    "purescript-prelude": "^0.1.5",
+    "purescript-generics": "^0.7.2",
+    "purescript-data-default": "^0.1.0",
+    "purescript-foreign-options": "^0.1.1",
+    "purescript-foldable-traversable": "^0.4.2",
+    "purescript-sequences": "^0.6.0"
+  },
+  "devDependencies": {
+    "purescript-console": "^0.1.1"
+  },
+  "resolutions": {
+    "purescript-react": "0.7.1"
+  }
+}

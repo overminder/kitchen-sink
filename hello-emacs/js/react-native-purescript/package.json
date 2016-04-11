@@ -1,0 +1,19 @@
+{
+  "name": "react-native-hello",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.android.js",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "react": "^0.14.0",
+    "react-native": "^0.23.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
