@@ -5,3 +5,4 @@
 - http://ariya.ofilabs.com/2014/08/javascript-and-v8-turbofan.html
 - http://paperhub.s3.amazonaws.com/24842c95fb1bc5d7c5da2ec735e106f0.pdf
 - http://ssabook.gforge.inria.fr/latest/book.pdf
+- http://compilers.cs.uni-saarland.de/papers/bbhlmz13cc.pdf
