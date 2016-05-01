@@ -5,9 +5,9 @@ module Ast
   , module Text.PrettyPrint.ANSI.Leijen
 ) where
 
-import qualified Data.Text as T
-import Data.String (IsString(..))
-import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import           Data.String                  (IsString (..))
+import qualified Data.Text                    as T
+import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import qualified Text.PrettyPrint.ANSI.Leijen as P
 
 -- A simple imperative AST.
@@ -99,6 +99,19 @@ simpleLoop = SSeq [
        , SAssign "i" ("i" !+ ELit 1)
        ],
   SRet "s"
+  ]
+
+fiboLoop :: Stmt
+fiboLoop = SSeq [
+  SAssign "i" (ELit 0),
+  SAssign "a" (ELit 1),
+  SAssign "b" (ELit 1),
+  SWhile ("i" !< ELit 100) $
+  SSeq [ SAssign "aPrev" "a"
+       , SAssign "a" ("a" !+ "b")
+       , SAssign "b" "aPrev"
+       ],
+  SRet "a"
   ]
 
 -- | Shows that the ast2lir transformation introduces some redundant blocks.

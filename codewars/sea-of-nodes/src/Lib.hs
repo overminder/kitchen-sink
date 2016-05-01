@@ -5,7 +5,7 @@ module Lib
 import Ast
 import Ast2Lir
 import Lir
-import Vn
+-- import Vn
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"

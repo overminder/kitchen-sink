@@ -7,17 +7,18 @@ module Vn
 
 -- Local/global value numbering.
 
-import Control.Lens
-import Control.Monad ((<=<), forM_)
-import Control.Monad.Trans.RWS
-import qualified Data.Map as M
+import           Control.Lens
+import           Control.Monad           (forM_, (<=<))
+import           Control.Monad.Trans.RWS
+import qualified Data.Map                as M
+import           Data.Maybe              (fromMaybe)
 
-import Lir hiding (mkUnique)
+import           Lir                     hiding (mkUnique)
 
 data VnS = VnS
-  { _vnGraph :: LGraph -- As an unique source.
-  , _vnRegNumbers :: M.Map Label (M.Map Reg Reg)
-  , _vnPhis :: M.Map Label (M.Map Reg [Reg])  -- Will be moved back once everything is done
+  { _vnGraph      :: LGraph -- As an unique source.
+  , _vnRegNumbers :: M.Map Label (M.Map Reg LValue)
+  , _vnPhis       :: M.Map Label (M.Map Reg [LValue])  -- Will be moved back once everything is done
   } deriving (Show)
 
 makeLenses ''VnS
@@ -67,17 +68,25 @@ goIr ir = do
   let
     du' = du & (lUse .~ uses') . (lDef .~ defs')
     ir' = ir & irDefUse .~ du'
+  maybe (return ()) putDef (ir' ^. irOperands)
   return ir'
-
-irUse :: Reg -> VnM Reg
-irUse r = go =<< view id
   where
-    go :: Label -> VnM Reg
-    go label = do
-      r' <- lookupReg label r
-      maybe (goR label) return r'
+    putDef (d, lop) = case lop of
+      LoAtom a -> do
+        label <- view id
+        addNumberedValue label d a
+      _ -> return ()
 
-    goR :: Label -> VnM Reg
+irUse :: LValue -> VnM LValue
+irUse v@(LvLit _) = return v
+irUse (LvReg r) = go =<< view id
+  where
+    go :: Label -> VnM LValue
+    go label = do
+      v' <- lookupValue label r
+      maybe (goR label) return v'
+
+    goR :: Label -> VnM LValue
     goR label = do
       g <- use vnGraph
       let ps = predLabels label g
@@ -92,15 +101,15 @@ irUse r = go =<< view id
         _ -> do
           -- Create a phi here.
           r' <- mkRegV label r
-          putPhi label r' []
+          setPhi label r' []
           -- Find the definition recursively
           ss <- mapM go ps
           -- And fill the phi
-          putPhi label r' ss
-          return r'
+          setPhi label r' ss
+          return (LvReg r')
 
-    putPhi :: Label -> Reg -> [Reg] -> VnM ()
-    putPhi label d ss = vnPhis %= M.insertWith M.union label (M.singleton d ss)
+    setPhi :: Label -> Reg -> [LValue] -> VnM ()
+    setPhi label d ss = vnPhis %= M.insertWith M.union label (M.singleton d ss)
 
 irDef :: Reg -> VnM Reg
 irDef = number
@@ -113,8 +122,12 @@ number r = do
 mkRegV :: Label -> Reg -> VnM Reg
 mkRegV label r = do
   r' <- (`replaceRegVNumber` r) <$> mkUnique
-  vnRegNumbers %= M.insertWith M.union label (M.singleton r r')
+  addNumberedValue label r (LvReg r')
   return r'
+
+addNumberedValue :: Label -> Reg -> LValue -> VnM ()
+addNumberedValue label r v =
+  vnRegNumbers %= M.insertWith M.union label (M.singleton r v)
 
 mkUnique :: VnM Int
 mkUnique = mkUnique' vnGraph
@@ -123,5 +136,10 @@ replaceRegVNumber :: Int -> Reg -> Reg
 replaceRegVNumber i (RegV _ name) = RegV i name
 replaceRegVNumber _ r = error $ "replaceRegVNumber: not a RegV: " ++ show r
 
-lookupReg :: Label -> Reg -> VnM (Maybe Reg)
-lookupReg label r = uses vnRegNumbers (M.lookup r <=< M.lookup label)
+lookupValue :: Label -> Reg -> VnM (Maybe LValue)
+lookupValue label r = uses vnRegNumbers (go r <=< M.lookup label)
+  where
+    go r0 m = case M.lookup r0 m of
+      Nothing -> Nothing
+      Just v@(LvReg r') -> Just (fromMaybe v (go r' m))
+      Just v -> Just v

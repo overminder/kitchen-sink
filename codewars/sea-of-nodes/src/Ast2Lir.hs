@@ -1,26 +1,27 @@
+{-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Ast2Lir
   ( ast2Lir
   ) where
 
-import Control.Lens
-import Control.Monad.Trans.State
-import qualified Data.Map as M
-import qualified Data.Text as T
-import Data.Maybe (fromMaybe)
+import           Control.Lens
+import           Control.Monad.Trans.State
+import qualified Data.Map                  as M
+import           Data.Maybe                (fromMaybe)
+import qualified Data.Text                 as T
 
-import Ast
-import Lir hiding (mkUnique)
+import           Ast
+import           Lir                       hiding (mkUnique, newLabel)
 import qualified Lir
 
 type Env = M.Map Var Reg
 
 data Ast2LirS = Ast2LirS
   { _mGraph :: LGraph
-  , _mEntry :: Label
-  , _mBody :: [Lir]
-  , _mEnv :: Env
+  , _mEntry :: Label' 'Region
+  , _mBody  :: [Lir' 'Prim]
+  , _mEnv   :: Env
   } deriving (Show)
 
 makeLenses ''Ast2LirS
@@ -40,56 +41,67 @@ ast2Lir' s = do
 goS :: Stmt -> Ast2LirM ()
 goS = \case
   SRet e -> do
-    r <- goE e
-    finishBlock (LRet r)
+    r <- lValue <$> goE e
+    lbl <- newLabel
+    finishBlock (LRet lbl r)
 
   SAssign v e -> do
     src <- goE e
     dst <- lookupEnvOrDefine v
-    emit (LMovR dst src)
+    lbl <- newLabel
+    emit (lAssign lbl dst src)
 
   SSeq ss -> mapM_ goS ss
 
   SIf e t f -> do
-    r <- goE e
+    r <- lValue <$> goE e
     labelT <- newLabel
     labelF <- newLabel
     labelDone <- newLabel
-    finishBlockWithNewLabel (LJnz r labelT labelF) labelT
+    lbl <- newLabel
+    finishBlockWithNewLabel (LJnz lbl r labelT labelF) labelT
     -- True
     goS t
-    finishBlockWithNewLabel (LJmp labelDone) labelF
+    lbl' <- newLabel
+    finishBlockWithNewLabel (LJmp lbl' labelDone) labelF
     -- False
     goS f
-    finishBlockWithNewLabel (LJmp labelDone) labelDone
+    lbl'' <- newLabel
+    finishBlockWithNewLabel (LJmp lbl'' labelDone) labelDone
     -- Done
 
   SWhile e s -> do
     labelCheck <- newLabel
     labelBody <- newLabel
     labelDone <- newLabel
-    finishBlockWithNewLabel (LJmp labelCheck) labelCheck
-    r <- goE e
-    finishBlockWithNewLabel (LJnz r labelBody labelDone) labelBody
+    lbl <- newLabel
+    finishBlockWithNewLabel (LJmp lbl labelCheck) labelCheck
+    r <- lValue <$> goE e
+    lbl' <- newLabel
+    finishBlockWithNewLabel (LJnz lbl' r labelBody labelDone) labelBody
     goS s
-    finishBlockWithNewLabel (LJmp labelCheck) labelDone
+    lbl'' <- newLabel
+    finishBlockWithNewLabel (LJmp lbl'' labelCheck) labelDone
 
 
 goE :: Expr -> Ast2LirM Reg
 goE = \case
   ELit i -> do
     r <- mkRegV
-    emit (LMovI r i)
+    lbl <- newLabel
+    emit (lAssign lbl r i)
     return r
   EVar v -> lookupEnvOrFail v
   EArith aop e1 e2 -> do
-    r1 <- goE e1
-    r2 <- goE e2
+    r1 <- lValue <$> goE e1
+    r2 <- lValue <$> goE e2
     dst <- mkRegV
-    let mkIr = case aop of
-                 AAdd -> LAdd
-                 ALt -> LLt
-    emit (mkIr dst r1 r2)
+    let
+      lop = case aop of
+              AAdd -> LAdd
+              ALt -> LLt
+    lbl <- newLabel
+    emit (LPrim lbl dst (LoArith lop r1 r2))
     return dst
 
 lookupEnv :: Var -> Ast2LirM (Maybe Reg)
@@ -112,23 +124,26 @@ mkUnique = Lir.mkUnique' mGraph
 mkRegV :: Ast2LirM Reg
 mkRegV = (`RegV` Nothing) <$> mkUnique
 
-emit :: Lir -> Ast2LirM ()
-emit ir | isExit ir = error $ "emit: " ++ show ir ++ " is an exit instruction."
-        | otherwise = mBody %= (++ [ir])
+emit :: Lir' 'Prim -> Ast2LirM ()
+emit ir = mBody %= (++ [ir])
 
-finishBlock :: Lir -> Ast2LirM ()
+finishBlock :: Lir' 'Exit -> Ast2LirM ()
 finishBlock ir = finishBlockWithNewLabel ir =<< newLabel
 
-finishBlockWithNewLabel :: Lir -> Label -> Ast2LirM ()
-finishBlockWithNewLabel ir label = do
-  block <- LBlock <$> use mEntry <*> pure [] <*> use mBody <*> pure ir
-  mGraph %= insertBlock block
+finishBlockWithNewLabel :: Lir' 'Exit -> Label' 'Region -> Ast2LirM ()
+finishBlockWithNewLabel exit label = do
+  entry <- use mEntry
+  block <- LSeq <$> use mBody <*> pure exit
+  mGraph %= putIr entry block
   prepareNewBlockOf label
 
-newLabel :: Ast2LirM Label
-newLabel = LAnonymous <$> mkUnique
+newLabel :: Ast2LirM (Label' a)
+newLabel = do
+  (lbl, g) <- uses mGraph Lir.newLabel
+  mGraph .= g
+  return lbl
 
-prepareNewBlockOf :: Label -> Ast2LirM ()
+prepareNewBlockOf :: Label' 'Region -> Ast2LirM ()
 prepareNewBlockOf lbl = do
   mEntry .= lbl
   mBody .= []

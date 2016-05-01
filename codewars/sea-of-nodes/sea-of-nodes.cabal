@@ -38,6 +38,9 @@ library
                      , DeriveFoldable
                      , DeriveTraversable
                      , TupleSections
+                     , StandaloneDeriving
+                     , ExistentialQuantification
+                     , MultiParamTypeClasses
 
 executable sea-of-nodes-exe
   hs-source-dirs:      app
