@@ -102,18 +102,15 @@ lookupEnvOrDefine :: Var -> Ast2LirM Reg
 lookupEnvOrDefine v = maybe define return =<< lookupEnv v
   where
     define = do
-      r <- RegV <$> mkUnique
+      r <- (`RegV` Just v) <$> mkUnique
       mEnv %= M.insert v r
       return r
 
 mkUnique :: Ast2LirM Int
-mkUnique = do
-  (i, g) <- uses mGraph Lir.mkUnique
-  mGraph .= g
-  return i
+mkUnique = Lir.mkUnique' mGraph
 
 mkRegV :: Ast2LirM Reg
-mkRegV = RegV <$> mkUnique
+mkRegV = (`RegV` Nothing) <$> mkUnique
 
 emit :: Lir -> Ast2LirM ()
 emit ir | isExit ir = error $ "emit: " ++ show ir ++ " is an exit instruction."
@@ -124,7 +121,7 @@ finishBlock ir = finishBlockWithNewLabel ir =<< newLabel
 
 finishBlockWithNewLabel :: Lir -> Label -> Ast2LirM ()
 finishBlockWithNewLabel ir label = do
-  block <- LBlock <$> use mEntry <*> use mBody <*> pure ir
+  block <- LBlock <$> use mEntry <*> pure [] <*> use mBody <*> pure ir
   mGraph %= insertBlock block
   prepareNewBlockOf label
 

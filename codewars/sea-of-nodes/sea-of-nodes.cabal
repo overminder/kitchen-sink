@@ -17,15 +17,16 @@ library
   hs-source-dirs:      src
   exposed-modules:     Lib
                      , Ast
-                     , Lvn
-                     , Lir
                      , Ast2Lir
+                     , Lir
+                     , Vn
   build-depends:       base >= 4.7 && < 5
                      , text
                      , transformers >= 0.4
                      , ansi-wl-pprint
                      , containers >= 0.5
                      , lens
+                     , adjunctions >= 4.3
   default-language:    Haskell2010
   default-extensions:  LambdaCase
                      , ScopedTypeVariables
@@ -33,6 +34,10 @@ library
                      , RecordWildCards
                      , FlexibleContexts
                      , FlexibleInstances
+                     , DeriveFunctor
+                     , DeriveFoldable
+                     , DeriveTraversable
+                     , TupleSections
 
 executable sea-of-nodes-exe
   hs-source-dirs:      app

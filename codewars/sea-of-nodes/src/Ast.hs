@@ -100,3 +100,9 @@ simpleLoop = SSeq [
        ],
   SRet "s"
   ]
+
+-- | Shows that the ast2lir transformation introduces some redundant blocks.
+simpleIf :: Stmt
+simpleIf = SIf (ELit 0 !< ELit 1)
+  (SSeq [SRet (ELit 0), SRet (ELit 3)])
+  (SRet (ELit 1))
