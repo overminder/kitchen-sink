@@ -20,7 +20,7 @@ type Env = M.Map Var Reg
 data Ast2LirS = Ast2LirS
   { _mGraph :: LGraph
   , _mEntry :: Label' 'Region
-  , _mBody  :: [Lir' 'Prim]
+  , _mBody  :: [Label' 'Prim]
   , _mEnv   :: Env
   } deriving (Show)
 
@@ -31,25 +31,27 @@ type Ast2LirM = State Ast2LirS
 ast2Lir :: Stmt -> LGraph
 ast2Lir s = execState (ast2Lir' s) emptyState ^. mGraph
   where
-    emptyState = Ast2LirS emptyLGraph undefined undefined M.empty
+    emptyState = Ast2LirS emptyLGraph (error "mEntry") (error "mBody") M.empty
 
 ast2Lir' :: Stmt -> Ast2LirM ()
 ast2Lir' s = do
-  prepareNewBlockOf =<< newLabel
+  startLabel <- newLabel
+  prepareNewBlockOf startLabel
+  mGraph.lgStart .= startLabel
   goS s
 
 goS :: Stmt -> Ast2LirM ()
 goS = \case
   SRet e -> do
     r <- lValue <$> goE e
-    lbl <- newLabel
-    finishBlock (LRet lbl r)
+    here <- use mEntry
+    finishBlock (LRet here r)
 
   SAssign v e -> do
     src <- goE e
     dst <- lookupEnvOrDefine v
-    lbl <- newLabel
-    emit (lAssign lbl dst src)
+    here <- use mEntry
+    emit (lAssign here dst src)
 
   SSeq ss -> mapM_ goS ss
 
@@ -58,38 +60,34 @@ goS = \case
     labelT <- newLabel
     labelF <- newLabel
     labelDone <- newLabel
-    lbl <- newLabel
-    finishBlockWithNewLabel (LJnz lbl r labelT labelF) labelT
+    here <- use mEntry
+    finishBlockWithNewLabel (LJnz here r labelT labelF) labelT
     -- True
     goS t
-    lbl' <- newLabel
-    finishBlockWithNewLabel (LJmp lbl' labelDone) labelF
+    finishBlockWithNewLabel (LJmp labelT labelDone) labelF
     -- False
     goS f
-    lbl'' <- newLabel
-    finishBlockWithNewLabel (LJmp lbl'' labelDone) labelDone
+    finishBlockWithNewLabel (LJmp labelF labelDone) labelDone
     -- Done
 
   SWhile e s -> do
     labelCheck <- newLabel
     labelBody <- newLabel
     labelDone <- newLabel
-    lbl <- newLabel
-    finishBlockWithNewLabel (LJmp lbl labelCheck) labelCheck
+    here <- use mEntry
+    finishBlockWithNewLabel (LJmp here labelCheck) labelCheck
     r <- lValue <$> goE e
-    lbl' <- newLabel
-    finishBlockWithNewLabel (LJnz lbl' r labelBody labelDone) labelBody
+    finishBlockWithNewLabel (LJnz labelCheck r labelBody labelDone) labelBody
     goS s
-    lbl'' <- newLabel
-    finishBlockWithNewLabel (LJmp lbl'' labelCheck) labelDone
+    finishBlockWithNewLabel (LJmp labelBody labelCheck) labelDone
 
 
 goE :: Expr -> Ast2LirM Reg
 goE = \case
   ELit i -> do
     r <- mkRegV
-    lbl <- newLabel
-    emit (lAssign lbl r i)
+    here <- use mEntry
+    emit (lAssign here r i)
     return r
   EVar v -> lookupEnvOrFail v
   EArith aop e1 e2 -> do
@@ -100,8 +98,8 @@ goE = \case
       lop = case aop of
               AAdd -> LAdd
               ALt -> LLt
-    lbl <- newLabel
-    emit (LPrim lbl dst (LoArith lop r1 r2))
+    here <- use mEntry
+    emit (LPrim here dst (LoArith lop r1 r2))
     return dst
 
 lookupEnv :: Var -> Ast2LirM (Maybe Reg)
@@ -125,15 +123,24 @@ mkRegV :: Ast2LirM Reg
 mkRegV = (`RegV` Nothing) <$> mkUnique
 
 emit :: Lir' 'Prim -> Ast2LirM ()
-emit ir = mBody %= (++ [ir])
+emit ir = do
+  irLabel <- emitAny ir
+  mBody %= (++ [irLabel])
+
+emitAny :: Lir' a -> Ast2LirM (Label' a)
+emitAny ir = do
+  irLabel <- newLabel
+  mGraph %= putIr irLabel ir
+  return irLabel
 
 finishBlock :: Lir' 'Exit -> Ast2LirM ()
 finishBlock ir = finishBlockWithNewLabel ir =<< newLabel
 
 finishBlockWithNewLabel :: Lir' 'Exit -> Label' 'Region -> Ast2LirM ()
 finishBlockWithNewLabel exit label = do
+  exitLabel <- emitAny exit
   entry <- use mEntry
-  block <- LSeq <$> use mBody <*> pure exit
+  block <- LSeq <$> use mBody <*> pure exitLabel
   mGraph %= putIr entry block
   prepareNewBlockOf label
 

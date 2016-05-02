@@ -12,7 +12,7 @@ import           Control.Monad.Representable.State (MonadState)
 import           Control.Monad.Trans.State
 import           Data.Function                     (on)
 import qualified Data.Map                          as M
-import           Data.Maybe                        (fromJust, mapMaybe)
+import           Data.Maybe                        (fromMaybe)
 import qualified Data.Set                          as S
 import qualified Data.Text                         as T
 import           Text.PrettyPrint.ANSI.Leijen      hiding ((<$>))
@@ -69,7 +69,7 @@ data Lir' (a :: LirType) where
   -- Set of defs and the exit label.
   LRegion :: S.Set (Label' 'Region) -> S.Set Reg -> Label' 'Exit -> Lir' 'Region
   -- Non-SSA, used to build the graph.
-  LSeq :: [Lir' 'Prim] -> Lir' 'Exit -> Lir' 'Region
+  LSeq :: [Label' 'Prim] -> Label' 'Exit -> Lir' 'Region
   LJnz :: Label' 'Region -> LValue -> Label' 'Region -> Label' 'Region -> Lir' 'Exit
   LJmp :: Label' 'Region -> Label' 'Region -> Lir' 'Exit
   LRet :: Label' 'Region -> LValue -> Lir' 'Exit
@@ -128,11 +128,11 @@ opValue f = \case
 duTuple :: Lens' DUTuple LDefUse
 duTuple f (ds, us) = fmap (\(LDefUse ds' us') -> (ds', us')) (f $ LDefUse ds us)
 
-irJumpsTo :: Lens' Lir [Label' 'Region]
-irJumpsTo f (Lir lir) = case lir of
-  LJnz region r lt lf -> fmap (\[lt', lf'] -> Lir (LJnz region r lt' lf')) (f [lt, lf])
-  LJmp region lbl -> fmap (\[lbl'] -> Lir (LJmp region lbl')) (f [lbl])
-  x@_ -> fmap (\[] -> Lir x) (f [])
+exitJumpsTo :: Lens' (Lir' 'Exit) [Label' 'Region]
+exitJumpsTo f = \case
+  LJnz region r lt lf -> fmap (\[lt', lf'] -> LJnz region r lt' lf') (f [lt, lf])
+  LJmp region lbl -> fmap (\[lbl'] -> LJmp region lbl') (f [lbl])
+  LRet region r -> fmap (\[] -> LRet region r) (f [])
 
 irDefUse :: Lens' Lir LDefUse
 irDefUse = irDefUse'.duTuple
@@ -140,7 +140,7 @@ irDefUse = irDefUse'.duTuple
 irDefUse' :: Lens' Lir DUTuple
 irDefUse' mkF (Lir lir) = mkL $ case lir of
   LPhi region d ss -> (\([d'], ss') -> Lir $ LPhi region d' ss', ([d], ss))
-  LSeq {} -> undefined
+  LSeq {} -> error "irDefUse' LSeq"
   -- XXX: what about region's use?
   LRegion prev defs exit -> (\(defs', []) -> Lir $ LRegion prev (S.fromList defs') exit,
                              (S.toList defs, []))
@@ -162,17 +162,16 @@ irOperands f (Lir lir) = case lir of
 regionDefs :: Lens' (Lir' 'Region) (S.Set Reg)
 regionDefs f (LRegion preds defs exit)
   = fmap (\defs' -> LRegion preds defs' exit) (f defs)
-regionDefs _ _ = undefined
+regionDefs _ _ = error "regionDefs LSeq"
 
 regionPreds :: Lens' (Lir' 'Region) (S.Set (Label' 'Region))
 regionPreds f (LRegion preds defs exit)
   = fmap (\preds' -> LRegion preds' defs exit) (f preds)
-regionPreds _ _ = undefined
+regionPreds _ _ = error "regionPreds LSeq"
 
 regionExit :: Lens' (Lir' 'Region) (Label' 'Exit)
-regionExit f (LRegion preds defs exit)
-  = fmap (LRegion preds defs) (f exit)
-regionExit _ _ = undefined
+regionExit f (LRegion preds defs exit) = fmap (LRegion preds defs) (f exit)
+regionExit f (LSeq irs exit) = fmap (LSeq irs) (f exit)
 
 makeLenses ''LGraph
 
@@ -227,8 +226,15 @@ getIrByLabel label g = g ^. lgNodes.to (fmap unwrap . M.lookup (Label label))
   where
     unwrap (Lir lir) = unsafeCoerce lir
 
+getIrByLabelOrFail :: Label' a -> LGraph -> Lir' a
+getIrByLabelOrFail label g = fromMaybe (error $ "getIrByLabel: " ++ show label) $
+  getIrByLabel label g
+
 getIrByDef :: Reg -> LGraph -> Maybe (Lir' 'Prim)
 getIrByDef r g = (`getIrByLabel` g) =<< getLabelByDef r g
+
+getIrByDefOrFail :: Reg -> LGraph -> Lir' 'Prim
+getIrByDefOrFail r g = fromMaybe (error $ "getIrByDef: " ++ show r) $ getIrByDef r g
 
 getLabelByDef :: Reg -> LGraph -> Maybe (Label' 'Prim)
 getLabelByDef r g = g ^. lgDefs.to (M.lookup r)
@@ -297,18 +303,28 @@ instance Pretty Lir where
 
 
 instance Pretty LGraph where
-  pretty g = vsep . mapMaybe (uncurry prettyIr) . M.toList $ g ^. lgNodes
+  pretty g = vsep $ bfs [g ^. lgStart] S.empty
     where
-      prettyIr :: Label -> Lir -> Maybe Doc
-      prettyIr label (Lir lir) = case lir of
+      bfs :: [Label' 'Region] -> S.Set (Label' 'Region) -> [Doc]
+      bfs workList visited = case workList of
+        [] -> []
+        x:xs | S.member x visited -> bfs xs visited
+             | otherwise ->
+               let region = getIrByLabelOrFail x g
+                   exit = getIrByLabelOrFail (region ^. regionExit) g
+                   succs = exit ^. exitJumpsTo
+               in prettyRegion x region : bfs (xs ++ succs) (S.insert x visited)
+      prettyRegion :: Label' 'Region -> Lir' 'Region -> Doc
+      prettyRegion label = \case
         LRegion _ defs exit ->
-          let
-            defIrs = map (Lir . fromJust . (`getIrByDef` g)) . S.toList $ defs
-            exitIr = Lir (fromJust $ getIrByLabel exit g)
-          in Just (prettyRegion label (defIrs ++ [exitIr]))
-        LSeq body exit -> Just (prettyRegion label (map Lir body ++ [Lir exit]))
-        _ -> Nothing
+          let defIrs = map (Lir . (`getIrByDefOrFail` g)) . S.toList $ defs
+              exitIr = Lir (getIrByLabelOrFail exit g)
+          in prettyBody label (defIrs ++ [exitIr])
+        LSeq defs exit ->
+          let defIrs = map (Lir . (`getIrByLabelOrFail` g)) defs
+              exitIr = Lir (getIrByLabelOrFail exit g)
+          in prettyBody label (defIrs ++ [exitIr])
 
-      prettyRegion label irs = pretty label <+> text "{"
+      prettyBody label irs = pretty label <+> text "{"
         <$$> (indent 2 . vsep . map pretty $ irs)
         <$$> text "}"

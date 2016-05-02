@@ -5,6 +5,7 @@ module Vn
   , gvn
   ) where
 
+
 -- Local/global value numbering.
 
 import           Control.Lens
@@ -29,10 +30,10 @@ emptyVnS g = VnS g M.empty M.empty
 type VnM = RWS Label () VnS
 
 lvn :: Label -> LGraph -> LGraph
-lvn label g = fst $ evalRWS (lvn' label *> use vnGraph) undefined (emptyVnS g)
+lvn label g = fst $ evalRWS (lvn' label *> use vnGraph) (error "lvn.label") (emptyVnS g)
 
 gvn :: LGraph -> LGraph
-gvn g = fst $ evalRWS gvn' undefined (emptyVnS g)
+gvn g = fst $ evalRWS gvn' (error "gvn.label") (emptyVnS g)
   where
     gvn' = do
       -- Number each block
@@ -40,8 +41,11 @@ gvn g = fst $ evalRWS gvn' undefined (emptyVnS g)
       -- populate phis
       blockPhis <- use vnPhis
       forM_ (M.toList blockPhis) $ \(label, phis) ->
-        forM_ (M.toList phis) $ \(d, ss) ->
-          vnGraph.lgNodes.at label %= fmap (lbPhis %~ (++ [LPhi d ss]))
+        forM_ (M.toList phis) $ \(d, ss) -> do
+          phiLabel <- newLabel
+          let phi = LPhi label d ss
+          vnGraph.lgNodes %= M.insert phiLabel phi
+          vnGraph.lgNodes.at label
       use vnGraph
 
 -- Inplace.
