@@ -5,95 +5,118 @@ module Vn
   , gvn
   ) where
 
-
 -- Local/global value numbering.
 
+import           Control.Applicative     ((<|>))
+import           Control.Arrow           (first)
 import           Control.Lens
-import           Control.Monad           (forM_, (<=<))
+import           Control.Monad           (forM_, void)
 import           Control.Monad.Trans.RWS
 import qualified Data.Map                as M
 import           Data.Maybe              (fromMaybe)
+import qualified Data.Set                as S
 
 import           Lir                     hiding (mkUnique)
 
 data VnS = VnS
-  { _vnGraph      :: LGraph -- As an unique source.
-  , _vnRegNumbers :: M.Map Label (M.Map Reg LValue)
-  , _vnPhis       :: M.Map Label (M.Map Reg [LValue])  -- Will be moved back once everything is done
+  { _vnGraph        :: LGraph -- As an unique source.
+  , _vnBlocks       :: M.Map Label LBlock -- Blocks that being built
+  , _vnSealedBlocks :: S.Set Label
   } deriving (Show)
 
 makeLenses ''VnS
 
 emptyVnS :: LGraph -> VnS
-emptyVnS g = VnS g M.empty M.empty
+emptyVnS g = VnS g M.empty S.empty
 
-type VnM = RWS Label () VnS
+data VnR = VnR
+  { _vnrLabel :: Label
+    -- ^ Which block are we currently in
+  , _vnrPreds :: M.Map Label [Label]
+    -- ^ Cached predecessors
+  }
 
-lvn :: Label -> LGraph -> LGraph
-lvn label g = fst $ evalRWS (lvn' label *> use vnGraph) (error "lvn.label") (emptyVnS g)
+makeLenses ''VnR
 
-gvn :: LGraph -> LGraph
-gvn g = fst $ evalRWS gvn' (error "gvn.label") (emptyVnS g)
+type VnM = RWS VnR () VnS
+
+emptyVnR :: VnR
+emptyVnR = VnR (error "VnR.label") (error "VnR.preds")
+
+lvn :: [LTraceBlock] -> LGraph -> LGraph
+lvn [b] g = fst $ evalRWS (lvn' b *> finishGraph *> use vnGraph) emptyVnR (emptyVnS g)
+lvn _ _ = error "lvn: more than 1 block"
+
+gvn :: [LTraceBlock] -> LGraph -> LGraph
+gvn irss g = fst $ evalRWS gvn' vnR (emptyVnS g)
   where
+    vnR = emptyVnR & vnrPreds .~ (foldr buildPreds M.empty . concatMap predPairs) irss
+    predPairs (LTraceBlock entry _ exit) = zip (exit ^. branchJumpsTo) (repeat entry)
+    buildPreds (k, v) = M.insertWith (++) k [v]
     gvn' = do
-      -- Number each block
-      mapM_ lvn' (M.keys (g ^. lgNodes))
-      -- populate phis
-      blockPhis <- use vnPhis
-      forM_ (M.toList blockPhis) $ \(label, phis) ->
-        forM_ (M.toList phis) $ \(d, ss) -> do
-          phiLabel <- newLabel
-          let phi = LPhi label d ss
-          vnGraph.lgNodes %= M.insert phiLabel phi
-          vnGraph.lgNodes.at label
+      -- Number each block.
+      mapM_ lvn' irss
+      -- Resolve incomplete blocks
+      finishGraph
+      -- Return
       use vnGraph
 
--- Inplace.
-lvn' :: Label -> VnM ()
-lvn' label = do
-  b <- uses (vnGraph.lgNodes) (M.! label)
-  b' <- withLabel label (goB b)
-  vnGraph.lgNodes %= M.insert label b'
+finishGraph :: VnM ()
+finishGraph = do
+  bs <- use vnBlocks
+  forM_ (M.elems bs) $ \b -> vnGraph %= putBlock b
+
+ensureBlock :: Label -> VnM ()
+ensureBlock label =
+  vnBlocks.at label %= (<|> Just (LBlock label M.empty undefined))
+
+lvn' :: LTraceBlock -> VnM ()
+lvn' (LTraceBlock label body exit) = do
+  ensureBlock label
+  -- Partial.
+  withLabel label $ do
+    mapM_ goMid body
+    goExit exit
+  vnSealedBlocks %= S.insert label
 
 withLabel :: Label -> VnM a -> VnM a
-withLabel label = withRWS (const (label,))
+withLabel label = withRWS . curry . first $ vnrLabel .~ label
 
-goB :: LBlock -> VnM LBlock
-goB (LBlock entry phis body exit) = do
-  body' <- mapM goIr body
-  exit' <- goIr exit
-  return (LBlock entry phis body' exit')
+goMid :: (Reg, LOperand) -> VnM ()
+goMid (d, lop) = do
+  uses' <- mapM irUse (lop ^. opUses)
+  let lop' = lop & opUses .~ uses'
+  void $ irDef d lop'
 
-goIr :: Lir -> VnM Lir
-goIr ir = do
-  let du = ir ^. irDefUse
-  uses' <- mapM irUse (du ^. lUse)
-  defs' <- mapM irDef (du ^. lDef)
-  let
-    du' = du & (lUse .~ uses') . (lDef .~ defs')
-    ir' = ir & irDefUse .~ du'
-  maybe (return ()) putDef (ir' ^. irOperands)
-  return ir'
-  where
-    putDef (d, lop) = case lop of
-      LoAtom a -> do
-        label <- view id
-        addNumberedValue label d a
-      _ -> return ()
+goExit :: LBranch -> VnM ()
+goExit br = do
+  uses' <- mapM irUse (br ^. branchUses)
+  let br' = br & branchUses .~ uses'
+  label <- view vnrLabel
+  vnBlocks.at label %= fmap (lbExit .~ br')
 
 irUse :: LValue -> VnM LValue
 irUse v@(LvLit _) = return v
-irUse (LvReg r) = go =<< view id
+irUse (LvReg r) = go =<< view vnrLabel
   where
     go :: Label -> VnM LValue
     go label = do
-      v' <- lookupValue label r
-      maybe (goR label) return v'
+      mbV' <- lookupValue label r
+      case mbV' of
+        Nothing -> do
+          sealed <- uses vnSealedBlocks $ S.member label
+          if sealed
+            then goR label
+            else do
+              -- Create phi.
+              r' <- freshlyPointed label r
+              setPhi label r' []
+              return (lValue r')
+        Just v' -> return v'
 
     goR :: Label -> VnM LValue
     goR label = do
-      g <- use vnGraph
-      let ps = predLabels label g
+      Just ps <- view $ vnrPreds.at label
       case ps of
         [p] ->
           -- Only one predecessor, shouldn't need a phi.
@@ -104,7 +127,7 @@ irUse (LvReg r) = go =<< view id
           error $ "Undefined variable: " ++ show r
         _ -> do
           -- Create a phi here.
-          r' <- mkRegV label r
+          r' <- freshlyPointed label r
           setPhi label r' []
           -- Find the definition recursively
           ss <- mapM go ps
@@ -113,25 +136,31 @@ irUse (LvReg r) = go =<< view id
           return (LvReg r')
 
     setPhi :: Label -> Reg -> [LValue] -> VnM ()
-    setPhi label d ss = vnPhis %= M.insertWith M.union label (M.singleton d ss)
+    setPhi label d ss = putDef label d (LoPhi ss)
 
-irDef :: Reg -> VnM Reg
-irDef = number
-
-number :: Reg -> VnM Reg
-number r = do
-  label <- view id
-  mkRegV label r
-
-mkRegV :: Label -> Reg -> VnM Reg
-mkRegV label r = do
-  r' <- (`replaceRegVNumber` r) <$> mkUnique
-  addNumberedValue label r (LvReg r')
+irDef :: Reg -> LOperand -> VnM Reg
+irDef r lop = do
+  label <- view vnrLabel
+  r' <- freshlyPointed label r
+  putDef label r' lop
   return r'
 
-addNumberedValue :: Label -> Reg -> LValue -> VnM ()
-addNumberedValue label r v =
-  vnRegNumbers %= M.insertWith M.union label (M.singleton r v)
+-- Make and return a fresh value, and point the given value to that fresh value.
+freshlyPointed :: Label -> Reg -> VnM Reg
+freshlyPointed label r = do
+  r' <- (`replaceRegVNumber` r) <$> mkUnique
+  putDef label r (lOperand r')
+  return r'
+
+putDef :: Label -> Reg -> LOperand -> VnM ()
+putDef label r lop = vnBlocks.at label %= fmap (lbDefs %~ M.insert r (simplify lop))
+  where
+    simplify (LoArith aop (LvLit a) (LvLit b)) = LoAtom (LvLit (denoteOp aop a b))
+    simplify x@_ = x
+
+    denoteOp = \case
+      LAdd -> (+)
+      LLt -> \a b -> if a < b then 1 else 0
 
 mkUnique :: VnM Int
 mkUnique = mkUnique' vnGraph
@@ -141,9 +170,12 @@ replaceRegVNumber i (RegV _ name) = RegV i name
 replaceRegVNumber _ r = error $ "replaceRegVNumber: not a RegV: " ++ show r
 
 lookupValue :: Label -> Reg -> VnM (Maybe LValue)
-lookupValue label r = uses vnRegNumbers (go r <=< M.lookup label)
+lookupValue label r = do
+  mbB <- use (vnBlocks.at label)
+  return $ maybe Nothing (go r . (^. lbDefs)) mbB
   where
     go r0 m = case M.lookup r0 m of
       Nothing -> Nothing
-      Just v@(LvReg r') -> Just (fromMaybe v (go r' m))
-      Just v -> Just v
+      Just (LoAtom v@(LvReg r')) -> Just (fromMaybe v (go r' m))
+      Just (LoAtom v) -> Just v
+      Just _ -> Nothing --error $ "lookupValue: not a value: " ++ show lop

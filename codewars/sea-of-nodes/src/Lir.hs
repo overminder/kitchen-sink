@@ -8,15 +8,14 @@
 module Lir where
 
 import           Control.Lens
+import           Control.Monad                     (unless)
 import           Control.Monad.Representable.State (MonadState)
-import           Control.Monad.Trans.State
-import           Data.Function                     (on)
+import           Control.Monad.Trans.State         (evalState)
 import qualified Data.Map                          as M
-import           Data.Maybe                        (fromMaybe)
+import           Data.Maybe                        (fromMaybe, mapMaybe)
 import qualified Data.Set                          as S
 import qualified Data.Text                         as T
 import           Text.PrettyPrint.ANSI.Leijen      hiding ((<$>))
-import           Unsafe.Coerce                     (unsafeCoerce)
 
 -- SSA IR.
 
@@ -25,25 +24,13 @@ data Reg
   | RegP T.Text
   deriving (Show, Eq, Ord)
 
-newtype Label' (a :: LirType) = LAnonymous Int
+newtype Label = LAnonymous Int
   deriving (Show, Eq, Ord)
-
-data Label = forall a. Label (Label' a)
-
-deriving instance Show Label
-
-instance Eq Label where
-  (==) = (==) `on` unwrapLabel
-
-unwrapLabel :: Label -> Int
-unwrapLabel (Label (LAnonymous i)) = i
-
-instance Ord Label where
-  compare = compare `on` unwrapLabel
 
 data LOperand
   = LoAtom LValue
   | LoArith LArithOp LValue LValue
+  | LoPhi [LValue]
   deriving (Show, Eq, Ord)
 
 data LArithOp
@@ -56,35 +43,26 @@ data LValue
   | LvLit Int
   deriving (Show, Eq, Ord)
 
-data LirType
-  = Phi
-  | Region
-  | Prim
-  | Exit
-  deriving (Show, Eq, Ord)
+data LBlock = LBlock
+  { _lbLabel :: Label
+  , _lbDefs  :: M.Map Reg LOperand
+  , _lbExit  :: LBranch
+  } deriving (Show)
 
-data Lir' (a :: LirType) where
-  LPhi :: Label' 'Region -> Reg -> [LValue] -> Lir' 'Phi
-  LPrim :: Label' 'Region -> Reg -> LOperand -> Lir' 'Prim
-  -- Set of defs and the exit label.
-  LRegion :: S.Set (Label' 'Region) -> S.Set Reg -> Label' 'Exit -> Lir' 'Region
-  -- Non-SSA, used to build the graph.
-  LSeq :: [Label' 'Prim] -> Label' 'Exit -> Lir' 'Region
-  LJnz :: Label' 'Region -> LValue -> Label' 'Region -> Label' 'Region -> Lir' 'Exit
-  LJmp :: Label' 'Region -> Label' 'Region -> Lir' 'Exit
-  LRet :: Label' 'Region -> LValue -> Lir' 'Exit
+-- Not necessarily SSA. Used for graph building and trace reconstruction.
+data LTraceBlock = LTraceBlock Label [(Reg, LOperand)] LBranch
+  deriving (Show)
 
-deriving instance Show (Lir' a)
-deriving instance Eq (Lir' a)
-
-data Lir = forall a. Lir (Lir' a)
-
-deriving instance Show Lir
+data LBranch
+  = LJnz LValue Label Label
+  | LJmp Label
+  | LRet LValue
+  deriving (Show)
 
 data LGraph = LGraph
-  { _lgDefs      :: M.Map Reg (Label' 'Prim)
-  , _lgStart     :: Label' 'Region
-  , _lgNodes     :: M.Map Label Lir
+  { _lgDefs      :: M.Map Reg Label
+  , _lgEntry     :: Label
+  , _lgBlocks    :: M.Map Label LBlock
   , _lgUniqueGen :: !Int
   } deriving (Show)
 
@@ -93,18 +71,23 @@ data LDefUse = LDefUse
   , _lUse :: [LValue]
   } deriving (Show)
 
-makeLenses ''LDefUse
+-- Erased. Useful for analysis.
+data Lir
+  = LirFirst Label
+  | LirMid Reg LOperand
+  | LirLast LBranch
+  deriving (Show)
 
-type DUTuple = ([Reg], [LValue])
+makeLenses ''LDefUse
 
 class IsLOperand a where
   lOperand :: a -> LOperand
 
-lAssign :: IsLOperand a => Label' 'Region -> Reg -> a -> Lir' 'Prim
-lAssign label d s = LPrim label d (lOperand s)
-
 class IsLValue a where
   lValue :: a -> LValue
+
+instance IsLValue LValue where
+  lValue = id
 
 instance IsLValue a => IsLOperand a where
   lOperand = LoAtom . lValue
@@ -115,68 +98,46 @@ instance IsLValue Reg where
 instance IsLValue Int where
   lValue = LvLit
 
+irDefUse :: Lens' Lir LDefUse
+irDefUse f = \case
+  LirFirst label -> fmap (lhs $ \[] [] -> LirFirst label) (rhs [] [])
+  LirMid d ss -> fmap (lhs $ \[d'] ss' -> LirMid d' (ss & opUses .~ ss'))
+    (rhs [d] (ss ^. opUses))
+  LirLast br -> fmap (lhs $ \[] ss' -> LirLast (br & branchUses .~ ss'))
+    (rhs [] (br ^. branchUses))
+  where
+    lhs g (LDefUse ds us) = g ds us
+    rhs ds us = f (LDefUse ds us)
+
+
 lvReg :: Lens' LValue [Reg]
 lvReg f = \case
   LvReg r -> fmap (\[r'] -> LvReg r') (f [r])
   LvLit i -> fmap (\[] -> LvLit i) (f [])
 
-opValue :: Lens' LOperand [LValue]
-opValue f = \case
+opUses :: Lens' LOperand [LValue]
+opUses f = \case
   LoAtom v -> fmap (\[v'] -> LoAtom v') (f [v])
   LoArith aop v1 v2 -> fmap (\[v1', v2'] -> LoArith aop v1' v2') (f [v1, v2])
+  LoPhi vs -> fmap LoPhi (f vs)
 
-duTuple :: Lens' DUTuple LDefUse
-duTuple f (ds, us) = fmap (\(LDefUse ds' us') -> (ds', us')) (f $ LDefUse ds us)
+branchJumpsTo :: Lens' LBranch [Label]
+branchJumpsTo f = \case
+  LJnz r lt lf -> fmap (\[lt', lf'] -> LJnz r lt' lf') (f [lt, lf])
+  LJmp lbl -> fmap (\[lbl'] -> LJmp lbl') (f [lbl])
+  LRet r -> fmap (\[] -> LRet r) (f [])
 
-exitJumpsTo :: Lens' (Lir' 'Exit) [Label' 'Region]
-exitJumpsTo f = \case
-  LJnz region r lt lf -> fmap (\[lt', lf'] -> LJnz region r lt' lf') (f [lt, lf])
-  LJmp region lbl -> fmap (\[lbl'] -> LJmp region lbl') (f [lbl])
-  LRet region r -> fmap (\[] -> LRet region r) (f [])
-
-irDefUse :: Lens' Lir LDefUse
-irDefUse = irDefUse'.duTuple
-
-irDefUse' :: Lens' Lir DUTuple
-irDefUse' mkF (Lir lir) = mkL $ case lir of
-  LPhi region d ss -> (\([d'], ss') -> Lir $ LPhi region d' ss', ([d], ss))
-  LSeq {} -> error "irDefUse' LSeq"
-  -- XXX: what about region's use?
-  LRegion prev defs exit -> (\(defs', []) -> Lir $ LRegion prev (S.fromList defs') exit,
-                             (S.toList defs, []))
-  LPrim region d lop -> (\([d'], vs') -> Lir $ LPrim region d' (lop & opValue .~ vs'),
-                         ([d], lop ^. opValue))
-  LJnz region s t f -> (\([], [s']) -> Lir $ LJnz region s' t f, ([], [s]))
-  LJmp region x -> (\([], []) -> Lir $ LJmp region x, ([], []))
-  LRet region s -> (\([], [s']) -> Lir $ LRet region s', ([], [s]))
-  where
-    mkL (setDU, getDU) = fmap setDU (mkF getDU)
-
-irOperands :: Lens' Lir (Maybe (Reg, LOperand))
-irOperands f (Lir lir) = case lir of
-  LPrim region d lop -> fmap
-    (\(Just (d', lop')) -> Lir $ LPrim region d' lop')
-    (f (Just (d, lop)))
-  x@_ -> fmap (\Nothing -> Lir x) (f Nothing)
-
-regionDefs :: Lens' (Lir' 'Region) (S.Set Reg)
-regionDefs f (LRegion preds defs exit)
-  = fmap (\defs' -> LRegion preds defs' exit) (f defs)
-regionDefs _ _ = error "regionDefs LSeq"
-
-regionPreds :: Lens' (Lir' 'Region) (S.Set (Label' 'Region))
-regionPreds f (LRegion preds defs exit)
-  = fmap (\preds' -> LRegion preds' defs exit) (f preds)
-regionPreds _ _ = error "regionPreds LSeq"
-
-regionExit :: Lens' (Lir' 'Region) (Label' 'Exit)
-regionExit f (LRegion preds defs exit) = fmap (LRegion preds defs) (f exit)
-regionExit f (LSeq irs exit) = fmap (LSeq irs) (f exit)
+branchUses :: Lens' LBranch [LValue]
+branchUses f = \case
+  LJnz r lt lf -> fmap (\[r'] -> LJnz r' lt lf) (f [r])
+  LJmp lbl -> fmap (\[] -> LJmp lbl) (f [])
+  LRet r -> fmap (\[r'] -> LRet r') (f [r])
 
 makeLenses ''LGraph
+makeLenses ''LBlock
 
 emptyLGraph :: LGraph
-emptyLGraph = LGraph M.empty undefined M.empty 1
+emptyLGraph = LGraph M.empty (error "emptyLGraph.entry") M.empty 1
 
 mkUnique :: LGraph -> (Int, LGraph)
 mkUnique g = (g ^. lgUniqueGen, g & lgUniqueGen +~ 1)
@@ -187,70 +148,23 @@ mkUnique' s2g = do
   s2g .= g
   return i
 
-newRegion :: LGraph -> (Label' 'Region, LGraph)
-newRegion g = (`runState` g) $ do
-  label <- state newLabel
-  let ir = LRegion S.empty S.empty undefined
-  id %= putIr label ir
-  return label
+putBlock :: LBlock -> LGraph -> LGraph
+putBlock b = putDefs . (lgBlocks %~ M.insert label b)
+  where
+    label = b ^. lbLabel
+    putDefs = lgDefs %~ M.union (M.fromList (zip (b ^. lbDefs.to M.keys) (repeat label)))
 
-newLabel :: LGraph -> (Label' a, LGraph)
+newLabel :: LGraph -> (Label, LGraph)
 newLabel g = (LAnonymous label, g')
   where
     (label, g') = mkUnique g
 
-addDefToRegion :: Label' 'Region -> Lir' 'Prim -> LGraph -> (Label' 'Prim, LGraph)
-addDefToRegion regionLabel ir@(LPrim _ d _) g = (`runState` g) $ do
-  let mbIrLabel = getLabelByDef d g
-  let Just region = getIrByLabel regionLabel g
-  irLabel <- case mbIrLabel of
-    Nothing -> state newLabel
-    Just irLabel -> return irLabel
-  id %= putIr irLabel ir
-  id %= putIr regionLabel (region & regionDefs %~ S.insert d)
-  return irLabel
-
-setExitOfRegion :: Label' 'Region -> Lir' 'Exit -> LGraph -> (Label' 'Exit, LGraph)
-setExitOfRegion regionLabel ir g = (`runState` g) $ do
-  let Just region = getIrByLabel regionLabel g
-  irLabel <- state newLabel
-  id %= putIr irLabel ir
-  id %= putIr regionLabel (region & regionExit .~ irLabel)
-  return irLabel
-
-putIr :: Label' a -> Lir' a -> LGraph -> LGraph
-putIr label ir = lgNodes %~ M.insert (Label label) (Lir ir)
-
-getIrByLabel :: Label' a -> LGraph -> Maybe (Lir' a)
-getIrByLabel label g = g ^. lgNodes.to (fmap unwrap . M.lookup (Label label))
+-- Could also cache the predecessors.
+predLabels :: Label -> LGraph -> [Label]
+predLabels label g = preds
   where
-    unwrap (Lir lir) = unsafeCoerce lir
-
-getIrByLabelOrFail :: Label' a -> LGraph -> Lir' a
-getIrByLabelOrFail label g = fromMaybe (error $ "getIrByLabel: " ++ show label) $
-  getIrByLabel label g
-
-getIrByDef :: Reg -> LGraph -> Maybe (Lir' 'Prim)
-getIrByDef r g = (`getIrByLabel` g) =<< getLabelByDef r g
-
-getIrByDefOrFail :: Reg -> LGraph -> Lir' 'Prim
-getIrByDefOrFail r g = fromMaybe (error $ "getIrByDef: " ++ show r) $ getIrByDef r g
-
-getLabelByDef :: Reg -> LGraph -> Maybe (Label' 'Prim)
-getLabelByDef r g = g ^. lgDefs.to (M.lookup r)
-
-predLabels :: Label' 'Region -> LGraph -> Maybe (S.Set (Label' 'Region))
-predLabels label g = (^. regionPreds) <$> getIrByLabel label g
-
-isExit :: Lir -> Bool
-isExit (Lir lir) = isExit' lir
-
-isExit' :: Lir' a -> Bool
-isExit' = \case
-  LJnz {} -> True
-  LJmp {} -> True
-  LRet {} -> True
-  _ -> False
+    preds = g ^. lgBlocks.to (M.keys . M.filter jumpsToB)
+    jumpsToB b' = label `elem` (b' ^. lbExit.branchJumpsTo)
 
 instance Pretty Reg where
   pretty = \case
@@ -258,9 +172,6 @@ instance Pretty Reg where
     RegP s -> text (T.unpack s)
 
 instance Pretty Label where
-  pretty (Label label) = pretty label
-
-instance Pretty (Label' a) where
   pretty (LAnonymous i) = text "L" <> int i
 
 instance Pretty LValue where
@@ -272,59 +183,79 @@ instance Pretty LOperand where
   pretty = \case
     LoArith lop a b -> pretty a <+> aOpToS lop <+> pretty b
     LoAtom a -> pretty a
+    LoPhi ss -> text "phi" <+> commaSep (map pretty ss)
     where
       aOpToS = text . \case
         LAdd -> "+"
         LLt -> "<"
 
-instance Pretty (Lir' ty) where
+commaSep :: [Doc] -> Doc
+commaSep = hcat . punctuate comma
+
+instance Pretty LBranch where
   pretty = \case
-    LPhi _ d ss -> prettyAssign d (simpl "phi" (map pretty ss))
-    -- Shouldn't call pretty on 'Region.
-    LRegion {} -> text "region"
-    LSeq {} -> text "seq"
-    LPrim _ d lop -> prettyAssign d lop
-
-    LJnz _ r t f -> simpl "jnz" [pretty r, pretty t, pretty f]
-    LJmp _ d -> simpl "jmp" [pretty d]
-    LRet _ r -> simpl "ret" [pretty r]
-
+    LJnz r t f -> simpl "jnz" [pretty r, pretty t, pretty f]
+    LJmp d -> simpl "jmp" [pretty d]
+    LRet r -> simpl "ret" [pretty r]
     where
-      commaSep :: [Doc] -> Doc
-      commaSep = hcat . punctuate comma
-
       simpl tag xs = text tag <+> commaSep xs
 
-      prettyAssign :: (Pretty a, Pretty b) => a -> b -> Doc
+instance Pretty Lir where
+  pretty = \case
+    LirFirst label -> pretty label <> colon
+    LirMid d s -> prettyAssign d s
+    LirLast ir -> pretty ir
+    where
       prettyAssign a b = pretty a <+> equals <+> pretty b
 
-instance Pretty Lir where
-  pretty (Lir lir) = pretty lir
+instance Pretty LTraceBlock where
+  pretty (LTraceBlock label body exit)
+    = prettyBody label (map (uncurry LirMid) body ++ [LirLast exit])
 
+bfsBlocks :: LGraph -> [LBlock]
+bfsBlocks g = go [g ^. lgEntry] S.empty
+  where
+    go workList visited = case workList of
+      [] -> []
+      x:xs | S.member x visited -> go xs visited
+           | otherwise ->
+             let b = g ^. lgBlocks.to (M.! x)
+                 succs = b ^. lbExit.branchJumpsTo
+             in b : go (xs ++ succs) (S.insert x visited)
 
 instance Pretty LGraph where
-  pretty g = vsep $ bfs [g ^. lgStart] S.empty
-    where
-      bfs :: [Label' 'Region] -> S.Set (Label' 'Region) -> [Doc]
-      bfs workList visited = case workList of
-        [] -> []
-        x:xs | S.member x visited -> bfs xs visited
-             | otherwise ->
-               let region = getIrByLabelOrFail x g
-                   exit = getIrByLabelOrFail (region ^. regionExit) g
-                   succs = exit ^. exitJumpsTo
-               in prettyRegion x region : bfs (xs ++ succs) (S.insert x visited)
-      prettyRegion :: Label' 'Region -> Lir' 'Region -> Doc
-      prettyRegion label = \case
-        LRegion _ defs exit ->
-          let defIrs = map (Lir . (`getIrByDefOrFail` g)) . S.toList $ defs
-              exitIr = Lir (getIrByLabelOrFail exit g)
-          in prettyBody label (defIrs ++ [exitIr])
-        LSeq defs exit ->
-          let defIrs = map (Lir . (`getIrByLabelOrFail` g)) defs
-              exitIr = Lir (getIrByLabelOrFail exit g)
-          in prettyBody label (defIrs ++ [exitIr])
+  pretty = vsep . map pretty . bfsBlocks
 
-      prettyBody label irs = pretty label <+> text "{"
-        <$$> (indent 2 . vsep . map pretty $ irs)
-        <$$> text "}"
+-- Topology sort by DFS (in reverse order?).
+-- Don't need an temp set since we don't have cycles.
+topSortDefs :: M.Map Reg LOperand -> [(Reg, LOperand)]
+topSortDefs m = evalState (mapM_ go (M.keys m) *> use _2) (S.empty, [])
+  where
+    go r = do
+      visited <- uses _1 (S.member r)
+      unless visited $ do
+        -- The definition could be outside of this block if that's the case we just
+        -- treat the lop as having no uses.
+        let
+          mbLop = M.lookup r m
+          lopUses = fromMaybe [] ((^. opUses) <$> mbLop)
+        _1 %= S.insert r
+        mapM_ go (mapMaybe valueToReg lopUses)
+        maybe (return ()) (\lop -> _2 %= ((r, lop):)) mbLop
+
+    valueToReg (LvReg r) = Just r
+    valueToReg _ = Nothing
+
+instance Pretty LBlock where
+  pretty b = prettyBody (b ^. lbLabel)
+    (defsToIr phis ++ (lirMid . reverse . topSortDefs) nonPhis ++ [b ^. lbExit.to LirLast])
+    where
+      (phis, nonPhis) = M.partition isPhi (b ^. lbDefs)
+      isPhi = \case { LoPhi {} -> True; _ -> False }
+      defsToIr = lirMid . M.toList
+      lirMid = map (uncurry LirMid)
+
+prettyBody :: Label -> [Lir] -> Doc
+prettyBody label irs = pretty label <+> text "{"
+  <$$> (indent 2 . vsep . map pretty $ irs)
+  <$$> text "}"
