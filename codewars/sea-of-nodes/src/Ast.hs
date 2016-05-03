@@ -1,13 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Ast
-  ( module Ast
-  , module Text.PrettyPrint.ANSI.Leijen
-) where
+module Ast where
 
 import           Data.String                  (IsString (..))
 import qualified Data.Text                    as T
-import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>), integer)
 import qualified Text.PrettyPrint.ANSI.Leijen as P
 
 -- A simple imperative AST.
@@ -110,6 +107,7 @@ fiboLoop = SSeq [
   SSeq [ SAssign "aPrev" "a"
        , SAssign "a" ("a" !+ "b")
        , SAssign "b" "aPrev"
+       , SAssign "i" ("i" !+ ELit 1)
        ],
   SRet "a"
   ]

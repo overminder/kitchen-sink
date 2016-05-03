@@ -1,11 +1,15 @@
 module Lib
   ( ast2Lvn
   , ast2Gvn
+  , pretty
+  , parseAst
   ) where
 
 import           Ast
 import           Ast2Lir
 import           Lir
+import           Parser
+import           Text.PrettyPrint.ANSI.Leijen (pretty)
 import           Vn
 
 ast2Lvn :: Stmt -> LGraph

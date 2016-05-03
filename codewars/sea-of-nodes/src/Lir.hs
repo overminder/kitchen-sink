@@ -30,7 +30,7 @@ newtype Label = LAnonymous Int
 data LOperand
   = LoAtom LValue
   | LoArith LArithOp LValue LValue
-  | LoPhi [LValue]
+  | LoPhi [(LValue, Label)]
   deriving (Show, Eq, Ord)
 
 data LArithOp
@@ -50,14 +50,17 @@ data LBlock = LBlock
   } deriving (Show)
 
 -- Not necessarily SSA. Used for graph building and trace reconstruction.
-data LTraceBlock = LTraceBlock Label [(Reg, LOperand)] LBranch
-  deriving (Show)
+data LTraceBlock = LTraceBlock
+  { _ltbFirst :: Label
+  , _ltbMid :: [(Reg, LOperand)]
+  , _ltbLast :: LBranch
+  } deriving (Show, Eq, Ord)
 
 data LBranch
   = LJnz LValue Label Label
   | LJmp Label
   | LRet LValue
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 data LGraph = LGraph
   { _lgDefs      :: M.Map Reg Label
@@ -78,6 +81,10 @@ data Lir
   | LirLast LBranch
   deriving (Show)
 
+makeLenses ''LGraph
+makeLenses ''LBlock
+
+makeLenses ''LTraceBlock
 makeLenses ''LDefUse
 
 class IsLOperand a where
@@ -119,7 +126,9 @@ opUses :: Lens' LOperand [LValue]
 opUses f = \case
   LoAtom v -> fmap (\[v'] -> LoAtom v') (f [v])
   LoArith aop v1 v2 -> fmap (\[v1', v2'] -> LoArith aop v1' v2') (f [v1, v2])
-  LoPhi vs -> fmap LoPhi (f vs)
+  LoPhi vls -> fmap (\vs' -> LoPhi (setFsts vs' vls)) (f (map fst vls))
+  where
+    setFsts xs ys = zip xs (map snd ys)
 
 branchJumpsTo :: Lens' LBranch [Label]
 branchJumpsTo f = \case
@@ -132,9 +141,6 @@ branchUses f = \case
   LJnz r lt lf -> fmap (\[r'] -> LJnz r' lt lf) (f [r])
   LJmp lbl -> fmap (\[] -> LJmp lbl) (f [])
   LRet r -> fmap (\[r'] -> LRet r') (f [r])
-
-makeLenses ''LGraph
-makeLenses ''LBlock
 
 emptyLGraph :: LGraph
 emptyLGraph = LGraph M.empty (error "emptyLGraph.entry") M.empty 1
