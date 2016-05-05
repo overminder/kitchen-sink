@@ -21,8 +21,9 @@ import           Lir                     hiding (mkUnique)
 
 data VnS = VnS
   { _vnGraph          :: LGraph -- As an unique source.
-  , _vnBlocks         :: M.Map Label LBlock -- Blocks that being built
-  , _vnCurrentDefs    :: M.Map Reg (M.Map Label LValue) -- Non-SSA def tracker
+  , _vnBlocks         :: M.Map Label LBlock -- Blocks that are being built
+  , _vnCurrentDefs    :: M.Map Reg (M.Map Label LValue)
+    -- ^ Non-SSA def tracker. XXX: We should also include this in the graph repr.
   , _vnIncompletePhis :: [(Reg, Label, Reg, Label)]  -- (phi def & label, use & label)
   } deriving (Show)
 
@@ -52,7 +53,7 @@ lvn _ _ = error "lvn: more than 1 block"
 gvn :: [LTraceBlock] -> LGraph -> LGraph
 gvn irss g = fst $ evalRWS gvn' vnR (emptyVnS g)
   where
-    -- Implicitly assumes the first block is the graph entry.
+    -- Implicitly assumes the first block to be the graph entry.
     start:_ = irss
     blockMap = M.fromList (map (\b -> (b ^. ltbFirst, b)) irss)
     reachableLabels = dfsTB [start ^. ltbFirst] S.empty
@@ -147,7 +148,7 @@ irUse (LvReg r) = go =<< view vnrLabel
       mbPs <- view $ vnrPreds.at label
       case mbPs of
         Nothing ->
-          -- This is the start label or is unreachable.
+          -- This label is unreachable.
           error $ "irUse.goR: no preds: " ++ show label
         Just [p] ->
           -- Only one predecessor, shouldn't need a phi.

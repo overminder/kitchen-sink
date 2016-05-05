@@ -232,8 +232,8 @@ bfsBlocks g = go [g ^. lgEntry] S.empty
 instance Pretty LGraph where
   pretty = vsep . map pretty . bfsBlocks
 
--- Topology sort by DFS (in reverse order?).
--- Don't need an temp set since we don't have cycles.
+-- Topological sort by DFS.
+-- Doesn't need an temp set since we don't have cycles in the non-phi definitions.
 topSortDefs :: M.Map Reg LOperand -> [(Reg, LOperand)]
 topSortDefs m = evalState (mapM_ go (M.keys m) *> use _2) (S.empty, [])
   where

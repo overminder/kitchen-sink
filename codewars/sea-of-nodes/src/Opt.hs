@@ -105,7 +105,7 @@ cfold g = execState (go (g ^. lgBlocks.to M.keys)) (False, g)
         mbOp <- lookupOperand r
         return (mbOp <|> Just (lOperand r))
       LoAtom (LvLit _) -> pure (Just o)
-      LoPhi [v] -> Just . LoPhi . (:[]) <$> simplifyValue v
+      LoPhi [(v, label)] -> Just . LoPhi . (\v' -> [(v', label)]) <$> simplifyValue v
       LoPhi _ -> pure Nothing  -- Could also simplify but need to take care of loops.
       LoArith aop a b -> do
         a' <- simplify (lOperand a)
