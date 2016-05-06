@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Opt
   ( opt
   , cfold
@@ -12,7 +14,14 @@ import qualified Data.Map                  as M
 
 import           Lir
 
-type CFoldM = State (Bool, LGraph)
+data CFoldS = CFoldS
+  { _cfGraph :: LGraph
+  , _cfChanged :: Bool
+  }
+
+makeLenses ''CFoldS
+
+type CFoldM = State CFoldS
 
 opt :: LGraph -> LGraph
 opt = snd . cfold
@@ -20,9 +29,11 @@ opt = snd . cfold
 pattern JustLvLit i = Just (LoAtom (LvLit i))
 
 -- Constant propagation and folding
-cfold :: LGraph -> (Bool, LGraph)
-cfold g = execState (go (g ^. lgBlocks.to M.keys)) (False, g)
+cfold :: LGraph -> CFoldS
+cfold g = execState (go (g ^. lgBlocks.to M.keys)) emptyS
   where
+    emptyS = CFoldS g False
+
     go :: [Label] -> CFoldM ()
     go workList = case workList of
       [] -> return ()
@@ -32,13 +43,13 @@ cfold g = execState (go (g ^. lgBlocks.to M.keys)) (False, g)
 
     goB :: Label -> CFoldM [Label]
     goB label = do
-      Just b <- use (_2.lgBlocks.at label)
+      Just b <- use (cfGraph.lgBlocks.at label)
       changed <- foldr (goIr label) (return False) (M.toList (b ^. lbDefs))
       changed' <- goExit label (b ^. lbExit)
       -- Also simplify lbExit?
       if changed || changed'
         then do
-          Just b' <- use (_2.lgBlocks.at label)
+          Just b' <- use (cfGraph.lgBlocks.at label)
           return (b' ^. lbExit.branchJumpsTo)
         else return []
 
@@ -48,8 +59,8 @@ cfold g = execState (go (g ^. lgBlocks.to M.keys)) (False, g)
       let br' = simplifyBranch (br & branchUses .~ us')
       let changed = br /= br'
       when changed $ do
-        _1 .= True
-        _2.lgBlocks.at label %= fmap (lbExit .~ br')
+        cfChanged .= True
+        cfGraph.lgBlocks.at label %= fmap (lbExit .~ br')
         let
           killedDests = (br ^. branchJumpsTo) L.\\ (br' ^. branchJumpsTo)
           killedEdges = zip (repeat label) killedDests
@@ -76,8 +87,8 @@ cfold g = execState (go (g ^. lgBlocks.to M.keys)) (False, g)
         Just lop' -> do
           let changed = lop' /= lop
           when changed $ do
-            _1 .= True
-            _2.lgBlocks.at label %= fmap (lbDefs %~ M.insert r lop')
+            cfChanged .= True
+            cfGraph.lgBlocks.at label %= fmap (lbDefs %~ M.insert r lop')
           c0 <- m
           return $ c0 || changed
 
@@ -90,8 +101,8 @@ cfold g = execState (go (g ^. lgBlocks.to M.keys)) (False, g)
 
     lookupOperand :: Reg -> CFoldM (Maybe LOperand)
     lookupOperand r = do
-      Just label <- use $ _2.lgDefs.at r
-      Just b <- use $ _2.lgBlocks.at label
+      Just label <- use $ cfGraph.lgDefs.at r
+      Just b <- use $ cfGraph.lgBlocks.at label
       let Just lop = b ^. lbDefs.at r
       simplify lop
 
