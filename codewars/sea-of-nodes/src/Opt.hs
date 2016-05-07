@@ -24,7 +24,7 @@ makeLenses ''CFoldS
 type CFoldM = State CFoldS
 
 opt :: LGraph -> LGraph
-opt = snd . cfold
+opt = (^. cfGraph) . cfold
 
 pattern JustLvLit i = Just (LoAtom (LvLit i))
 
