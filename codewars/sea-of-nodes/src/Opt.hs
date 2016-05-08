@@ -5,9 +5,10 @@ module Opt
   , cfold
   ) where
 
+import Debug.Trace
 import           Control.Applicative       ((<|>))
 import           Control.Lens
-import           Control.Monad             (when)
+import           Control.Monad             (when, forM_)
 import qualified Data.List as L
 import           Control.Monad.Trans.State
 import qualified Data.Map                  as M
@@ -61,15 +62,16 @@ cfold g = execState (go (g ^. lgBlocks.to M.keys)) emptyS
       when changed $ do
         cfChanged .= True
         cfGraph.lgBlocks.at label %= fmap (lbExit .~ br')
-        let
-          killedDests = (br ^. branchJumpsTo) L.\\ (br' ^. branchJumpsTo)
-          killedEdges = zip (repeat label) killedDests
-        -- TODO: Sync phis in those edges.
-        return ()
+        let killedDests = (br ^. branchJumpsTo) L.\\ (br' ^. branchJumpsTo)
+        forM_ killedDests $ \dst -> do
+          traceM $ "kill dest: " ++ show dst ++ ", here = " ++ show label
+          -- Sync phis in those edges.
+          -- XXX: Still needs DCE.
+          let removePhi = \case
+                LoPhi vls -> LoPhi . filter ((/= label) . snd) $ vls
+                x@_ -> x
+          cfGraph.lgBlocks.at dst %= fmap (lbDefs %~ M.map removePhi)
       return changed
-
-
-    -- killPhi
 
     -- This could cause control flow changes. Need to sync phis in this case.
     simplifyBranch = \case

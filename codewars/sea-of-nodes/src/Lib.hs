@@ -3,11 +3,13 @@ module Lib
   , ast2Gvn
   , pretty
   , parseAst
+  , module Opt
   ) where
 
 import           Ast
 import           Ast2Lir
 import           Lir
+import           Opt
 import           Parser
 import           Text.PrettyPrint.ANSI.Leijen (pretty)
 import           Vn
