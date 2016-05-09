@@ -136,3 +136,12 @@ cfold g = execState (go (g ^. lgBlocks.to M.keys)) emptyS
     denoteOp = \case
       LAdd -> (+)
       LLt -> \a b -> if a < b then 1 else 0
+
+data DceS = DceS
+  { _dceGraph :: LGraph
+  , _dceChanged :: Bool
+  }
+
+-- This should traditionally be a backward analysis.
+dce :: LGraph -> DceS
+dce g = undefined
