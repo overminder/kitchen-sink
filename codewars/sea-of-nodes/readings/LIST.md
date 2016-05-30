@@ -5,6 +5,8 @@
 - http://www.masonchang.com/blog/2010/8/9/sea-of-nodes-compilation-approach.html
 - http://ariya.ofilabs.com/2014/08/javascript-and-v8-turbofan.html
 - http://paperhub.s3.amazonaws.com/24842c95fb1bc5d7c5da2ec735e106f0.pdf
+- https://github.com/MatzeB/libfirm
+- https://github.com/WebKit/webkit/blob/master/Source/JavaScriptCore/b3
 
 ### SSA Construction
 
