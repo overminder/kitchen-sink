@@ -1,0 +1,7 @@
+[package]
+name = "sea-of-nodes"
+version = "0.1.0"
+authors = ["Overmind JIANG <p90eri@gmail.com>"]
+
+[dependencies]
+petgraph = "*"
