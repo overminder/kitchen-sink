@@ -1,15 +1,23 @@
 use petgraph::graph::{Graph, NodeIndex};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Reg {
-    number: isize,
     name: String,
+    number: usize,
+}
+
+impl Reg {
+    pub fn new(name: String, number: usize) -> Self {
+        Reg { name: name, number: number }
+    }
 }
 
 #[derive(Debug)]
 pub enum Node {
     Lit(i64),
     Add(NodeId, NodeId),
+    Sub(NodeId, NodeId),
+    Lt(NodeId, NodeId),
     Move(Reg, NodeId),
 
     Phi(Reg, Vec<NodeId>),

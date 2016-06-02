@@ -1,6 +1,8 @@
 extern crate petgraph;
 
-pub mod node;
+pub mod ast;
+pub mod lir;
+pub mod ast2lir;
 
 #[cfg(test)]
 mod tests {
