@@ -4,3 +4,4 @@ scalaVersion := "2.11.8"
 scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Xfatal-warnings")
 
 mainClass := Some("com.github.overmind.seaofnodes.Main")
+
