@@ -120,6 +120,36 @@ object Ast {
       ),
       Ret(Var("b"))
     )
+
+    val unreachableCode = begin(
+      Ret(Lit(0)),
+      Ret(Lit(1)),
+      Ret(Lit(2))
+    )
+
+    val unreachableCodeInLoop = begin(
+      Assign("s", Lit(0)),
+      Assign("n", Lit(10)),
+      While(Binary(LessThan, Lit(0), Var("n")),
+        begin(
+          Assign("s", add(Var("s"), Var("n"))),
+          Assign("n", sub(Var("n"), Lit(1))),
+          Ret(Var("s"))
+        )
+      ),
+      Ret(Var("s"))
+    )
+
+    val returns = begin(
+      Assign("a", Lit(0)),
+      Assign("b", Lit(1)),
+      If(Binary(LessThan, Lit(0), Var("a")),
+        Ret(Var("b")),
+        If(Binary(LessThan, Lit(1), Var("a")),
+          Ret(Var("b")),
+          Ret(Var("b")))
+      )
+    )
   }
 
 }

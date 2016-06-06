@@ -1,5 +1,7 @@
 package com.github.overmind.seaofnodes.ir
 
+import com.github.overmind.seaofnodes.DotGen
+
 import scala.collection.mutable.ArrayBuffer
 
 sealed trait Node {
@@ -42,8 +44,8 @@ sealed trait Node {
 
   protected def removeEdgeTo[A <: AnyRef](edges: Edges[A], to: A): Unit = {
     val ix = indexOfByRef(edges, to)
-    if (ix < 0) {
-      // Doesn't exist
+    if (ix >= 0) {
+      // Exists
       edges.remove(ix)
     }
   }
@@ -115,7 +117,11 @@ case class RegionNode(id: RegionNode.Id) extends ControlNode {
   }
 }
 
-case class RetNode() extends ControlNode {
+case class RetNode(private var _endNode: EndNode) extends ControlNode {
+  adaptSuccessor(_endNode)
+
+  def endNode = _endNode
+
   private var _value: Option[ValueNode] = None
 
   override def toShallowString: String = s"Ret"
@@ -209,11 +215,37 @@ sealed trait FixedNode extends ValueNode {
 case class PhiNode(protected var _region: RegionNode) extends FixedNode {
   val composeInputs = ArrayBuffer.empty[ComposeNode]
   def addInput(v: ComposeNode): Unit = {
-    val ix = indexOfByRef(composeInputs, v)
-    if (ix < 0) {
-      inputs += adaptInput(v)
-    }
+    adaptEdgeTo(composeInputs, adaptInput(v))
   }
 
   def toShallowString: String = s"Phi"
+}
+
+case class DotContext(name: String) {
+  val g = DotGen.Graph(name)
+
+  def addNode(n: Node): DotContext = {
+    val visited = Graph.emptyIdentityMap[Node, DotGen.NodeId]
+    def go(n: Node): DotGen.NodeId = {
+      visited.getOrElse(n, {
+        val id = g.addText(n.toShallowString)
+        visited += (n -> id)
+        n.inputs.map(go).foreach(i => {
+          g.addEdge(i, id, ("color", "blue"))
+        })
+        n match {
+          case c: ControlNode =>
+            c.successors.map(go).foreach(s => {
+              g.addEdge(id, s)
+            })
+          case _ => ()
+        }
+        id
+      })
+    }
+    go(n)
+    this
+  }
+
+  def render = g.toDot
 }

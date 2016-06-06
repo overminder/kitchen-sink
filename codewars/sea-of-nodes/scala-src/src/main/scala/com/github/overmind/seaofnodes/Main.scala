@@ -2,8 +2,8 @@ package com.github.overmind.seaofnodes
 
 import java.io.FileWriter
 
-import com.github.overmind.seaofnodes.ir.Graph.{DotContext, GraphBuilder}
-import com.github.overmind.seaofnodes.ir.ShallowRegionBuilder
+import com.github.overmind.seaofnodes.ir.Graph.GraphBuilder
+import com.github.overmind.seaofnodes.ir._
 
 import scala.io.Source
 
@@ -26,11 +26,19 @@ object Main {
     val shallowEntry = builder.buildRootStmt(s)
     val entry = GraphBuilder().build(shallowEntry, s)
 
-    new FileWriter(s"$name.dot").append(DotContext(name).addNode(entry).render).close()
+    renderNodeToDot(entry, name)
+  }
+
+  def writeFile(path: String, content: String): Unit = {
+    new FileWriter(path).append(content).close()
+  }
+
+  def renderNodeToDot(s: Node, name: String): Unit = {
+    writeFile(s"dots/$name.dot", DotContext(name).addNode(s).render)
   }
 
   def main(args: Array[String]): Unit = {
-    // buildShallowRegion(Ast.Sample.loopSum)
-    buildGraph(Ast.Sample.loopSum, "loopSum")
+    // buildShallowRegion(Ast.Sample.returns)
+    buildGraph(Ast.Sample.unreachableCodeInLoop, "loopSum")
   }
 }

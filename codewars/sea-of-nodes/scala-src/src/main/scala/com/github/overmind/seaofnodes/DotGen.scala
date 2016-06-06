@@ -34,7 +34,11 @@ object DotGen {
     }
 
     def addEdge(from: NodeId, to: NodeId): Unit = {
-      content += Edge(from, to)
+      content += Edge(from, to, Options(Seq()))
+    }
+
+    def addEdge(from: NodeId, to: NodeId, options: (String, String)*): Unit = {
+      content += Edge(from, to, Options(options))
     }
 
     def toDot = s"digraph $name {\n" +
@@ -42,8 +46,14 @@ object DotGen {
       "\n}"
   }
 
-  case class Edge(from: NodeId, to: NodeId) extends ToDot {
-    def toDot = s"${from.toDot} -> ${to.toDot};"
+  case class Options(kvs: Seq[(String, String)]) extends ToDot {
+    def toDot = "[" + kvs.map({
+      case (k, v) => s"""$k="$v""""
+    }).mkString(" ") + "]"
+  }
+
+  case class Edge(from: NodeId, to: NodeId, options: Options) extends ToDot {
+    def toDot = s"""${from.toDot} -> ${to.toDot} ${options.toDot};"""
   }
 
   case class TextNode(id: NodeId, text: String) extends ToDot {
