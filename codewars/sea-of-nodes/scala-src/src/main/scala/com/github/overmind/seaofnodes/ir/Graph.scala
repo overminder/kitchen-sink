@@ -3,57 +3,14 @@ package com.github.overmind.seaofnodes.ir
 import java.util
 import java.util.Collections
 
-import com.github.overmind.seaofnodes.DotGen
-import com.github.overmind.seaofnodes.ir.Graph.Unexpected
-
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-object ShallowRegionBuilder {
-  def exits(e: RegionNode): Seq[RegionNode] = {
-    println(s"region ${e.id}")
-    val es = e.exit match {
-      case toR: RegionNode => Seq(toR)
-      case EndNode() => Seq()
-      case IfNode(t, f) => Seq(t, f)
-      case RetNode(_) => Seq()
-      case otherwise => throw Unexpected(s"Shouldn't be an exit: $otherwise")
-    }
-    println(s"-> ${es.length} exits")
-    es
-  }
-
-  def preds(region: RegionNode): Seq[RegionNode] = {
-    region.predecessors.flatMap {
-      case r: RegionNode =>
-        Some(r)
-      case i: IfNode =>
-        Some(i.region)
-      case s: StartNode =>
-        None
-      case pred =>
-        throw Unexpected(s"Shouldn't have such predecessor: $pred")
-    }
-  }
-
-  def dfsRegion(b: RegionNode)(f: RegionNode => Unit): Unit = {
-    def go(b: RegionNode, visited: mutable.Set[RegionNode]): Unit = {
-      if (!visited.contains(b)) {
-        visited.add(b)
-        f(b)
-        exits(b).foreach(go(_, visited))
-      }
-    }
-
-    go(b, Graph.emptyIdentitySet)
-  }
-}
-
 case class ShallowRegionBuilder() {
   // Scan through the ASTs to build all the blocks.
+  import Graph._
   import com.github.overmind.seaofnodes.Ast._
-  import ShallowRegionBuilder._
 
   var nextRegionId = 0
   var currentRegion: Option[RegionNode] = None
@@ -163,7 +120,6 @@ object Graph {
 
 
   case class GraphBuilder() {
-    import ShallowRegionBuilder._
     import com.github.overmind.seaofnodes.Ast._
 
     type Defs = mutable.Map[String, ValueNode]
@@ -307,9 +263,9 @@ object Graph {
 
     def buildOp(op: BinaryOp)(lhs: ValueNode, rhs: ValueNode): ValueNode = {
       unique(op match {
-        case BinaryOp.Add => AddNode(lhs, rhs)
-        case BinaryOp.Sub => SubNode(lhs, rhs)
-        case BinaryOp.LessThan => LessThanNode(lhs, rhs)
+        case BinaryOp.Add => AddNode(lhs, rhs).simplified(this)
+        case BinaryOp.Sub => SubNode(lhs, rhs).simplified(this)
+        case BinaryOp.LessThan => LessThanNode(lhs, rhs).simplified(this)
       })
     }
 
@@ -332,4 +288,42 @@ object Graph {
     }
   }
 
+  // Utils
+  def exits(e: RegionNode): Seq[RegionNode] = {
+    // println(s"region ${e.id}")
+    val es = e.exit match {
+      case toR: RegionNode => Seq(toR)
+      case EndNode() => Seq()
+      case IfNode(t, f) => Seq(t, f)
+      case RetNode(_) => Seq()
+      case otherwise => throw Unexpected(s"Shouldn't be an exit: $otherwise")
+    }
+    // println(s"-> ${es.length} exits")
+    es
+  }
+
+  def preds(region: RegionNode): Seq[RegionNode] = {
+    region.predecessors.flatMap {
+      case r: RegionNode =>
+        Some(r)
+      case i: IfNode =>
+        Some(i.region)
+      case s: StartNode =>
+        None
+      case pred =>
+        throw Unexpected(s"Shouldn't have such predecessor: $pred")
+    }
+  }
+
+  def dfsRegion(b: RegionNode)(f: RegionNode => Unit): Unit = {
+    def go(b: RegionNode, visited: mutable.Set[RegionNode]): Unit = {
+      if (!visited.contains(b)) {
+        visited.add(b)
+        f(b)
+        exits(b).foreach(go(_, visited))
+      }
+    }
+
+    go(b, Graph.emptyIdentitySet)
+  }
 }

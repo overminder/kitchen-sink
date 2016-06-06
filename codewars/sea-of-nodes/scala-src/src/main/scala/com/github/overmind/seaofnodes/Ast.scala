@@ -150,6 +150,21 @@ object Ast {
           Ret(Var("b")))
       )
     )
+
+    val whileIf = begin(
+      Assign("s", Lit(0)),
+      Assign("n", Lit(10)),
+      While(Binary(LessThan, Lit(0), Var("n")),
+        begin(
+          Assign("s", add(Var("s"), Var("n"))),
+          Assign("n", sub(Var("n"), Lit(1))),
+          If(Binary(LessThan, Var("n"), Var("s")),
+            Assign("s", add(Var("s"), Var("n"))),
+            Assign("n", sub(Var("n"), Lit(1))))
+        )
+      ),
+      Ret(Var("s"))
+    )
   }
 
 }

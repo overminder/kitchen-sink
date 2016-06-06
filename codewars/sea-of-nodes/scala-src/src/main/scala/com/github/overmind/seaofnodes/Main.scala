@@ -16,15 +16,17 @@ object Main {
   def buildShallowRegion(s: Ast.Stmt): Unit = {
     val builder = ShallowRegionBuilder()
     val entry = builder.buildRootStmt(s)
-    ShallowRegionBuilder.dfsRegion(entry) { b =>
+    Graph.dfsRegion(entry) { b =>
       println(s"$b")
     }
   }
 
   def buildGraph(s: Ast.Stmt, name: String): Unit = {
-    val builder = ShallowRegionBuilder()
-    val shallowEntry = builder.buildRootStmt(s)
-    val entry = GraphBuilder().build(shallowEntry, s)
+    val shallowBuilder = ShallowRegionBuilder()
+    val shallowEntry = shallowBuilder.buildRootStmt(s)
+    val builder = GraphBuilder()
+    val entry = builder.build(shallowEntry, s)
+    Opt.simplifyControl(entry.successor.asInstanceOf[RegionNode], builder)
 
     renderNodeToDot(entry, name)
   }
@@ -39,6 +41,6 @@ object Main {
 
   def main(args: Array[String]): Unit = {
     // buildShallowRegion(Ast.Sample.returns)
-    buildGraph(Ast.Sample.unreachableCodeInLoop, "loopSum")
+    buildGraph(Ast.Sample.whileIf, "loopSum")
   }
 }

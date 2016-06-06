@@ -1,6 +1,7 @@
 package com.github.overmind.seaofnodes.ir
 
 import com.github.overmind.seaofnodes.DotGen
+import com.github.overmind.seaofnodes.ir.Graph.GraphBuilder
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -108,8 +109,8 @@ case class RegionNode(id: RegionNode.Id) extends ControlNode {
   override def toShallowString: String = s"RegionNode $id"
 
   override def toString: String =
-    s"$toShallowString succs: ${ShallowRegionBuilder.exits(this).map(_.toShallowString)}" +
-      s" preds: ${ShallowRegionBuilder.preds(this).map(_.toShallowString)}"
+    s"$toShallowString succs: ${Graph.exits(this).map(_.toShallowString)}" +
+      s" preds: ${Graph.preds(this).map(_.toShallowString)}"
 
   def exit: ControlNode = _exit.get  // Unsafe
   def exit_=(newExit: ControlNode): Unit = {
@@ -132,7 +133,7 @@ case class RetNode(private var _endNode: EndNode) extends ControlNode {
   }
 }
 
-case class IfNode(private var _t: RegionNode, private var _f: RegionNode) extends ControlNode {
+case class IfNode(private var _t: RegionNode, private var _f: RegionNode) extends ControlNode with Simplifiable[ControlNode] {
   private var _cond: Option[LogicNode] = None
 
   adaptSuccessor(_t)
@@ -150,6 +151,16 @@ case class IfNode(private var _t: RegionNode, private var _f: RegionNode) extend
   def t_=(newT: RegionNode) = _t = replaceSuccessor(_t, newT)
   def f = _f
   def f_=(newF: RegionNode) = _f = replaceSuccessor(_f, newF)
+
+  override def simplified(builder: GraphBuilder): ControlNode = {
+    cond match {
+      case TrueNode =>
+        t
+      case FalseNode =>
+        f
+      case _ => this
+    }
+  }
 }
 
 case class LitNode(v: Long) extends ValueNode {
@@ -159,6 +170,11 @@ case class LitNode(v: Long) extends ValueNode {
 sealed trait UnaryNode extends ValueNode {
   protected var _v: ValueNode
   adaptInput(_v)
+
+  def v = _v
+  def v_=(newV: ValueNode): Unit = {
+    _v = replaceInput(_v, newV)
+  }
 }
 sealed trait BinaryNode extends ValueNode {
   protected var _lhs: ValueNode
@@ -177,22 +193,74 @@ sealed trait BinaryNode extends ValueNode {
   }
 }
 
-sealed trait BinaryArithNode extends BinaryNode
+sealed trait Simplifiable[Into] {
+  def simplified(builder: GraphBuilder): Into
+}
+
+object Simplifiable {
+  def binaryLitOp(op: (Long, Long) => Long)(lhs: ValueNode, rhs: ValueNode): Option[ValueNode] = {
+    (lhs, rhs) match {
+      case (LitNode(a), LitNode(b)) =>
+        Some(LitNode(op(a, b)))
+      case _ =>
+        None
+    }
+  }
+
+  def ADD(a: Long, b: Long) = a + b
+  def SUB(a: Long, b: Long) = a - b
+  def LT(a: Long, b: Long) = if (a < b) 1 else 0
+}
+
+sealed trait BinaryArithNode extends BinaryNode with Simplifiable[ValueNode]
 case class AddNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryArithNode {
   def toShallowString: String = s"+"
+
+  override def simplified(builder: GraphBuilder): ValueNode = {
+    Simplifiable.binaryLitOp(_ + _)(lhs, rhs).map(builder.unique).getOrElse(this)
+  }
 }
 
 case class SubNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryArithNode {
   def toShallowString: String = s"-"
+
+  override def simplified(builder: GraphBuilder): ValueNode = {
+    Simplifiable.binaryLitOp(_ - _)(lhs, rhs).map(builder.unique).getOrElse(this)
+  }
 }
 
-sealed trait UnaryLogicNode extends UnaryNode with LogicNode
-sealed trait BinaryLogicNode extends BinaryNode with LogicNode
+sealed trait UnaryLogicNode extends UnaryNode with LogicNode with Simplifiable[LogicNode]
+sealed trait BinaryLogicNode extends BinaryNode with LogicNode with Simplifiable[LogicNode]
 case class LessThanNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryLogicNode {
   def toShallowString: String = s"<"
+
+  override def simplified(builder: GraphBuilder): LogicNode = {
+    Simplifiable.binaryLitOp(Simplifiable.LT)(lhs, rhs)
+      .map(IsTruthyNode(_).simplified(builder))
+      .map(builder.unique)
+      .getOrElse(this)
+  }
 }
 case class IsTruthyNode(var _v: ValueNode) extends UnaryLogicNode {
   def toShallowString: String = s"isTruthy"
+
+  override def simplified(builder: GraphBuilder): LogicNode = {
+    v match {
+      case LitNode(i) =>
+        if (i == 0) {
+          FalseNode
+        } else {
+          TrueNode
+        }
+      case _ => this
+    }
+  }
+}
+case object TrueNode extends LogicNode {
+  override def toShallowString: String = "True"
+}
+case object FalseNode extends LogicNode {
+  override def toShallowString: String = "False"
 }
 
 case class ComposeNode(private var _value: ValueNode, private var _ctrl: ControlNode) extends ValueNode {
