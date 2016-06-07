@@ -10,7 +10,9 @@ object Opt {
     Graph.dfsRegion(entry) { r =>
       r.exit match {
         case i: IfNode =>
+          val e = r.exit
           r.exit = i.simplified(builder)
+          e.tryRemove()
         case _ =>
           ()
       }

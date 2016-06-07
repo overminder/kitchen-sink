@@ -82,10 +82,11 @@ fn use_name_inner(g: &mut NodeGraph,
             let id = g.add(Node::Phi(fresh, vec![]));
             defs.get_mut(&here).unwrap().insert(v.to_owned(), id);
 
-            // Record this phi to be resolved when the graph is finished.
-
+            for 
+            // Record this phi to resolve it when the graph is finished.
 
             // And recursively traverse the graph.
+
             id
         }
     }

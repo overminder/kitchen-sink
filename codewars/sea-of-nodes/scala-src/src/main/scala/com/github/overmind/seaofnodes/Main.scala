@@ -41,6 +41,6 @@ object Main {
 
   def main(args: Array[String]): Unit = {
     // buildShallowRegion(Ast.Sample.returns)
-    buildGraph(Ast.Sample.whileIf, "loopSum")
+    buildGraph(Ast.Sample.unreachableCodeInLoop, "loopSum")
   }
 }

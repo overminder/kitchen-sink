@@ -13,6 +13,17 @@ sealed trait Node {
   def toShallowString: String
   override def toString: String = toShallowString
 
+  protected def remove(): Unit = {
+    inputs.toArray.foreach(removeInput)
+  }
+
+  // Call this after uses / preds is shrinked.
+  protected def tryRemove(): Unit = {
+    if (uses.isEmpty) {
+      remove()
+    }
+  }
+
   def adaptInput[N <: Node](input: N): N = {
     adaptEdgeTo(inputs, input)
     input.adaptEdgeTo(input.uses, this)
@@ -22,6 +33,7 @@ sealed trait Node {
   def removeInput(input: Node): Unit = {
     removeEdgeTo(inputs, input)
     input.removeEdgeTo(input.uses, this)
+    // input.tryRemove()
   }
 
   def replaceInput[N <: Node](oldInput: N, newInput: N): N = {
@@ -62,6 +74,17 @@ sealed trait ControlNode extends Node {
   val predecessors: Edges[ControlNode] = ArrayBuffer.empty
   val successors: Edges[ControlNode] = ArrayBuffer.empty
 
+  protected override def remove(): Unit = {
+    super.remove()
+    successors.toArray.foreach(removeSuccessor)
+  }
+
+  override def tryRemove(): Unit = {
+    if (uses.isEmpty && predecessors.isEmpty) {
+      remove()
+    }
+  }
+
   def adaptSuccessor[N <: ControlNode](successor: N): N = {
     successor.adaptEdgeTo(successor.predecessors, this)
     adaptEdgeTo(successors, successor)
@@ -71,6 +94,7 @@ sealed trait ControlNode extends Node {
   def removeSuccessor(successor: ControlNode): Unit = {
     removeEdgeTo(successors, successor)
     successor.removeEdgeTo(successor.predecessors, this)
+    // successor.tryRemove()
   }
 
   def replaceOrAdaptSuccessor[N <: ControlNode](oldSucc: Option[N], newSucc: Option[N]): Option[N] = {
@@ -155,8 +179,12 @@ case class IfNode(private var _t: RegionNode, private var _f: RegionNode) extend
   override def simplified(builder: GraphBuilder): ControlNode = {
     cond match {
       case TrueNode =>
+        f.tryRemove()
+        tryRemove()
         t
       case FalseNode =>
+        t.tryRemove()
+        tryRemove()
         f
       case _ => this
     }
@@ -294,17 +322,31 @@ case class DotContext(name: String) {
 
   def addNode(n: Node): DotContext = {
     val visited = Graph.emptyIdentityMap[Node, DotGen.NodeId]
-    def go(n: Node): DotGen.NodeId = {
-      visited.getOrElse(n, {
+
+    def putText(n: Node): DotGen.NodeId = {
+      visited.getOrElseUpdate(n, {
         val id = g.addText(n.toShallowString)
         visited += (n -> id)
+        id
+      })
+    }
+
+    def go(n: Node): DotGen.NodeId = {
+      visited.getOrElse(n, {
+        val id = putText(n)
         n.inputs.map(go).foreach(i => {
           g.addEdge(i, id, ("color", "blue"))
+        })
+        n.uses.map(go).foreach(u => {
+          g.addEdge(id, u, ("color", "blue"), ("style", "dotted"))
         })
         n match {
           case c: ControlNode =>
             c.successors.map(go).foreach(s => {
               g.addEdge(id, s)
+            })
+            c.predecessors.map(go).foreach(p => {
+              g.addEdge(p, id, ("style", "dotted"))
             })
           case _ => ()
         }
