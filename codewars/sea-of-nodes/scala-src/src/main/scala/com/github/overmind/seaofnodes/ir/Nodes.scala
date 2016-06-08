@@ -179,12 +179,8 @@ case class IfNode(private var _t: RegionNode, private var _f: RegionNode) extend
   override def simplified(builder: GraphBuilder): ControlNode = {
     cond match {
       case TrueNode =>
-        f.tryRemove()
-        tryRemove()
         t
       case FalseNode =>
-        t.tryRemove()
-        tryRemove()
         f
       case _ => this
     }
@@ -295,6 +291,9 @@ case class ComposeNode(private var _value: ValueNode, private var _ctrl: Control
   adaptInput(_value)
   adaptInput(_ctrl)
 
+  def value = _value
+  def ctrl = _ctrl
+
   def toShallowString: String = s"Compose"
 }
 
@@ -317,7 +316,7 @@ case class PhiNode(protected var _region: RegionNode) extends FixedNode {
   def toShallowString: String = s"Phi"
 }
 
-case class DotContext(name: String) {
+case class DotContext(name: String, showBackedges: Boolean = false) {
   val g = DotGen.Graph(name)
 
   def addNode(n: Node): DotContext = {
@@ -337,17 +336,21 @@ case class DotContext(name: String) {
         n.inputs.map(go).foreach(i => {
           g.addEdge(i, id, ("color", "blue"))
         })
-        n.uses.map(go).foreach(u => {
-          g.addEdge(id, u, ("color", "blue"), ("style", "dotted"))
-        })
+        if (showBackedges) {
+          n.uses.map(go).foreach(u => {
+            g.addEdge(id, u, ("color", "blue"), ("style", "dotted"))
+          })
+        }
         n match {
           case c: ControlNode =>
             c.successors.map(go).foreach(s => {
               g.addEdge(id, s)
             })
-            c.predecessors.map(go).foreach(p => {
-              g.addEdge(p, id, ("style", "dotted"))
-            })
+            if (showBackedges) {
+              c.predecessors.map(go).foreach(p => {
+                g.addEdge(p, id, ("style", "dotted"))
+              })
+            }
           case _ => ()
         }
         id

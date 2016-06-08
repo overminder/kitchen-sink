@@ -3,21 +3,24 @@ package com.github.overmind.seaofnodes.ir
 import java.util
 import java.util.Collections
 
+import com.github.overmind.seaofnodes.Ast._
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-case class ShallowRegionBuilder() {
+case class ShallowRegionBuilder(rootStmt: Stmt) {
   // Scan through the ASTs to build all the blocks.
   import Graph._
-  import com.github.overmind.seaofnodes.Ast._
 
   var nextRegionId = 0
   var currentRegion: Option[RegionNode] = None
   var entryRegion: Option[RegionNode] = None
   val endNode = EndNode()
 
-  def buildRootStmt(s: Stmt): RegionNode = {
+  val firstRegion = buildRootStmt(rootStmt)
+
+  private def buildRootStmt(s: Stmt): RegionNode = {
     val entry = ensureRegion()
     entryRegion = Some(entry)
     buildStmt(s)
@@ -25,13 +28,13 @@ case class ShallowRegionBuilder() {
     entry
   }
 
-  def allocRegion(): RegionNode = {
+  private def allocRegion(): RegionNode = {
     val r = RegionNode(nextRegionId)
     nextRegionId += 1
     r
   }
 
-  def ensureRegion(): RegionNode = {
+  private def ensureRegion(): RegionNode = {
     currentRegion match {
       case None =>
         val b = allocRegion()
@@ -41,25 +44,25 @@ case class ShallowRegionBuilder() {
     }
   }
 
-  def finishRegion(exit: ControlNode): RegionNode = {
+  private def finishRegion(exit: ControlNode): RegionNode = {
     val r = ensureRegion()
     r.exit = exit
     currentRegion = None
     r
   }
 
-  def startRegionThatEndsWith(b: RegionNode, s: Option[Stmt], exit: ControlNode): RegionNode = {
+  private def startRegionThatEndsWith(b: RegionNode, s: Option[Stmt], exit: ControlNode): RegionNode = {
     setCurrentRegion(b)
     s.foreach(buildStmt)
     finishRegion(exit)
   }
 
-  def setCurrentRegion(r: RegionNode): Unit = {
+  private def setCurrentRegion(r: RegionNode): Unit = {
     assert(currentRegion.isEmpty, s"currentRegion is not None: $currentRegion")
     currentRegion = Some(r)
   }
 
-  def buildStmt(s: Stmt): Unit = {
+  private def buildStmt(s: Stmt): Unit = {
     ensureRegion()
     s match {
       case Stmt.Begin(ss) => ss.foreach(buildStmt)
@@ -91,7 +94,7 @@ case class ShallowRegionBuilder() {
     }
   }
 
-  def dceRegion(entry: RegionNode): Unit = {
+  private def dceRegion(entry: RegionNode): Unit = {
     val reachable = mutable.Set.empty[Int]
     dfsRegion(entry) { r =>
       reachable += r.id
@@ -118,6 +121,7 @@ object Graph {
   case class UndefinedVarInGraph(name: String) extends Exception
   case class Unexpected(what: String) extends Exception
 
+  def interp(n: Node) = Interp.interp(n)
 
   case class GraphBuilder() {
     import com.github.overmind.seaofnodes.Ast._
@@ -130,11 +134,16 @@ object Graph {
     val regions = mutable.Map.empty[RegionId, RegionNode]
     val deferredPhis = ArrayBuffer.empty[(String, PhiNode)]
     val cachedNodes = mutable.Map.empty[Node, Node]
+    var start: Option[StartNode] = None
+    var end: Option[EndNode] = None
 
-    def build(start: RegionNode, s: Stmt): StartNode = {
-      buildRegions(start)
+    def build(first: RegionNode, endNode: EndNode, s: Stmt): StartNode = {
+      end = Some(endNode)
+      val startNode = StartNode(first)
+      start = Some(startNode)
+      buildRegions(first)
       buildRootStmt(s)
-      StartNode(start)
+      startNode
     }
 
     def unique[N <: Node](n: N): N = {

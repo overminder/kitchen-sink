@@ -14,21 +14,20 @@ object Main {
   }
 
   def buildShallowRegion(s: Ast.Stmt): Unit = {
-    val builder = ShallowRegionBuilder()
-    val entry = builder.buildRootStmt(s)
-    Graph.dfsRegion(entry) { b =>
+    val builder = ShallowRegionBuilder(s)
+    Graph.dfsRegion(builder.firstRegion) { b =>
       println(s"$b")
     }
   }
 
   def buildGraph(s: Ast.Stmt, name: String): Unit = {
-    val shallowBuilder = ShallowRegionBuilder()
-    val shallowEntry = shallowBuilder.buildRootStmt(s)
+    val shallowBuilder = ShallowRegionBuilder(s)
     val builder = GraphBuilder()
-    val entry = builder.build(shallowEntry, s)
-    Opt.simplifyControl(entry.successor.asInstanceOf[RegionNode], builder)
+    val entry = builder.build(shallowBuilder.firstRegion, shallowBuilder.endNode, s)
+    // Opt.simplifyControl(entry.successor.asInstanceOf[RegionNode], builder)
+    println(s"interp($name) => ${Graph.interp(entry)}")
 
-    renderNodeToDot(entry, name)
+    // renderNodeToDot(entry, name)
   }
 
   def writeFile(path: String, content: String): Unit = {
@@ -41,6 +40,6 @@ object Main {
 
   def main(args: Array[String]): Unit = {
     // buildShallowRegion(Ast.Sample.returns)
-    buildGraph(Ast.Sample.unreachableCodeInLoop, "loopSum")
+    buildGraph(Ast.Sample.loopSum, "loopSum")
   }
 }
