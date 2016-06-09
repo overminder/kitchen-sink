@@ -1,7 +1,8 @@
-package com.github.overmind.seaofnodes.ir
+package com.github.overmind.seaofnodes.hir.nodes
 
 import com.github.overmind.seaofnodes.DotGen
-import com.github.overmind.seaofnodes.ir.Graph.GraphBuilder
+import com.github.overmind.seaofnodes.hir.Graph
+import com.github.overmind.seaofnodes.hir.Graph.GraphBuilder
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -139,6 +140,22 @@ case class RegionNode(id: RegionNode.Id) extends ControlNode {
   def exit: ControlNode = _exit.get  // Unsafe
   def exit_=(newExit: ControlNode): Unit = {
     _exit = replaceOrAdaptSuccessor(_exit, Some(newExit))
+  }
+
+  def phis: Seq[PhiNode] = {
+    uses.flatMap({
+      case phi: PhiNode => Some(phi)
+      case _: ComposeNode => None
+      case n => sys.error(s"Unknown RegionNode input $n")
+    })
+  }
+
+  def composes: Seq[ComposeNode] = {
+    uses.flatMap({
+      case n: ComposeNode => Some(n)
+      case _: PhiNode => None
+      case n => sys.error(s"Unknown RegionNode input $n")
+    })
   }
 }
 
@@ -293,6 +310,11 @@ case class ComposeNode(private var _value: ValueNode, private var _ctrl: Control
 
   def value = _value
   def ctrl = _ctrl
+
+  def phi = {
+    assert(uses.length == 1)
+    uses.head.asInstanceOf[PhiNode]
+  }
 
   def toShallowString: String = s"Compose"
 }

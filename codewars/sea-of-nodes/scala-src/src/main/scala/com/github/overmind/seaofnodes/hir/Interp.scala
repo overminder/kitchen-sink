@@ -1,10 +1,12 @@
-package com.github.overmind.seaofnodes.ir
+package com.github.overmind.seaofnodes.hir
+
+import com.github.overmind.seaofnodes.hir.nodes._
 
 import scala.annotation.tailrec
 import scala.collection.mutable;
 
 object Interp {
-  type Env = mutable.Map[PhiNode, Value]
+  type Env = mutable.Map[Node, Value]
 
   def interp(g: Node): Value = {
     try {
@@ -70,15 +72,8 @@ object Interp {
   def interp(env: Env, n0: Node, verbose: Boolean = false): Unit = {
     var indent = 0
 
+    // Virtual control register used to determine the dynamic control edge to the current block.
     var lastRegion: Option[RegionNode] = None
-
-    def phis(r: RegionNode): Seq[PhiNode] = {
-      r.uses.flatMap({
-        case phi: PhiNode => Some(phi)
-        case _: ComposeNode => None
-        case n => throw UnexpectedNode("RegionNode input", n)
-      })
-    }
 
     @tailrec
     def go(n0: Node): Unit = {
@@ -91,21 +86,28 @@ object Interp {
         case n: EndNode =>
           throw UnexpectedNode("EndNode reached", n)
         case n: RegionNode =>
+          val composedValues = n.composes.map(c => {
+            // Compose the outgoing values.
+            (c, goV(c.value))
+          })
           // Calculate phi
           lastRegion match {
             case None =>
-              assert(phis(n).isEmpty, s"Entry region has phis: $n")
+              assert(n.phis.isEmpty, s"Entry region has phis: $n")
             case Some(lastR) =>
-              val phiValues = phis(n).map(phi => {
+              n.phis.foreach(phi => {
                 val cs = phi.composeInputs.filter(c => c.ctrl eq lastR)
                 assert(cs.length == 1)
-                (phi, goV(cs.head.value))
-              })
-              // And assign the new phi values all at once.
-              phiValues.foreach({ case (phi, v) =>
-                putDef(phi, v)
+                // Copy the value from the compose node to the phi.
+                putPhi(phi, popCompose(cs.head))
               })
           }
+          // And write back the freshly composed values.
+          // This has to be done in a two-step style so that the newly composed values will not
+          // interfere with the old ones consumed by the phi nodes.
+          composedValues.foreach({ case (c, v) =>
+            putCompose(c, v)
+          })
 
           // Set lastRegion to here
           lastRegion = Some(n)
@@ -120,11 +122,11 @@ object Interp {
             go(n.f)
           }
 
-        case n: ValueNode =>
-          goV(n)
-
         case n: RetNode =>
           throw ReturnException(goV(n.value))
+
+        case n: ValueNode =>
+          sys.error(s"Shouldn't evaluate value nodes here: $n")
       }
     }
 
@@ -142,6 +144,7 @@ object Interp {
       }
     }
 
+    // XXX: This can possibly evaluate a shared node multiple times.
     def goV(n0: ValueNode): Value = {
       pIndent(s"goV: $n0")
       val v = n0 match {
@@ -168,12 +171,16 @@ object Interp {
       v
     }
 
-    def putDef(n: PhiNode, v: Value) = {
+    def putCompose(n: ComposeNode, v: Value) = {
       env += (n -> v)
     }
 
-    def delDef(n: PhiNode) = {
-      env -= n
+    def putPhi(n: PhiNode, v: Value) = {
+      env += (n -> v)
+    }
+
+    def popCompose(n: ComposeNode): Value = {
+      env.remove(n).getOrElse(sys.error(s"No such compose node: $n (${n.value} from ${n.ctrl})"))
     }
 
     go(n0)

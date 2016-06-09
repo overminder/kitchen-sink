@@ -1,6 +1,7 @@
-package com.github.overmind.seaofnodes.ir
+package com.github.overmind.seaofnodes.hir
 
-import com.github.overmind.seaofnodes.ir.Graph.GraphBuilder
+import com.github.overmind.seaofnodes.hir.Graph.GraphBuilder
+import com.github.overmind.seaofnodes.hir.nodes.{IfNode, RegionNode}
 
 /**
   * Created by tim.jiang on 6/6/2016.

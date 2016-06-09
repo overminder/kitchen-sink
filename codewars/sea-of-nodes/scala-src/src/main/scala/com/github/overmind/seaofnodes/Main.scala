@@ -2,10 +2,9 @@ package com.github.overmind.seaofnodes
 
 import java.io.FileWriter
 
-import com.github.overmind.seaofnodes.ir.Graph.GraphBuilder
-import com.github.overmind.seaofnodes.ir._
-
-import scala.io.Source
+import com.github.overmind.seaofnodes.hir.Graph.GraphBuilder
+import com.github.overmind.seaofnodes.hir._
+import com.github.overmind.seaofnodes.hir.nodes.{DotContext, Node}
 
 object Main {
   def interpAst(s: Ast.Stmt): Unit = {
@@ -25,9 +24,13 @@ object Main {
     val builder = GraphBuilder()
     val entry = builder.build(shallowBuilder.firstRegion, shallowBuilder.endNode, s)
     // Opt.simplifyControl(entry.successor.asInstanceOf[RegionNode], builder)
-    println(s"interp($name) => ${Graph.interp(entry)}")
+    // println(s"interp($name) => ${Graph.interp(entry)}")
 
-    // renderNodeToDot(entry, name)
+    renderNodeToDot(entry, name)
+
+    val lgb = lir.GraphBuilder(entry)
+    val lg = lgb.build()
+    println(lg)
   }
 
   def writeFile(path: String, content: String): Unit = {

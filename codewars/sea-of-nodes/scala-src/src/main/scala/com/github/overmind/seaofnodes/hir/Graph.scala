@@ -1,9 +1,10 @@
-package com.github.overmind.seaofnodes.ir
+package com.github.overmind.seaofnodes.hir
 
 import java.util
 import java.util.Collections
 
 import com.github.overmind.seaofnodes.Ast._
+import com.github.overmind.seaofnodes.hir.nodes._
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
