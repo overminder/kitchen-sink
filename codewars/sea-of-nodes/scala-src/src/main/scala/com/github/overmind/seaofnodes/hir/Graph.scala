@@ -3,7 +3,7 @@ package com.github.overmind.seaofnodes.hir
 import java.util
 import java.util.Collections
 
-import com.github.overmind.seaofnodes.Ast._
+import com.github.overmind.seaofnodes.ast._
 import com.github.overmind.seaofnodes.hir.nodes._
 
 import scala.collection.JavaConverters._
@@ -66,9 +66,9 @@ case class ShallowRegionBuilder(rootStmt: Stmt) {
   private def buildStmt(s: Stmt): Unit = {
     ensureRegion()
     s match {
-      case Stmt.Begin(ss) => ss.foreach(buildStmt)
+      case Begin(ss) => ss.foreach(buildStmt)
 
-      case Stmt.If(_, t, f) =>
+      case If(_, t, f) =>
         val tB = allocRegion()
         val fB = allocRegion()
         val endB = allocRegion()
@@ -78,7 +78,7 @@ case class ShallowRegionBuilder(rootStmt: Stmt) {
         startRegionThatEndsWith(fB, Some(f), endB)
         setCurrentRegion(endB)
 
-      case Stmt.While(cond, body) =>
+      case While(cond, body) =>
         val checkB = allocRegion()
         val loopB = allocRegion()
         val endB = allocRegion()
@@ -88,10 +88,11 @@ case class ShallowRegionBuilder(rootStmt: Stmt) {
         startRegionThatEndsWith(loopB, Some(body), checkB)
         setCurrentRegion(endB)
 
-      case Stmt.Ret(e) =>
+      case Ret(e) =>
         finishRegion(RetNode(endNode))
 
-      case _: Stmt.Assign => ()
+      case _: Assign => ()
+      case _: WriteArray => ()
     }
   }
 
@@ -125,8 +126,6 @@ object Graph {
   def interp(n: Node) = Interp.interp(n)
 
   case class GraphBuilder() {
-    import com.github.overmind.seaofnodes.Ast._
-
     type Defs = mutable.Map[String, ValueNode]
     type RegionId = RegionNode.Id
 
@@ -170,13 +169,13 @@ object Graph {
 
     def buildStmt(s: Stmt, here: RegionNode): Unit = {
       s match {
-        case Stmt.Assign(v, e) =>
+        case Assign(v, e) =>
           defineVar(v, buildExpr(e, here), here)
 
-        case Stmt.Begin(ss) =>
+        case Begin(ss) =>
           ss.foreach(buildStmt)
 
-        case Stmt.If(cond, t, f) =>
+        case If(cond, t, f) =>
           // A bit repetitive..
           val condNode = asLogicNode(buildExpr(cond, here))
           val exit = here.exit.asInstanceOf[IfNode]
@@ -197,7 +196,7 @@ object Graph {
               None
           }
 
-        case Stmt.While(cond, body) =>
+        case While(cond, body) =>
           val checkRegion = here.exit.asInstanceOf[RegionNode]
 
           currentRegion = Some(checkRegion)
@@ -212,7 +211,7 @@ object Graph {
 
           currentRegion = Some(endRegion)
 
-        case Stmt.Ret(v) =>
+        case Ret(v) =>
           here.exit.asInstanceOf[RetNode].value = buildExpr(v, here)
           currentRegion = None
       }
@@ -281,12 +280,14 @@ object Graph {
 
     def buildExpr(e: Expr, here: RegionNode): ValueNode = {
       e match {
-        case Expr.Binary(op, lhs, rhs) =>
+        case Binary(op, lhs, rhs) =>
           buildOp(op)(buildExpr(lhs, here), buildExpr(rhs, here))
-        case Expr.Lit(lval) =>
+        case Lit(lval) =>
           unique(LitNode(lval))
-        case Expr.Var(v) =>
+        case Var(v) =>
           useVarAt(v, here.id)
+        case AllocArray(n) =>
+          // TODO: Use and return a new memory token.
       }
     }
 

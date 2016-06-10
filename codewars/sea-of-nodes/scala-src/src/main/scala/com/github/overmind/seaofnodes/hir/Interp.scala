@@ -1,9 +1,10 @@
 package com.github.overmind.seaofnodes.hir
 
+import com.github.overmind.seaofnodes.ast._
 import com.github.overmind.seaofnodes.hir.nodes._
 
 import scala.annotation.tailrec
-import scala.collection.mutable;
+import scala.collection.mutable
 
 object Interp {
   type Env = mutable.Map[Node, Value]
@@ -17,57 +18,6 @@ object Interp {
     }
   }
 
-  sealed trait Value {
-    def +(that: Value): Value
-    def -(that: Value): Value
-    def <(that: Value): Value
-  }
-
-  sealed trait BoolValue extends Value {
-    def isTruthy: Boolean
-    def +(that: Value): Value = {
-      throw UnexpectedValue("Not a LongValue", this)
-    }
-    def -(that: Value): Value = {
-      throw UnexpectedValue("Not a LongValue", this)
-    }
-    def <(that: Value): Value = {
-      throw UnexpectedValue("Not a LongValue", this)
-    }
-  }
-  case object TrueValue extends BoolValue {
-    override def isTruthy = true
-  }
-  case object FalseValue extends BoolValue {
-    override def isTruthy = false
-  }
-  case object BoolValue {
-    def apply(lval: Long): BoolValue = {
-      if (lval == 0) {
-        FalseValue
-      } else {
-        TrueValue
-      }
-    }
-    def apply(bval: Boolean): BoolValue = {
-      if (bval) {
-        TrueValue
-      } else {
-        FalseValue
-      }
-    }
-  }
-  case class LongValue(lval: Long) extends Value {
-    def expectLong(op: (Long, Long) => Value)(that: Value): Value = {
-      that match {
-        case LongValue(rhs) => op(lval, rhs)
-        case _ => throw UnexpectedValue("Expect LongValue", that)
-      }
-    }
-    override def +(that: Value) = expectLong((x, y) => LongValue(x + y))(that)
-    override def -(that: Value) = expectLong((x, y) => LongValue(x - y))(that)
-    override def <(that: Value) = expectLong((x, y) => BoolValue(x < y))(that)
-  }
 
   def interp(env: Env, n0: Node, verbose: Boolean = false): Unit = {
     var indent = 0
@@ -116,7 +66,7 @@ object Interp {
           go(n.exit)
 
         case n: IfNode =>
-          if (goV(n.cond).asInstanceOf[BoolValue].isTruthy) {
+          if (goV(n.cond).asBoolean) {
             go(n.t)
           } else {
             go(n.f)
@@ -187,6 +137,5 @@ object Interp {
   }
 
   case class UnexpectedNode(reason: String, node: Node) extends Exception
-  case class UnexpectedValue(reason: String, value: Value) extends Exception
   case class ReturnException(value: Value) extends Exception
 }

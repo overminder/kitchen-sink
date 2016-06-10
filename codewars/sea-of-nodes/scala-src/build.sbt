@@ -5,3 +5,5 @@ scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Xfatal-warning
 
 mainClass := Some("com.github.overmind.seaofnodes.Main")
 
+// Parser combinator.
+libraryDependencies += "com.lihaoyi" %% "fastparse" % "0.3.7"

@@ -5,7 +5,9 @@ import scala.collection.mutable
 import com.github.overmind.seaofnodes.hir
 import com.github.overmind.seaofnodes.hir.nodes._
 
-// HIR -> LIR: moving out of SSA form and instruction selection.
+// HIR -> LIR: move out of sea-of-nodes form (read: SSA destruction and trivial scheduling)
+// and do instruction selection.
+// TODO: Better scheduling using dominator tree.
 case class GraphBuilder(start: StartNode) {
   var nextVReg = 1
   val phi2Reg = hir.Graph.emptyIdentityMap[PhiNode, Reg]
@@ -143,10 +145,10 @@ case class GraphBuilder(start: StartNode) {
   def emitMov(dst: PhiNode, src: ValueNode): Unit = {
     src match {
       case AddNode(lhs, rhs) if lhs eq dst =>
-        emit(Add(regForPhi(dst), asReg(goV(rhs))))
+        emit(Add(regForPhi(dst), goV(rhs)))
 
       case AddNode(lhs, rhs) if rhs eq dst =>
-        emit(Add(regForPhi(dst), asReg(goV(lhs))))
+        emit(Add(regForPhi(dst), goV(lhs)))
 
       case SubNode(lhs, rhs) if lhs eq dst =>
         emit(Sub(regForPhi(dst), goV(rhs)))
