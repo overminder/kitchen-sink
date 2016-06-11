@@ -16,7 +16,13 @@ object Interp {
   def execStmt(env: Env, s: Stmt): Env = {
     s match {
       case Begin(ss) => ss.foldLeft(env)(execStmt)
-      case Assign(v, e) => env + (v -> evalExpr(env, e))
+      case Assign(v, e) => v match {
+        case LVar(v) =>
+          env + (v -> evalExpr(env, e))
+        case LIndex(base, index) =>
+          evalExpr(env, base).setAt(evalExpr(env, index), evalExpr(env, e))
+          env
+      }
       case If(cond, t, f) =>
         if (evalExpr(env, cond).asBoolean) {
           execStmt(env, t)
@@ -31,9 +37,6 @@ object Interp {
         env_
       case Ret(e) =>
         throw ReturnFrom(env, evalExpr(env, e))
-      case WriteArray(base, index, value) =>
-        evalExpr(env, base).setAt(evalExpr(env, index), evalExpr(env, value))
-        env
     }
   }
 
@@ -41,9 +44,9 @@ object Interp {
     e match {
       case Binary(op, lhs, rhs) => denoteOp(op)(evalExpr(env, lhs), evalExpr(env, rhs))
       case Lit(lit) => LongValue(lit)
-      case Var(v) => env.getOrElse(v, throw UndefinedVar(env, v))
+      case LVar(v) => env.getOrElse(v, throw UndefinedVar(env, v))
+      case LIndex(base, index) => evalExpr(env, base).at(evalExpr(env, index))
       case AllocArray(len) => ArrayValue.create(len)
-      case ReadArray(base, index) => evalExpr(env, base).at(evalExpr(env, index))
     }
   }
 

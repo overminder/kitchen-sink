@@ -142,9 +142,9 @@ case class RegionNode(id: RegionNode.Id) extends ControlNode {
     _exit = replaceOrAdaptSuccessor(_exit, Some(newExit))
   }
 
-  def phis: Seq[PhiNode] = {
+  def phis: Seq[BasePhiNode] = {
     uses.flatMap({
-      case phi: PhiNode => Some(phi)
+      case phi: BasePhiNode => Some(phi)
       case _: ComposeNode => None
       case n => sys.error(s"Unknown RegionNode input $n")
     })
@@ -153,17 +153,18 @@ case class RegionNode(id: RegionNode.Id) extends ControlNode {
   def composes: Seq[ComposeNode] = {
     uses.flatMap({
       case n: ComposeNode => Some(n)
-      case _: PhiNode => None
+      case _: BasePhiNode => None
       case n => sys.error(s"Unknown RegionNode input $n")
     })
   }
 }
 
-case class RetNode(private var _endNode: EndNode) extends ControlNode {
+case class RetNode(protected var _endNode: EndNode) extends ControlNode with UseMemoryNode {
   adaptSuccessor(_endNode)
 
   def endNode = _endNode
 
+  override protected var _memory: MemoryStateNode = _  // XXX
   private var _value: Option[ValueNode] = None
 
   override def toShallowString: String = s"Ret"
@@ -304,6 +305,51 @@ case object FalseNode extends LogicNode {
   override def toShallowString: String = "False"
 }
 
+// Arrays
+
+sealed trait UseMemoryNode extends Node {
+  protected var _memory: MemoryStateNode
+
+  Option(_memory).foreach(adaptInput)
+
+  def memory = _memory
+  def memory_=(newMemory: MemoryStateNode) = {
+    replaceOrAdaptInput(Option(_memory), Some(newMemory))
+    _memory = newMemory
+  }
+}
+
+case class AllocFixedArrayNode(length: Int,
+                               protected var _memory: MemoryStateNode) extends ValueNode with UseMemoryNode {
+  override def toShallowString: String = s"AllocFixedArray(length = $length)"
+}
+
+sealed trait ArrayIndexNode extends ValueNode with UseMemoryNode {
+  protected var _base: ValueNode
+  protected var _index: ValueNode
+
+  adaptInput(_base)
+  adaptInput(_index)
+
+  def base = _base
+  def index = _index
+}
+
+case class ReadArrayNode(protected var _base: ValueNode,
+                         protected var _index: ValueNode,
+                         protected var _memory: MemoryStateNode) extends ArrayIndexNode {
+  override def toShallowString: String = "ReadArray"
+}
+
+case class WriteArrayNode(protected var _base: ValueNode,
+                          protected var _index: ValueNode,
+                          protected var _value: ValueNode,
+                          protected var _memory: MemoryStateNode) extends ArrayIndexNode {
+  adaptInput(_value)
+  def value = _value
+  override def toShallowString: String = "WriteArray"
+}
+
 case class ComposeNode(private var _value: ValueNode, private var _ctrl: ControlNode) extends ValueNode {
   adaptInput(_value)
   adaptInput(_ctrl)
@@ -313,10 +359,28 @@ case class ComposeNode(private var _value: ValueNode, private var _ctrl: Control
 
   def phi = {
     assert(uses.length == 1)
-    uses.head.asInstanceOf[PhiNode]
+    uses.head.asInstanceOf[BasePhiNode]
   }
 
   def toShallowString: String = s"Compose"
+}
+
+sealed trait MemoryStateNode extends ValueNode
+
+case class InitialMemoryStateNode() extends MemoryStateNode {
+  override def toShallowString: String = "InitialMemoryState"
+}
+
+case class MemoryStateAfterNode(_after: ValueNode) extends MemoryStateNode {
+  adaptInput(_after)
+
+  def after = _after
+
+  override def toShallowString: String = "MemoryStateAfter"
+}
+
+case class MemoryPhiNode(protected var _region: RegionNode) extends MemoryStateNode with BasePhiNode {
+  override def toShallowString: String = "MemoryPhi"
 }
 
 sealed trait FixedNode extends ValueNode {
@@ -329,12 +393,14 @@ sealed trait FixedNode extends ValueNode {
   }
 }
 
-case class PhiNode(protected var _region: RegionNode) extends FixedNode {
+sealed trait BasePhiNode extends FixedNode {
   val composeInputs = ArrayBuffer.empty[ComposeNode]
   def addInput(v: ComposeNode): Unit = {
     adaptEdgeTo(composeInputs, adaptInput(v))
   }
+}
 
+case class ValuePhiNode(protected var _region: RegionNode) extends BasePhiNode {
   def toShallowString: String = s"Phi"
 }
 

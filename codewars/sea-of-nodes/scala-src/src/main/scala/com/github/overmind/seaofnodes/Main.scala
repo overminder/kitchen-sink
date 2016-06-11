@@ -31,9 +31,9 @@ object Main {
 
     renderNodeToDot(entry, name)
 
-    val lgb = lir.GraphBuilder(entry)
-    val lg = lgb.build()
-    println(lg)
+    // val lgb = lir.GraphBuilder(entry)
+    // val lg = lgb.build()
+    // println(lg)
   }
 
   def writeFile(path: String, content: String): Unit = {

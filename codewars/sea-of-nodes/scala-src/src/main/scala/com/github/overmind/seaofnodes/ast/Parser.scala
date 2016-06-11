@@ -15,24 +15,47 @@ private object ParserInternal {
   import fastparse.noApi._
   import White._
 
-  val ident = P(CharIn('a' to 'z')).repX(1).!
+  val ident = P(CharIn('a' to 'z') | CharIn('A' to 'Z')).repX(1).!
   val number = P(CharIn('0' to '9').repX(1)).!.map(_.toLong)
-  val varE = ident.map(Var)
-  val litE = number.map(Lit)
+  val varE: P[Loc] = ident.map(LVar)
+  val litE: P[Expr] = number.map(Lit)
   val parenE = P("(" ~/ expr ~ ")")
   val factor: P[Expr] = P(varE | litE | parenE)
-  val addSub = P(factor ~ (CharIn("+-").! ~/ factor).rep).map(mkBinaryOp)
+
+  // Complex exprs
+  val funCall = P(factor ~ (("(" ~/ expr ~/ ")").map(mkCall) |
+    ("[" ~/ expr ~/ "]").map(mkIndex)).rep).map(mkFold)
+  val addSub = P(funCall ~ (CharIn("+-").! ~/ funCall).rep).map(mkBinaryOp)
   val cmp = P(addSub ~ (CharIn("<").! ~/ addSub).rep).map(mkBinaryOp)
   val expr: P[Expr] = cmp
 
   val ifS: P[Stmt] = P("if" ~/ expr ~/ "then" ~/ stmt ~/ "else" ~/ stmt).map(mkIf)
   val whileS = P("while" ~/ expr ~/ "do" ~/ stmt).map(mkWhile)
   val retS = P("ret" ~/ expr).map(Ret)
-  val assignS = P(ident ~ "=" ~/ expr).map(mkAssign)
+  val assignS = P(funCall ~ "=" ~/ expr).map(mkAssign)
   val blockS = P("{" ~/ stmt.rep ~ "}").map(Stmt.begin)
   val stmt: P[Stmt] = P(ifS | whileS | blockS | retS | assignS)
 
   val stmtEnd = P(stmt ~ End)
+
+  def mkCall(args: Expr)(base: Expr): Expr = {
+    (args, base) match {
+      case (Lit(len), LVar("newArray")) =>
+        AllocArray(len.toInt)
+      case _ =>
+        sys.error(s"Unknown call: $args, $base")
+    }
+  }
+
+  def mkIndex(index: Expr)(base: Expr): Expr = {
+    LIndex(base, index)
+  }
+
+  def mkFold(tree: (Expr, Seq[Expr => Expr])): Expr = {
+    tree._2.foldLeft(tree._1) { case (base, op) =>
+      op(base)
+    }
+  }
 
   def mkBinaryOp(tree: (Expr, Seq[(String, Expr)])): Expr = {
     tree match {
@@ -56,8 +79,9 @@ private object ParserInternal {
     While(cap._1, cap._2)
   }
 
-  def mkAssign(cap: (String, Expr)): Stmt = {
-    Assign(cap._1, cap._2)
+  def mkAssign(cap: (Expr, Expr)): Stmt = {
+    // XXX unsafe
+    Assign(cap._1.asInstanceOf[Loc], cap._2)
   }
 }
 

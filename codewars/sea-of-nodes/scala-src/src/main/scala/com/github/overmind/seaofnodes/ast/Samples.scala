@@ -8,25 +8,25 @@ object Samples {
   val loopSum = begin(
     Assign("s", Lit(0)),
     Assign("n", Lit(10)),
-    While(Binary(LessThan, Lit(0), Var("n")),
+    While(Binary(LessThan, Lit(0), LVar("n")),
       begin(
-        Assign("s", add(Var("s"), Var("n"))),
-        Assign("n", sub(Var("n"), Lit(1)))
+        Assign("s", add(LVar("s"), LVar("n"))),
+        Assign("n", sub(LVar("n"), Lit(1)))
       )
     ),
-    Ret(Var("s"))
+    Ret(LVar("s"))
   )
 
   val ifs = begin(
     Assign("a", Lit(0)),
     Assign("b", Lit(1)),
-    If(Binary(LessThan, Lit(0), Var("a")),
+    If(Binary(LessThan, Lit(0), LVar("a")),
       Assign("b", Lit(1)),
-      If(Binary(LessThan, Lit(1), Var("a")),
+      If(Binary(LessThan, Lit(1), LVar("a")),
         Assign("b", Lit(2)),
         Assign("b", Lit(3)))
     ),
-    Ret(Var("b"))
+    Ret(LVar("b"))
   )
 
   val unreachableCode = begin(
@@ -38,40 +38,40 @@ object Samples {
   val unreachableCodeInLoop = begin(
     Assign("s", Lit(0)),
     Assign("n", Lit(10)),
-    While(Binary(LessThan, Lit(0), Var("n")),
+    While(Binary(LessThan, Lit(0), LVar("n")),
       begin(
-        Assign("s", add(Var("s"), Var("n"))),
-        Assign("n", sub(Var("n"), Lit(1))),
-        Ret(Var("s"))
+        Assign("s", add(LVar("s"), LVar("n"))),
+        Assign("n", sub(LVar("n"), Lit(1))),
+        Ret(LVar("s"))
       )
     ),
-    Ret(Var("s"))
+    Ret(LVar("s"))
   )
 
   val returns = begin(
     Assign("a", Lit(0)),
     Assign("b", Lit(1)),
-    If(Binary(LessThan, Lit(0), Var("a")),
-      Ret(Var("b")),
-      If(Binary(LessThan, Lit(1), Var("a")),
-        Ret(Var("b")),
-        Ret(Var("b")))
+    If(Binary(LessThan, Lit(0), LVar("a")),
+      Ret(LVar("b")),
+      If(Binary(LessThan, Lit(1), LVar("a")),
+        Ret(LVar("b")),
+        Ret(LVar("b")))
     )
   )
 
   val whileIf = begin(
     Assign("s", Lit(0)),
     Assign("n", Lit(10)),
-    While(Binary(LessThan, Lit(0), Var("n")),
+    While(Binary(LessThan, Lit(0), LVar("n")),
       begin(
-        Assign("s", add(Var("s"), Var("n"))),
-        Assign("n", sub(Var("n"), Lit(1))),
-        If(Binary(LessThan, Var("n"), Var("s")),
-          Assign("s", add(Var("s"), Var("n"))),
-          Assign("n", sub(Var("n"), Lit(1))))
+        Assign("s", add(LVar("s"), LVar("n"))),
+        Assign("n", sub(LVar("n"), Lit(1))),
+        If(Binary(LessThan, LVar("n"), LVar("s")),
+          Assign("s", add(LVar("s"), LVar("n"))),
+          Assign("n", sub(LVar("n"), Lit(1))))
       )
     ),
-    Ret(Var("s"))
+    Ret(LVar("s"))
   )
 
 }

@@ -92,7 +92,6 @@ case class ShallowRegionBuilder(rootStmt: Stmt) {
         finishRegion(RetNode(endNode))
 
       case _: Assign => ()
-      case _: WriteArray => ()
     }
   }
 
@@ -120,19 +119,32 @@ object Graph {
 
   def emptyIdentityMap[A <: AnyRef, B] = new util.IdentityHashMap[A, B]().asScala
 
-  case class UndefinedVarInGraph(name: String) extends Exception
+  case class UndefinedVarInGraph(name: DefId) extends Exception
   case class Unexpected(what: String) extends Exception
 
   def interp(n: Node) = Interp.interp(n)
 
+  sealed trait DefId {
+    type DefType <: ValueNode
+    def mkPhi(here: RegionNode): BasePhiNode
+  }
+  case class VarId(v: String) extends DefId {
+    type DefType = ValueNode
+    override def mkPhi(here: RegionNode): BasePhiNode = ValuePhiNode(here)
+  }
+  case object MemId extends DefId {
+    type DefType = MemoryStateNode
+    override def mkPhi(here: RegionNode): BasePhiNode = MemoryPhiNode(here)
+  }
+
   case class GraphBuilder() {
-    type Defs = mutable.Map[String, ValueNode]
+    type Defs = mutable.Map[DefId, ValueNode]
     type RegionId = RegionNode.Id
 
     var currentRegion: Option[RegionNode] = None
     val blockDefs = mutable.Map.empty[RegionId, Defs]
     val regions = mutable.Map.empty[RegionId, RegionNode]
-    val deferredPhis = ArrayBuffer.empty[(String, PhiNode)]
+    val deferredPhis = ArrayBuffer.empty[(DefId, BasePhiNode)]
     val cachedNodes = mutable.Map.empty[Node, Node]
     var start: Option[StartNode] = None
     var end: Option[EndNode] = None
@@ -151,6 +163,9 @@ object Graph {
     }
 
     def buildRegions(start: RegionNode): Unit = {
+      // The initial memory state.
+      defsAt(start.id) += (MemId -> InitialMemoryStateNode())
+
       dfsRegion(start)(r => {
         regions += (r.id -> r)
       })
@@ -170,7 +185,14 @@ object Graph {
     def buildStmt(s: Stmt, here: RegionNode): Unit = {
       s match {
         case Assign(v, e) =>
-          defineVar(v, buildExpr(e, here), here)
+          v match {
+            case LVar(v) =>
+              defineVar(v, buildExpr(e, here), here)
+            case LIndex(base, index) =>
+              val n = WriteArrayNode(buildExpr(base, here), buildExpr(index, here),
+                buildExpr(e, here), useMemAt(here.id))
+              modifyMemBy(here.id, n)
+          }
 
         case Begin(ss) =>
           ss.foreach(buildStmt)
@@ -212,17 +234,19 @@ object Graph {
           currentRegion = Some(endRegion)
 
         case Ret(v) =>
-          here.exit.asInstanceOf[RetNode].value = buildExpr(v, here)
+          val asRet = here.exit.asInstanceOf[RetNode]
+          asRet.value = buildExpr(v, here)
+          asRet.memory = useMemAt(here.id)
           currentRegion = None
       }
     }
 
-    def addDeferredPhi(v: String, phi: PhiNode): Unit = {
+    def addDeferredPhi(v: DefId, phi: BasePhiNode): Unit = {
       deferredPhis += ((v, phi))
     }
 
     def resolveDeferredPhis(): Unit = {
-      def resolve(v: String, onRegion: RegionNode, fromPred: RegionNode): ValueNode = {
+      def resolve(v: DefId, onRegion: RegionNode, fromPred: RegionNode): ValueNode = {
         defsAt(fromPred.id)(v)
       }
       deferredPhis.foreach({ case (v, phi) =>
@@ -238,10 +262,19 @@ object Graph {
       blockDefs.getOrElseUpdate(id, mutable.Map.empty)
     }
 
-    def useVarAt(v: String, id: RegionId): ValueNode = {
+    def useMemAt(id: RegionId): MemoryStateNode = {
+      useIdAt(MemId, id)
+    }
+
+    def modifyMemBy(id: RegionId, v: ValueNode): ValueNode = {
+      defsAt(id) += (MemId -> MemoryStateAfterNode(v))
+      v
+    }
+
+    def useIdAt[D <: DefId](v: D, id: RegionId): D#DefType = {
       val here = regions(id)
       val defs = defsAt(id)
-      defs.get(v) match {
+      val got = defs.get(v) match {
         case Some(n) => n
         case None =>
           // Hmm...
@@ -251,22 +284,25 @@ object Graph {
               throw UndefinedVarInGraph(v)
             case 1 =>
               assert(ps.head.id != id)
-              useVarAt(v, ps.head.id)
+              val there = useIdAt(v, ps.head.id)
+              defs += (v -> there)  // Cached
+              there
             case _ =>
-              val phi = PhiNode(here)
+              val phi = v.mkPhi(here)
               defs += (v -> phi)
               addDeferredPhi(v, phi)
               ps.foreach(p => {
-                useVarAt(v, p.id)
+                useIdAt(v, p.id)
               })
               phi
           }
       }
+      got.asInstanceOf[D#DefType]
     }
 
     def defineVar[N <: ValueNode](v: String, n: N, here: RegionNode): N = {
       val defs = defsAt(here.id)
-      defs += (v -> n)
+      defs += (VarId(v) -> n)
       n
     }
 
@@ -284,10 +320,12 @@ object Graph {
           buildOp(op)(buildExpr(lhs, here), buildExpr(rhs, here))
         case Lit(lval) =>
           unique(LitNode(lval))
-        case Var(v) =>
-          useVarAt(v, here.id)
-        case AllocArray(n) =>
-          // TODO: Use and return a new memory token.
+        case LVar(v) =>
+          useIdAt(VarId(v), here.id)
+        case LIndex(base, index) =>
+          ReadArrayNode(buildExpr(base, here), buildExpr(index, here), useMemAt(here.id))
+        case AllocArray(len) =>
+          modifyMemBy(here.id, AllocFixedArrayNode(len, useMemAt(here.id)))
       }
     }
 

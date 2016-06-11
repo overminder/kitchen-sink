@@ -10,7 +10,7 @@ import com.github.overmind.seaofnodes.hir.nodes._
 // TODO: Better scheduling using dominator tree.
 case class GraphBuilder(start: StartNode) {
   var nextVReg = 1
-  val phi2Reg = hir.Graph.emptyIdentityMap[PhiNode, Reg]
+  val phi2Reg = hir.Graph.emptyIdentityMap[BasePhiNode, Reg]
   var currentBlock: Option[Block] = None
   val blocks = mutable.Map.empty[Int, Block]
 
@@ -69,7 +69,7 @@ case class GraphBuilder(start: StartNode) {
         emit(Mov(r, goV(lhs)))
         emit(Sub(r, goV(rhs)))
         r
-      case phi: PhiNode =>
+      case phi: BasePhiNode =>
         regForPhi(phi)
       case _ =>
         sys.error(s"${n0.getClass.getName} should never be directly evaluated: $n0")
@@ -137,12 +137,12 @@ case class GraphBuilder(start: StartNode) {
     currentBlock.get.exit = value
   }
 
-  def regForPhi(phi: PhiNode): Reg = {
+  def regForPhi(phi: BasePhiNode): Reg = {
     phi2Reg.getOrElseUpdate(phi, newReg)
   }
 
   // Special instruction selection cases for x86.
-  def emitMov(dst: PhiNode, src: ValueNode): Unit = {
+  def emitMov(dst: BasePhiNode, src: ValueNode): Unit = {
     src match {
       case AddNode(lhs, rhs) if lhs eq dst =>
         emit(Add(regForPhi(dst), goV(rhs)))

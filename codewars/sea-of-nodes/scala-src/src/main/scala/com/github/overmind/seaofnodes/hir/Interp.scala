@@ -112,10 +112,12 @@ object Interp {
           goV(lhs) < goV(rhs)
         case IsTruthyNode(n) =>
           BoolValue(goV(n).asInstanceOf[LongValue].lval)
+        case phi: BasePhiNode =>
+          env(phi)
         case _: ComposeNode =>
           sys.error(s"ComposeNode should never be directly evaluated: $n0")
-        case phi: PhiNode =>
-          env(phi)
+        case _ =>
+          sys.error(s"Not implemented: $n0")
       }
       pDedent(s"goV: $n0 -> $v")
       v
@@ -125,7 +127,7 @@ object Interp {
       env += (n -> v)
     }
 
-    def putPhi(n: PhiNode, v: Value) = {
+    def putPhi(n: BasePhiNode, v: Value) = {
       env += (n -> v)
     }
 

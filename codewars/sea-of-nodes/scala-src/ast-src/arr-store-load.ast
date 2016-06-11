@@ -1,0 +1,5 @@
+{
+  xs = newArray(5)
+  xs[0] = 1
+  ret xs[0]
+}

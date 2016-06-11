@@ -1,0 +1,9 @@
+{
+  i = 0
+  xs = newArray(100)
+  while i < 100 do {
+    xs[i] = i
+    i = i + 1
+  }
+  ret xs
+}
