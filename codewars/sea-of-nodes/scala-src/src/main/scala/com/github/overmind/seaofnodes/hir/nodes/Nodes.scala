@@ -6,10 +6,16 @@ import com.github.overmind.seaofnodes.hir.Graph.GraphBuilder
 
 import scala.collection.mutable.ArrayBuffer
 
+// NOTE: We deliberately allow null inputs. This makes partial nodes easier at the cost
+// of maintainability.
 sealed trait Node {
+
   type Edges[A] = ArrayBuffer[A]
-  val uses: Edges[Node] = ArrayBuffer.empty
-  val inputs: Edges[Node] = ArrayBuffer.empty
+  val _uses: Edges[Node] = ArrayBuffer.empty
+
+  def uses = _uses.toArray
+  final def inputs: Array[Node] = inputsInternal.flatMap(Option(_))
+  def inputsInternal: Array[Node]
 
   def toShallowString: String
   override def toString: String = toShallowString
@@ -25,43 +31,35 @@ sealed trait Node {
     }
   }
 
-  def adaptInput[N <: Node](input: N): N = {
-    adaptEdgeTo(inputs, input)
-    input.adaptEdgeTo(input.uses, this)
+  protected def addInput[N <: Node](input: N): N = {
+    if (input != null) {
+      input.addEdgeTo(this, input._uses)
+    }
     input
   }
 
-  def removeInput(input: Node): Unit = {
-    removeEdgeTo(inputs, input)
-    input.removeEdgeTo(input.uses, this)
+  protected def removeInput(input: Node): Unit = {
+    if (input != null) {
+      input.removeEdgeTo(this, input._uses)
+    }
     // input.tryRemove()
   }
 
-  def replaceInput[N <: Node](oldInput: N, newInput: N): N = {
+  protected def replaceInput[N <: Node](oldInput: N, newInput: N): N = {
     removeInput(oldInput)
-    adaptInput(newInput)
+    addInput(newInput)
   }
 
-  def replaceOrAdaptInput[N <: Node](oldInput: Option[N], newInput: Option[N]): Option[N] = {
-    oldInput.foreach(removeInput)
-    newInput.foreach(adaptInput)
-    newInput
+  protected def addEdgeTo[A <: AnyRef](to: A, onEdges: Edges[A]): Unit = {
+    val ix = indexOfByRef(onEdges, to)
+    assert(ix < 0, s"Node $to already exist on $this at $ix")
+    onEdges += to
   }
 
-  protected def adaptEdgeTo[A <: AnyRef](edges: Edges[A], to: A): Unit = {
-    val ix = indexOfByRef(edges, to)
-    if (ix < 0) {
-      // Doesn't exist
-      edges += to
-    }
-  }
-
-  protected def removeEdgeTo[A <: AnyRef](edges: Edges[A], to: A): Unit = {
-    val ix = indexOfByRef(edges, to)
-    if (ix >= 0) {
-      // Exists
-      edges.remove(ix)
-    }
+  protected def removeEdgeTo[A <: AnyRef](to: A, onEdges: Edges[A]): Unit = {
+    val ix = indexOfByRef(onEdges, to)
+    assert(ix >= 0, s"Node $to doesn't exist on $this")
+    onEdges.remove(ix)
   }
 
   protected def indexOfByRef[A <: AnyRef](xs: Seq[A], to: A): Int = {
@@ -72,75 +70,113 @@ sealed trait Node {
 sealed trait ValueNode extends Node
 sealed trait LogicNode extends ValueNode
 sealed trait ControlNode extends Node {
-  val predecessors: Edges[ControlNode] = ArrayBuffer.empty
-  val successors: Edges[ControlNode] = ArrayBuffer.empty
+  var predecessor: ControlNode = _
+
+  final def successors: Array[ControlNode] = successorsInternal.flatMap(Option(_))
+  def successorsInternal: Array[ControlNode]
 
   protected override def remove(): Unit = {
     super.remove()
-    successors.toArray.foreach(removeSuccessor)
+    successors.foreach(removeSuccessor)
   }
 
   override def tryRemove(): Unit = {
-    if (uses.isEmpty && predecessors.isEmpty) {
+    if (uses.isEmpty && predecessor == null) {
       remove()
     }
   }
 
-  def adaptSuccessor[N <: ControlNode](successor: N): N = {
-    successor.adaptEdgeTo(successor.predecessors, this)
-    adaptEdgeTo(successors, successor)
+  def addSuccessor[N <: ControlNode](successor: N): N = {
+    if (successor != null) {
+      assert(successor.predecessor == null)
+      successor.predecessor = this
+    }
     successor
   }
 
   def removeSuccessor(successor: ControlNode): Unit = {
-    removeEdgeTo(successors, successor)
-    successor.removeEdgeTo(successor.predecessors, this)
+    if (successor != null) {
+      assert(successor.predecessor == this)
+      successor.predecessor = null
+    }
     // successor.tryRemove()
-  }
-
-  def replaceOrAdaptSuccessor[N <: ControlNode](oldSucc: Option[N], newSucc: Option[N]): Option[N] = {
-    oldSucc.foreach(removeSuccessor)
-    newSucc.foreach(adaptSuccessor)
-    newSucc
   }
 
   def replaceSuccessor[N <: ControlNode](oldSucc: N, newSucc: N): N = {
     removeSuccessor(oldSucc)
-    adaptSuccessor(newSucc)
+    addSuccessor(newSucc)
   }
 }
 
-case class StartNode(protected var _successor: ControlNode) extends ControlNode {
-  adaptSuccessor(_successor)
+sealed trait NoInput extends Node {
+  final override def inputsInternal: Array[Node] = Array()
+}
 
-  def successor = _successor
-  def successor_=(newSucc: ControlNode) = {
-    _successor = replaceSuccessor(_successor, newSucc)
+sealed trait NoSuccessor extends ControlNode {
+  final override def successorsInternal: Array[ControlNode] = Array()
+}
+
+sealed trait SingleNext[N <: ControlNode] extends ControlNode {
+  protected var _next: N
+
+  addSuccessor(_next)
+
+  override def successorsInternal: Array[ControlNode] = Array(_next)
+
+  def next = _next
+  def next_=(newSucc: N) = {
+    _next = replaceSuccessor(_next, newSucc)
   }
+}
 
+sealed trait UseSingleValue[N <: ValueNode] extends Node {
+  protected var _value: N
+
+  addInput(_value)
+
+  def value = _value
+  def value_=(newV: N) = {
+    _value = replaceInput(_value, newV)
+  }
+}
+
+case class StartNode(protected var _next: ControlNode) extends SingleNext with NoInput {
   override def toShallowString: String = "Start"
 }
 
-case class EndNode() extends ControlNode {
+case class EndNode() extends ControlNode with NoInput with NoSuccessor {
   override def toShallowString: String = "End"
+}
+
+sealed trait JProjNode
+
+case class TrueProjNode() extends NoInput with NoSuccessor {
+  override def toShallowString: String = "TrueProj"
+}
+
+case class FalseProjNode() extends NoInput with NoSuccessor {
+  override def toShallowString: String = "FalseProj"
+}
+
+case class MergeNode(protected var _next: ControlNode,
+                     protected val _comingFrom: Seq[ControlNode]) extends SingleNext {
+  _comingFrom.foreach(addInput)
+
+  override def inputsInternal: Array[Node] = _comingFrom.toArray
+
+  override def toShallowString: String = "Merge"
 }
 
 object RegionNode {
   type Id = Int
 }
-case class RegionNode(id: RegionNode.Id) extends ControlNode {
-  var _exit: Option[ControlNode] = None
-
+case class RegionNode(id: RegionNode.Id,
+                      protected var _next: ControlNode = null) extends SingleNext with NoInput {
   override def toShallowString: String = s"RegionNode $id"
 
   override def toString: String =
     s"$toShallowString succs: ${Graph.exits(this).map(_.toShallowString)}" +
       s" preds: ${Graph.preds(this).map(_.toShallowString)}"
-
-  def exit: ControlNode = _exit.get  // Unsafe
-  def exit_=(newExit: ControlNode): Unit = {
-    _exit = replaceOrAdaptSuccessor(_exit, Some(newExit))
-  }
 
   def phis: Seq[BasePhiNode] = {
     uses.flatMap({
@@ -159,43 +195,30 @@ case class RegionNode(id: RegionNode.Id) extends ControlNode {
   }
 }
 
-case class RetNode(protected var _endNode: EndNode) extends ControlNode with UseMemoryNode {
-  adaptSuccessor(_endNode)
-
-  def endNode = _endNode
-
-  override protected var _memory: MemoryStateNode = _  // XXX
-  private var _value: Option[ValueNode] = None
+case class RetNode(protected var _next: EndNode,
+                   protected var _value: ValueNode = null,
+                   protected var _memory: MemoryStateNode = null)
+  extends SingleNext[EndNode] with UseMemoryNode with UseSingleValue {
 
   override def toShallowString: String = s"Ret"
 
-  def value: ValueNode = _value.get  // Unsafe
-  def value_=(newValue: ValueNode): Unit = {
-    _value = replaceOrAdaptInput(_value, Some(newValue))
-  }
+  override def inputsInternal: Array[Node] = Array(_value, _memory)
 }
 
-case class IfNode(private var _t: RegionNode, private var _f: RegionNode) extends ControlNode with Simplifiable[ControlNode] {
-  private var _cond: Option[LogicNode] = None
-
-  adaptSuccessor(_t)
-  adaptSuccessor(_f)
+case class IfNode(protected var _value: ValueNode,
+                  protected var _t: TrueProjNode,
+                  protected var _f: FalseProjNode)
+  extends ControlNode with Simplifiable[ControlNode] with UseSingleValue {
 
   override def toShallowString: String = s"If"
 
-  def region = predecessors(0).asInstanceOf[RegionNode]
+  def region = predecessor.asInstanceOf[RegionNode]
 
-  def cond = _cond.get
-  def cond_=(newCond: LogicNode) = {
-    _cond = replaceOrAdaptInput(_cond, Some(newCond))
-  }
   def t = _t
-  def t_=(newT: RegionNode) = _t = replaceSuccessor(_t, newT)
   def f = _f
-  def f_=(newF: RegionNode) = _f = replaceSuccessor(_f, newF)
 
   override def simplified(builder: GraphBuilder): ControlNode = {
-    cond match {
+    _value match {
       case TrueNode =>
         t
       case FalseNode =>
@@ -203,26 +226,26 @@ case class IfNode(private var _t: RegionNode, private var _f: RegionNode) extend
       case _ => this
     }
   }
+
+  override def successorsInternal: Array[ControlNode] = Array(_t, _f)
+
+  override def inputsInternal: Array[Node] = Array(_value)
 }
 
-case class LitNode(v: Long) extends ValueNode {
+case class LitNode(v: Long) extends ValueNode with NoInput {
   def toShallowString: String = s"Lit $v"
 }
 
-sealed trait UnaryNode extends ValueNode {
-  protected var _v: ValueNode
-  adaptInput(_v)
-
-  def v = _v
-  def v_=(newV: ValueNode): Unit = {
-    _v = replaceInput(_v, newV)
-  }
+sealed trait UnaryNode extends ValueNode with UseSingleValue {
+  override def inputsInternal: Array[Node] = Array(_value)
 }
+
 sealed trait BinaryNode extends ValueNode {
   protected var _lhs: ValueNode
   protected var _rhs: ValueNode
-  adaptInput(_lhs)
-  adaptInput(_rhs)
+
+  addInput(_lhs)
+  addInput(_rhs)
 
   def lhs = _lhs
   def lhs_=(newLhs: ValueNode): Unit = {
@@ -233,6 +256,8 @@ sealed trait BinaryNode extends ValueNode {
   def rhs_=(newRhs: ValueNode): Unit = {
     _rhs = replaceInput(_rhs, newRhs)
   }
+
+  override def inputsInternal: Array[Node] = Array(_lhs, _rhs)
 }
 
 sealed trait Simplifiable[Into] {
@@ -283,11 +308,11 @@ case class LessThanNode(var _lhs: ValueNode, var _rhs: ValueNode) extends Binary
       .getOrElse(this)
   }
 }
-case class IsTruthyNode(var _v: ValueNode) extends UnaryLogicNode {
+case class IsTruthyNode(var _value: ValueNode) extends UnaryLogicNode {
   def toShallowString: String = s"isTruthy"
 
   override def simplified(builder: GraphBuilder): LogicNode = {
-    v match {
+    _value match {
       case LitNode(i) =>
         if (i == 0) {
           FalseNode
@@ -298,10 +323,10 @@ case class IsTruthyNode(var _v: ValueNode) extends UnaryLogicNode {
     }
   }
 }
-case object TrueNode extends LogicNode {
+case object TrueNode extends LogicNode with NoInput {
   override def toShallowString: String = "True"
 }
-case object FalseNode extends LogicNode {
+case object FalseNode extends LogicNode with NoInput {
   override def toShallowString: String = "False"
 }
 
@@ -310,26 +335,28 @@ case object FalseNode extends LogicNode {
 sealed trait UseMemoryNode extends Node {
   protected var _memory: MemoryStateNode
 
-  Option(_memory).foreach(adaptInput)
+  addInput(_memory)
 
   def memory = _memory
   def memory_=(newMemory: MemoryStateNode) = {
-    replaceOrAdaptInput(Option(_memory), Some(newMemory))
-    _memory = newMemory
+    _memory = replaceInput(_memory, newMemory)
   }
 }
 
 case class AllocFixedArrayNode(length: Int,
-                               protected var _memory: MemoryStateNode) extends ValueNode with UseMemoryNode {
+                               protected var _memory: MemoryStateNode)
+  extends ValueNode with UseMemoryNode {
   override def toShallowString: String = s"AllocFixedArray(length = $length)"
+
+  override def inputsInternal: Array[Node] = Array(_memory)
 }
 
 sealed trait ArrayIndexNode extends ValueNode with UseMemoryNode {
   protected var _base: ValueNode
   protected var _index: ValueNode
 
-  adaptInput(_base)
-  adaptInput(_index)
+  addInput(_base)
+  addInput(_index)
 
   def base = _base
   def index = _index
@@ -339,20 +366,24 @@ case class ReadArrayNode(protected var _base: ValueNode,
                          protected var _index: ValueNode,
                          protected var _memory: MemoryStateNode) extends ArrayIndexNode {
   override def toShallowString: String = "ReadArray"
+
+  override def inputsInternal: Array[Node] = Array(_base, _index, _memory)
 }
 
 case class WriteArrayNode(protected var _base: ValueNode,
                           protected var _index: ValueNode,
                           protected var _value: ValueNode,
                           protected var _memory: MemoryStateNode) extends ArrayIndexNode {
-  adaptInput(_value)
+  addInput(_value)
   def value = _value
   override def toShallowString: String = "WriteArray"
+  override def inputsInternal: Array[Node] = Array(_base, _index, _memory, _value)
 }
 
-case class ComposeNode(private var _value: ValueNode, private var _ctrl: ControlNode) extends ValueNode {
-  adaptInput(_value)
-  adaptInput(_ctrl)
+case class ComposeNode(private var _value: ValueNode,
+                       private var _ctrl: ControlNode) extends ValueNode {
+  addInput(_value)
+  addInput(_ctrl)
 
   def value = _value
   def ctrl = _ctrl
@@ -363,29 +394,24 @@ case class ComposeNode(private var _value: ValueNode, private var _ctrl: Control
   }
 
   def toShallowString: String = s"Compose"
+  override def inputsInternal: Array[Node] = Array(_value, _ctrl)
 }
 
 sealed trait MemoryStateNode extends ValueNode
 
-case class InitialMemoryStateNode() extends MemoryStateNode {
+case class InitialMemoryStateNode() extends MemoryStateNode with NoInput {
   override def toShallowString: String = "InitialMemoryState"
 }
 
-case class MemoryStateAfterNode(_after: ValueNode) extends MemoryStateNode {
-  adaptInput(_after)
-
-  def after = _after
-
+case class MemoryStateAfterNode(_value: ValueNode) extends MemoryStateNode with UseSingleValue {
   override def toShallowString: String = "MemoryStateAfter"
-}
 
-case class MemoryPhiNode(protected var _region: RegionNode) extends MemoryStateNode with BasePhiNode {
-  override def toShallowString: String = "MemoryPhi"
+  override def inputsInternal: Array[Node] = Array(_value)
 }
 
 sealed trait FixedNode extends ValueNode {
   protected var _region: RegionNode
-  adaptInput(_region)
+  addInput(_region)
 
   def region = _region
   def region_=(newRegion: RegionNode): Unit = {
@@ -395,13 +421,17 @@ sealed trait FixedNode extends ValueNode {
 
 sealed trait BasePhiNode extends FixedNode {
   val composeInputs = ArrayBuffer.empty[ComposeNode]
-  def addInput(v: ComposeNode): Unit = {
-    adaptEdgeTo(composeInputs, adaptInput(v))
+  def addComposeInput(v: ComposeNode): ComposeNode = {
+    super.addInput(v)
   }
 }
 
 case class ValuePhiNode(protected var _region: RegionNode) extends BasePhiNode {
   def toShallowString: String = s"Phi"
+}
+
+case class MemoryPhiNode(protected var _region: RegionNode) extends MemoryStateNode with BasePhiNode {
+  override def toShallowString: String = "MemoryPhi"
 }
 
 case class DotContext(name: String, showBackedges: Boolean = false) {
