@@ -8,6 +8,12 @@
 - https://github.com/MatzeB/libfirm
 - https://github.com/WebKit/webkit/blob/master/Source/JavaScriptCore/b3
 
+### Sea of Nodes: Graal
+
+- http://lafo.ssw.uni-linz.ac.at/papers/2013_VMIL_GraalIR.pdf
+- http://ssw.t/General/Staff/GD/APPLC-2013-paper_12.pdf
+- http://ssw.t/Research/Papers/Stadler14PhD/Thesis_Stadler_14.pdf
+
 ### SSA Construction
 
 - http://ssabook.gforge.inria.fr/latest/book.pdf
