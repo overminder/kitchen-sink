@@ -10,103 +10,120 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-case class ShallowRegionBuilder(rootStmt: Stmt) {
+case class ShallowBlockBuilder(rootStmt: Stmt) {
   // Scan through the ASTs to build all the blocks.
   import Graph._
 
-  var nextRegionId = 0
-  var currentRegion: Option[RegionNode] = None
-  var entryRegion: Option[RegionNode] = None
-  val endNode = EndNode()
+  var nextBlockId = 0
+  var currentBlock: Option[BaseBeginNode] = None
+  var entryBlock: Option[BaseBeginNode] = None
+  val endNode = GraphExitNode()
 
-  val firstRegion = buildRootStmt(rootStmt)
+  val firstBlock = buildRootStmt(rootStmt)
 
-  private def buildRootStmt(s: Stmt): RegionNode = {
-    val entry = ensureRegion()
-    entryRegion = Some(entry)
+  private def buildRootStmt(s: Stmt): BaseBeginNode = {
+    val entry = ensureBlock()
+    entryBlock = Some(entry)
     buildStmt(s)
-    dceRegion(entry)
+    dceBlock(entry)
     entry
   }
 
-  private def allocRegion(): RegionNode = {
-    val r = RegionNode(nextRegionId)
-    nextRegionId += 1
+  private def allocBlock(): BeginNode = {
+    val r = BeginNode(nextBlockId)
+    nextBlockId += 1
     r
   }
 
-  private def ensureRegion(): RegionNode = {
-    currentRegion match {
+  private def allocMerge(): MergeNode = {
+    val r = MergeNode(nextBlockId)
+    nextBlockId += 1
+    r
+  }
+
+  private def ensureBlock(): BaseBeginNode = {
+    currentBlock match {
       case None =>
-        val b = allocRegion()
-        currentRegion = Some(b)
+        val b = allocBlock()
+        currentBlock = Some(b)
         b
       case Some(b) => b
     }
   }
 
-  private def finishRegion(exit: ControlNode): RegionNode = {
-    val r = ensureRegion()
-    r.exit = exit
-    currentRegion = None
+  private def finishBlock(exit: Node): BaseBeginNode = {
+    val r = ensureBlock()
+    r.next = exit
+    currentBlock = None
     r
   }
 
-  private def startRegionThatEndsWith(b: RegionNode, s: Option[Stmt], exit: ControlNode): RegionNode = {
-    setCurrentRegion(b)
-    s.foreach(buildStmt)
-    finishRegion(exit)
+  private def finishBlockWithIf(exit: IfNode): BaseBeginNode = {
+    val r = ensureBlock()
+    r.next = exit
+    currentBlock = None
+    r
   }
 
-  private def setCurrentRegion(r: RegionNode): Unit = {
-    assert(currentRegion.isEmpty, s"currentRegion is not None: $currentRegion")
-    currentRegion = Some(r)
+  private def startBlockThatEndsWith(b: BaseBeginNode, s: Option[Stmt], exit: BaseBlockExitNode): BaseBeginNode = {
+    setCurrentBlock(b)
+    s.foreach(buildStmt)
+    finishBlock(exit)
+  }
+
+  private def setCurrentBlock(r: BaseBeginNode): Unit = {
+    assert(currentBlock.isEmpty, s"currentBlock is not None: $currentBlock")
+    currentBlock = Some(r)
   }
 
   private def buildStmt(s: Stmt): Unit = {
-    ensureRegion()
+    ensureBlock()
     s match {
       case Begin(ss) => ss.foreach(buildStmt)
 
       case If(_, t, f) =>
-        val tB = allocRegion()
-        val fB = allocRegion()
-        val endB = allocRegion()
+        val tB = allocBlock()
+        val fB = allocBlock()
+        val endB = allocMerge()
 
-        finishRegion(IfNode(tB, fB))
-        startRegionThatEndsWith(tB, Some(t), endB)
-        startRegionThatEndsWith(fB, Some(f), endB)
-        setCurrentRegion(endB)
+        finishBlock(IfNode(null, tB, fB))
+        val tEnd = endB.addComingFrom(EndNode())
+        startBlockThatEndsWith(tB, Some(t), tEnd)
+        val fEnd = endB.addComingFrom(EndNode())
+        startBlockThatEndsWith(fB, Some(f), fEnd)
+        setCurrentBlock(endB)
 
       case While(cond, body) =>
-        val checkB = allocRegion()
-        val loopB = allocRegion()
-        val endB = allocRegion()
+        val checkB = allocMerge()
+        val loopB = allocBlock()
+        val endB = allocBlock()
 
-        finishRegion(checkB)
-        startRegionThatEndsWith(checkB, None, IfNode(loopB, endB))
-        startRegionThatEndsWith(loopB, Some(body), checkB)
-        setCurrentRegion(endB)
+        val jumpToCheck = checkB.addComingFrom(EndNode())
+        finishBlock(jumpToCheck)
+        startBlockThatEndsWith(checkB, None, IfNode(null, loopB, endB))
+        val loopBExit = checkB.addComingFrom(EndNode())
+        startBlockThatEndsWith(loopB, Some(body), loopBExit)
+        setCurrentBlock(endB)
 
       case Ret(e) =>
-        finishRegion(RetNode(endNode))
+        finishBlock(endNode.addReturn(RetNode()))
 
       case _: Assign => ()
     }
   }
 
-  private def dceRegion(entry: RegionNode): Unit = {
+  private def dceBlock(entry: BaseBeginNode): Unit = {
     val reachable = mutable.Set.empty[Int]
-    dfsRegion(entry) { r =>
+    dfsBlock(entry) { r =>
       reachable += r.id
     }
 
     val deleted = EndNode()
-    dfsRegion(entry) { r =>
+    dfsBlock(entry) { r =>
       val ps = preds(r).toArray
       ps.foreach(p => {
         if (!reachable.contains(p.id)) {
-          p.exit = deleted
+          p.next = deleted
         }
       })
     }
@@ -126,35 +143,44 @@ object Graph {
 
   sealed trait DefId {
     type DefType <: ValueNode
-    def mkPhi(here: RegionNode): BasePhiNode
+    def mkPhi(here: BaseBeginNode): BasePhiNode
   }
   case class VarId(v: String) extends DefId {
     type DefType = ValueNode
-    override def mkPhi(here: RegionNode): BasePhiNode = ValuePhiNode(here)
+    override def mkPhi(here: BaseBeginNode): BasePhiNode = ValuePhiNode(here)
   }
   case object MemId extends DefId {
     type DefType = MemoryStateNode
-    override def mkPhi(here: RegionNode): BasePhiNode = MemoryPhiNode(here)
+    override def mkPhi(here: BaseBeginNode): BasePhiNode = MemoryPhiNode(here)
   }
 
   case class GraphBuilder() {
     type Defs = mutable.Map[DefId, ValueNode]
-    type RegionId = RegionNode.Id
+    type BlockId = Int
 
-    var currentRegion: Option[RegionNode] = None
-    val blockDefs = mutable.Map.empty[RegionId, Defs]
-    val regions = mutable.Map.empty[RegionId, RegionNode]
+    var _currentBlock: Option[BaseBeginNode] = None
+    var currentNode: Option[SingleNext[Node]] = None
+    var currentBlockExit: Option[BaseBlockExitNode] = None
+    val blockDefs = mutable.Map.empty[BlockId, Defs]
+    val regions = mutable.Map.empty[BlockId, BaseBeginNode]
     val deferredPhis = ArrayBuffer.empty[(DefId, BasePhiNode)]
     val cachedNodes = mutable.Map.empty[Node, Node]
-    var start: Option[StartNode] = None
-    var end: Option[EndNode] = None
+    var start: Option[GraphEntryNode] = None
+    var end: Option[GraphExitNode] = None
 
-    def build(first: RegionNode, endNode: EndNode, s: Stmt): StartNode = {
+    def currentBlock = _currentBlock
+    def currentBlock_=(newBlock: Option[BaseBeginNode]): Unit = {
+      _currentBlock = newBlock
+      currentNode = newBlock
+      currentBlockExit = newBlock.map(_.next.asInstanceOf[BaseBlockExitNode])
+    }
+
+    def build(first: BaseBeginNode, endNode: GraphExitNode, s: Stmt): GraphEntryNode = {
       end = Some(endNode)
-      val startNode = StartNode(first)
+      val startNode = GraphEntryNode(first)
       start = Some(startNode)
-      buildRegions(first)
-      buildRootStmt(s)
+      buildBlocks(first)
+      buildRootStmt(first, s)
       startNode
     }
 
@@ -162,27 +188,25 @@ object Graph {
       cachedNodes.getOrElseUpdate(n, n).asInstanceOf[N]
     }
 
-    def buildRegions(start: RegionNode): Unit = {
+    def buildBlocks(start: BaseBeginNode): Unit = {
       // The initial memory state.
-      defsAt(start.id) += (MemId -> InitialMemoryStateNode())
-
-      dfsRegion(start)(r => {
+      dfsBlock(start)(r => {
         regions += (r.id -> r)
       })
-      currentRegion = Some(start)
+      currentBlock = Some(start)
     }
 
-    def buildRootStmt(s: Stmt): Unit = {
-      buildStmt(s)
+    def buildRootStmt(first: BaseBeginNode, s: Stmt): Unit = {
+      currentBlock = Some(first)
+      buildStmt(s, first)
       resolveDeferredPhis()
     }
 
     def buildStmt(s: Stmt): Unit = {
-      // So that we won't build unreachable code.
-      currentRegion.foreach(buildStmt(s, _))
+      currentBlock.foreach(buildStmt(s, _))
     }
 
-    def buildStmt(s: Stmt, here: RegionNode): Unit = {
+    def buildStmt(s: Stmt, here: BaseBeginNode): Unit = {
       s match {
         case Assign(v, e) =>
           v match {
@@ -190,7 +214,7 @@ object Graph {
               defineVar(v, buildExpr(e, here), here)
             case LIndex(base, index) =>
               val n = WriteArrayNode(buildExpr(base, here), buildExpr(index, here),
-                buildExpr(e, here), useMemAt(here.id))
+                buildExpr(e, here))
               modifyMemBy(here.id, n)
           }
 
@@ -200,44 +224,44 @@ object Graph {
         case If(cond, t, f) =>
           // A bit repetitive..
           val condNode = asLogicNode(buildExpr(cond, here))
-          val exit = here.exit.asInstanceOf[IfNode]
-          exit.cond = condNode
+          val exit = currentBlockExit.get.asInstanceOf[IfNode]
+          exit.value = condNode
 
-          currentRegion = Some(exit.t)
+          currentBlock = Some(exit.t)
           buildStmt(t)
 
-          currentRegion = Some(exit.f)
+          currentBlock = Some(exit.f)
           buildStmt(f)
 
-          currentRegion = (exit.t.exit, exit.f.exit) match {
-            case (r: RegionNode, _) =>
+          // DCE
+          currentBlock = (exit.t, exit.f) match {
+            case (r: BaseBeginNode, _) =>
               Some(r)
-            case (_, r: RegionNode) =>
+            case (_, r: BaseBeginNode) =>
               Some(r)
             case _ =>
               None
           }
 
         case While(cond, body) =>
-          val checkRegion = here.exit.asInstanceOf[RegionNode]
+          val checkBlock = currentBlockExit.get.asInstanceOf[EndNode].cfgSuccessor
 
-          currentRegion = Some(checkRegion)
-          val condNode = asLogicNode(buildExpr(cond, checkRegion))
-          val loopExit = checkRegion.exit.asInstanceOf[IfNode]
-          loopExit.cond = condNode
-          val bodyRegion = loopExit.t
-          val endRegion = loopExit.f
+          currentBlock = Some(checkBlock)
+          val condNode = asLogicNode(buildExpr(cond, checkBlock))
+          val loopExit = checkBlock.next.asInstanceOf[IfNode]
+          loopExit.value = condNode
+          val bodyBlock = loopExit.t
+          val endBlock = loopExit.f
 
-          currentRegion = Some(bodyRegion)
+          currentBlock = Some(bodyBlock)
           buildStmt(body)
 
-          currentRegion = Some(endRegion)
+          currentBlock = Some(endBlock)
 
         case Ret(v) =>
-          val asRet = here.exit.asInstanceOf[RetNode]
+          val asRet = currentBlockExit.get.asInstanceOf[RetNode]
           asRet.value = buildExpr(v, here)
-          asRet.memory = useMemAt(here.id)
-          currentRegion = None
+          currentBlock = None
       }
     }
 
@@ -246,11 +270,11 @@ object Graph {
     }
 
     def resolveDeferredPhis(): Unit = {
-      def resolve(v: DefId, onRegion: RegionNode, fromPred: RegionNode): ValueNode = {
+      def resolve(v: DefId, onBlock: BaseBeginNode, fromPred: BaseBeginNode): ValueNode = {
         defsAt(fromPred.id)(v)
       }
       deferredPhis.foreach({ case (v, phi) =>
-        val phiPreds = preds(phi.region)
+        val phiPreds = preds(phi.anchor)
         val defs = phiPreds.map(resolve(v, phi.region, _)).zip(phiPreds).map {
           case (v, r) => ComposeNode(v, r)
         }
@@ -258,20 +282,20 @@ object Graph {
       })
     }
 
-    def defsAt(id: RegionId): Defs = {
+    def defsAt(id: BlockId): Defs = {
       blockDefs.getOrElseUpdate(id, mutable.Map.empty)
     }
 
-    def useMemAt(id: RegionId): MemoryStateNode = {
+    def useMemAt(id: BlockId): MemoryStateNode = {
       useIdAt(MemId, id)
     }
 
-    def modifyMemBy(id: RegionId, v: ValueNode): ValueNode = {
+    def modifyMemBy(id: BlockId, v: ValueNode): ValueNode = {
       defsAt(id) += (MemId -> MemoryStateAfterNode(v))
       v
     }
 
-    def useIdAt[D <: DefId](v: D, id: RegionId): D#DefType = {
+    def useIdAt[D <: DefId](v: D, id: BlockId): D#DefType = {
       val here = regions(id)
       val defs = defsAt(id)
       val got = defs.get(v) match {
@@ -300,7 +324,7 @@ object Graph {
       got.asInstanceOf[D#DefType]
     }
 
-    def defineVar[N <: ValueNode](v: String, n: N, here: RegionNode): N = {
+    def defineVar[N <: ValueNode](v: String, n: N, here: BaseBeginNode): N = {
       val defs = defsAt(here.id)
       defs += (VarId(v) -> n)
       n
@@ -314,7 +338,7 @@ object Graph {
       })
     }
 
-    def buildExpr(e: Expr, here: RegionNode): ValueNode = {
+    def buildExpr(e: Expr, here: BaseBeginNode): ValueNode = {
       e match {
         case Binary(op, lhs, rhs) =>
           buildOp(op)(buildExpr(lhs, here), buildExpr(rhs, here))
@@ -338,10 +362,10 @@ object Graph {
   }
 
   // Utils
-  def exits(e: RegionNode): Seq[RegionNode] = {
+  def exits(e: BaseBeginNode): Seq[BaseBeginNode] = {
     // println(s"region ${e.id}")
     val es = e.exit match {
-      case toR: RegionNode => Seq(toR)
+      case toR: BaseBeginNode => Seq(toR)
       case EndNode() => Seq()
       case IfNode(t, f) => Seq(t, f)
       case RetNode(_) => Seq()
@@ -351,9 +375,9 @@ object Graph {
     es
   }
 
-  def preds(region: RegionNode): Seq[RegionNode] = {
-    region.predecessors.flatMap {
-      case r: RegionNode =>
+  def preds(region: BaseBeginNode): Seq[BaseBeginNode] = {
+    match region.predecessor {
+      case r: BaseBeginNode =>
         Some(r)
       case i: IfNode =>
         Some(i.region)
@@ -364,8 +388,8 @@ object Graph {
     }
   }
 
-  def dfsRegion(b: RegionNode)(f: RegionNode => Unit): Unit = {
-    def go(b: RegionNode, visited: mutable.Set[RegionNode]): Unit = {
+  def dfsBlock(b: BaseBeginNode)(f: BaseBeginNode => Unit): Unit = {
+    def go(b: BaseBeginNode, visited: mutable.Set[BaseBeginNode]): Unit = {
       if (!visited.contains(b)) {
         visited.add(b)
         f(b)
