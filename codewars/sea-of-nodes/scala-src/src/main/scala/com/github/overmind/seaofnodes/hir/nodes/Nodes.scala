@@ -2,7 +2,6 @@ package com.github.overmind.seaofnodes.hir.nodes
 
 import com.github.overmind.seaofnodes.DotGen
 import com.github.overmind.seaofnodes.hir.Graph
-import com.github.overmind.seaofnodes.hir.Graph.GraphBuilder
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -132,7 +131,7 @@ sealed trait UseSingleValue[N <: ValueNode] extends Node {
   }
 }
 
-case class GraphEntryNode(protected var _next: Node) extends SingleNext with NoInput {
+case class GraphEntryNode(protected var _next: Node = null) extends SingleNext[Node] with NoInput {
   override def toShallowString: String = "Start"
 }
 
@@ -153,33 +152,64 @@ sealed trait BaseBeginNode extends SingleNext[Node] {
   def anchored = uses
 }
 
-case class MergeNode(id: Int,
-                      protected val _comingFrom: ArrayBuffer[BaseEndNode] = ArrayBuffer.empty,
-                     protected var _next: BaseEndNode = null) extends BaseBeginNode {
+sealed trait BaseMergeNode extends BaseBeginNode {
+  protected val _comingFrom: ArrayBuffer[BaseEndNode]
+
   _comingFrom.foreach(addInput)
+  def valuePhis: Array[ValuePhiNode] = uses.flatMap({
+    case n: ValuePhiNode => Some(n)
+    case _ => None
+  })
 
   override def inputsInternal: Array[Node] = _comingFrom.toArray
-  override def toShallowString: String = "Merge"
 
   def addComingFrom[N <: BaseEndNode](n: N): N = {
     _comingFrom += addInput(n)
     n
   }
+}
 
-  def valuePhis: Array[ValuePhiNode] = uses.flatMap({
-    case n: ValuePhiNode => Some(n)
-    case _ => None
-  })
+case class LoopBeginNode(id: Int,
+                         protected val _comingFrom: ArrayBuffer[BaseEndNode] = ArrayBuffer.empty,
+                         protected var _next: BaseEndNode = null) extends BaseMergeNode {
+
+  override def toShallowString: String = "LoopBegin"
+}
+
+case class MergeNode(id: Int,
+                      protected val _comingFrom: ArrayBuffer[BaseEndNode] = ArrayBuffer.empty,
+                     protected var _next: BaseEndNode = null) extends BaseMergeNode {
+
+  override def toShallowString: String = "Merge"
+
 }
 
 case class BeginNode(id: Int, protected var _next: BaseEndNode = null) extends BaseBeginNode with NoInput {
   override def toShallowString: String = "Begin"
 }
 
+case class LoopExitNode(id: Int, protected var _next: BaseEndNode = null) extends BaseBeginNode with NoInput {
+  override def toShallowString: String = "LoopExit"
+
+  def loopBegin = {
+    assert(uses.length == 1)
+    uses.head.asInstanceOf[LoopBeginNode]
+  }
+}
+
 sealed trait BaseEndNode extends Node
 
 // Just a marker.
 sealed trait BaseBlockExitNode extends Node
+
+case class LoopEndNode() extends BaseEndNode with NoInput with NoSuccessor with BaseBlockExitNode {
+  override def toShallowString: String = "BlockEnd"
+
+  def loopBegin = {
+    assert(uses.length == 1)
+    uses.head.asInstanceOf[LoopBeginNode]
+  }
+}
 
 // Ends the current basic block.
 case class EndNode() extends BaseEndNode with NoInput with NoSuccessor with BaseBlockExitNode {
@@ -206,22 +236,12 @@ case class RetNode(protected var _value: ValueNode = null)
 case class IfNode(protected var _value: LogicNode,
                   protected var _t: BaseBeginNode,
                   protected var _f: BaseBeginNode)
-  extends ControlSplitNode with Simplifiable[Node] with UseSingleValue[LogicNode] {
+  extends ControlSplitNode with UseSingleValue[LogicNode] {
 
   override def toShallowString: String = s"If"
 
   def t = _t
   def f = _f
-
-  override def simplified(builder: GraphBuilder): Node = {
-    _value match {
-      case TrueNode =>
-        t
-      case FalseNode =>
-        f
-      case _ => this
-    }
-  }
 
   override def successorsInternal: Array[Node] = Array(_t, _f)
 
@@ -258,10 +278,6 @@ sealed trait BinaryNode extends ValueNode {
   override def inputsInternal: Array[Node] = Array(_lhs, _rhs)
 }
 
-sealed trait Simplifiable[Into] {
-  def simplified(builder: GraphBuilder): Into
-}
-
 object Simplifiable {
   def binaryLitOp(op: (Long, Long) => Long)(lhs: ValueNode, rhs: ValueNode): Option[ValueNode] = {
     (lhs, rhs) match {
@@ -277,49 +293,22 @@ object Simplifiable {
   def LT(a: Long, b: Long) = if (a < b) 1 else 0
 }
 
-sealed trait BinaryArithNode extends BinaryNode with Simplifiable[ValueNode] with NoSuccessor
+sealed trait BinaryArithNode extends BinaryNode with NoSuccessor
 case class AddNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryArithNode {
   def toShallowString: String = s"+"
-
-  override def simplified(builder: GraphBuilder): ValueNode = {
-    Simplifiable.binaryLitOp(_ + _)(lhs, rhs).map(builder.unique).getOrElse(this)
-  }
 }
 
 case class SubNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryArithNode {
   def toShallowString: String = s"-"
-
-  override def simplified(builder: GraphBuilder): ValueNode = {
-    Simplifiable.binaryLitOp(_ - _)(lhs, rhs).map(builder.unique).getOrElse(this)
-  }
 }
 
-sealed trait UnaryLogicNode extends UnaryNode with LogicNode with Simplifiable[LogicNode]
-sealed trait BinaryLogicNode extends BinaryNode with LogicNode with Simplifiable[LogicNode]
+sealed trait UnaryLogicNode extends UnaryNode with LogicNode
+sealed trait BinaryLogicNode extends BinaryNode with LogicNode
 case class LessThanNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryLogicNode {
   def toShallowString: String = s"<"
-
-  override def simplified(builder: GraphBuilder): LogicNode = {
-    Simplifiable.binaryLitOp(Simplifiable.LT)(lhs, rhs)
-      .map(IsTruthyNode(_).simplified(builder))
-      .map(builder.unique)
-      .getOrElse(this)
-  }
 }
 case class IsTruthyNode(var _value: ValueNode) extends UnaryLogicNode {
   def toShallowString: String = s"isTruthy"
-
-  override def simplified(builder: GraphBuilder): LogicNode = {
-    _value match {
-      case LitNode(i) =>
-        if (i == 0) {
-          FalseNode
-        } else {
-          TrueNode
-        }
-      case _ => this
-    }
-  }
 }
 
 case object TrueNode extends LogicNode with NoInput {
@@ -339,7 +328,7 @@ case class AllocFixedArrayNode(length: Int,
   override def toShallowString: String = s"AllocFixedArray(length = $length)"
 }
 
-sealed trait ArrayIndexNode extends ValueNode with SingleNext {
+sealed trait ArrayIndexNode extends ValueNode with SingleNext[Node] {
   protected var _base: ValueNode
   protected var _index: ValueNode
 
@@ -387,12 +376,20 @@ sealed trait BasePhiNode[N <: ValueNode] extends AnchoredNode with NoSuccessor {
   }
 }
 
-case class ValuePhiNode(protected var _anchor: BaseBeginNode,
+case class ValuePhiNode(protected var _anchor: BaseBeginNode = null,
                         protected val _composedInputs: ArrayBuffer[ValueNode] = ArrayBuffer.empty)
-  extends BasePhiNode {
+  extends BasePhiNode[ValueNode] {
   def toShallowString: String = s"ValuePhi"
 
   override def inputsInternal: Array[Node] = (composedInput :+ anchor).toArray
+}
+
+object ValuePhiNode {
+  def apply(anchor: BaseBeginNode, values: Seq[ValueNode]): ValuePhiNode = {
+    val phi = ValuePhiNode(anchor)
+    values.foreach(phi.addComposedInput)
+    phi
+  }
 }
 
 // Lowered nodes
