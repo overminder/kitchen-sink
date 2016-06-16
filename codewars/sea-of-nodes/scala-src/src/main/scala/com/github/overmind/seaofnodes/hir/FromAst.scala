@@ -45,10 +45,28 @@ object GraphFromAst {
             // Neither defined: no need for a phi here
             None
         }
-      })
-      mergedValues.foreach(vs => {
+      }.map((k, _)))
+      val env = tEnv.tail
+      mergedValues.foreach({ case (k, ns) =>
         // XXX: Need to properly manage live nodes in the graph.
-        ValuePhiNode(merge, vs)
+        val phi = ValuePhiNode(merge, ns)
+
+        // And `escape` the defined values.
+        env.defVar(k, phi)
+      })
+    }
+
+    def attachPhisForWhile(loopEnv: MergingEnv, loopMerge: LoopBeginNode) = {
+      loopEnv.possiblePhis.foreach({
+        case (k, n) =>
+          loopEnv.body.useVarOrThrow(k) match {
+            case phi if phi eq n =>
+              // No def: degenerated phi.
+              n.replaceAllUsagesWith(n.composedInput.head)
+            case notPhi =>
+              // Add this def to phi.
+              n.addComposedInput(notPhi)
+          }
       })
     }
 
@@ -104,6 +122,8 @@ object GraphFromAst {
           current = loopBodyStart
           buildStmt(loopEnv, body)
           attachNext(loopBodyEnd)
+
+          attachPhisForWhile(loopEnv, loopMerge)
 
           current = loopExit
 
