@@ -19,6 +19,6 @@ object Graph {
   case class UndefinedVarInGraph(name: String) extends Exception
   case class Unexpected(what: String) extends Exception
 
-  def interp(n: Node) = Interp.interp(n)
+  // def interp(n: Node) = Interp.interp(n)
 }
 

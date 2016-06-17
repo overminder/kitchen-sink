@@ -1,0 +1,10 @@
+{
+  x = 1
+  y = 2
+  if x < y then {
+    x = 5
+  } else {
+    y = 6
+  }
+  ret x + y
+}

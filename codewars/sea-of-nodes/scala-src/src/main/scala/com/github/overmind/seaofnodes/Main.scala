@@ -1,11 +1,9 @@
 package com.github.overmind.seaofnodes
 
-import java.io.{FileReader, FileWriter}
-import java.nio.CharBuffer
+import java.io.FileWriter
 
-import com.github.overmind.seaofnodes.hir.Graph.GraphBuilder
 import com.github.overmind.seaofnodes.hir._
-import com.github.overmind.seaofnodes.hir.nodes.{DotContext, Node}
+import com.github.overmind.seaofnodes.hir.nodes.Node
 
 import scala.io.Source
 
@@ -15,21 +13,13 @@ object Main {
     println(s"res: $res")
   }
 
-  def buildShallowRegion(s: ast.Stmt): Unit = {
-    val builder = ShallowRegionBuilder(s)
-    Graph.dfsRegion(builder.firstRegion) { b =>
-      println(s"$b")
-    }
-  }
-
   def buildGraph(s: ast.Stmt, name: String): Unit = {
-    val shallowBuilder = ShallowRegionBuilder(s)
-    val builder = GraphBuilder()
-    val entry = builder.build(shallowBuilder.firstRegion, shallowBuilder.endNode, s)
+    val builder = GraphFromAst.Builder(s)
+    builder.buildRoot()
     // Opt.simplifyControl(entry.successor.asInstanceOf[RegionNode], builder)
     // println(s"interp($name) => ${Graph.interp(entry)}")
 
-    renderNodeToDot(entry, name)
+    renderNodeToDot(builder.end, name)
 
     // val lgb = lir.GraphBuilder(entry)
     // val lg = lgb.build()
@@ -45,7 +35,7 @@ object Main {
   }
 
   def renderNodeToDot(s: Node, name: String): Unit = {
-    writeFile(s"dots/$name.dot", DotContext(name).addNode(s).render)
+    writeFile(s"dots/$name.dot", DotFromNode.gen(name, s, showBackedges = true))
   }
 
   def main(args: Array[String]): Unit = {
