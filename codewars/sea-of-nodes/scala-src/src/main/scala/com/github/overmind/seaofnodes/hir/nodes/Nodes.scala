@@ -1,6 +1,5 @@
 package com.github.overmind.seaofnodes.hir.nodes
 
-import com.github.overmind.seaofnodes.DotGen
 import com.github.overmind.seaofnodes.hir.Graph
 
 import scala.collection.mutable
@@ -79,12 +78,13 @@ sealed trait Node {
     }
   }
 
-  def replaceFirstInputWith(oldInput: Node, newInput: Node) = {
-    nodeClass.inputFields.find(replaceOn(_, oldInput, newInput)).get
+  // XXX: First or every?
+  def replaceMatchingInputWith(oldInput: Node, newInput: Node) = {
+    nodeClass.inputFields.foreach(replaceOn(_, oldInput, newInput))
   }
 
-  def replaceFirstSuccessorWith(oldSuccessor: Node, newSuccessor: Node) = {
-    nodeClass.successorFields.find(replaceOn(_, oldSuccessor, newSuccessor)).get
+  def replaceMatchingSuccessorWith(oldSuccessor: Node, newSuccessor: Node) = {
+    nodeClass.successorFields.foreach(replaceOn(_, oldSuccessor, newSuccessor))
   }
 
   def replaceOn(field: NodeField[this.type, Node], oldInput: Node, newInput: Node) = {
@@ -111,12 +111,12 @@ sealed trait Node {
 
   def replaceAllUsesWith(replacement: Node) = {
     uses.foreach(u => {
-      u.replaceFirstInputWith(this, replacement)
+      u.replaceMatchingInputWith(this, replacement)
     })
   }
 
   def replaceThisOnPredecessor(replacement: Node) = {
-    predecessor.replaceFirstSuccessorWith(this, replacement)
+    predecessor.replaceMatchingSuccessorWith(this, replacement)
   }
 
   def addSuccessor[N <: Node](successor: N): N = {
@@ -160,14 +160,15 @@ sealed trait Node {
   }
 
   protected def addRefToArray[A <: AnyRef](ref: A, toArray: Edges[A]): Unit = {
-    val ix = indexOfByRef(toArray, ref)
-    assert(ix < 0, s"Node $ref already exist on $this at $ix")
+    // Allow multiple copies to exist.
+    // val ix = indexOfByRef(toArray, ref)
+    // assert(ix < 0, s"Node $ref already exist on $this at $ix")
     toArray += ref
   }
 
   protected def removeRefFromArray[A <: AnyRef](ref: A, fromArray: Edges[A]): Unit = {
     val ix = indexOfByRef(fromArray, ref)
-    assert(ix >= 0, s"Node $ref doesn't exist on $this")
+    assert(ix >= 0, s"Node $ref doesn't exist on $this (fromArray = $fromArray)")
     fromArray.remove(ix)
   }
 
@@ -182,6 +183,9 @@ object Node {
 
 // Graal attaches lattices on ValueNodes - I current don't have such thing.
 sealed trait ValueNode extends Node
+
+// Pure operations
+sealed trait ValueNumberable extends ValueNode
 
 sealed trait LogicNode extends ValueNode
 
@@ -414,12 +418,29 @@ case class IfNode(protected var _value: LogicNode,
   override def nodeClass: NodeClass[IfNode] = IfNode.nodeClass
 }
 
-case class LitNode(v: Long) extends ValueNode {
-  def toShallowString: String = s"Lit $v"
+sealed trait LitNode extends ValueNode with ValueNumberable
+
+object LitNode {
+  def apply(b: Boolean): LogicNode = {
+    if (b) {
+      TrueNode
+    } else {
+      FalseNode
+    }
+  }
+
+  def apply(lval: Long): LitLongNode = {
+    LitLongNode(lval)
+  }
+}
+
+case class LitLongNode(v: Long) extends LitNode {
+  def toShallowString: String = s"LitLong $v"
   override def nodeClass = Node.nodeClass
 }
 
-sealed trait UnaryNode extends ValueNode with UseSingleValue[ValueNode] {
+// Pure
+sealed trait UnaryNode extends ValueNode with UseSingleValue[ValueNode] with ValueNumberable {
   override def nodeClass = UseSingleValue.nodeClass
 }
 
@@ -436,7 +457,8 @@ object BinaryNode {
   )
 }
 
-sealed trait BinaryNode extends ValueNode {
+// Pure
+sealed trait BinaryNode extends ValueNode with ValueNumberable {
   protected var _lhs: ValueNode
   protected var _rhs: ValueNode
 
@@ -457,43 +479,102 @@ sealed trait BinaryNode extends ValueNode {
 }
 
 object Simplifiable {
-  def binaryLitOp(op: (Long, Long) => Long)(lhs: ValueNode, rhs: ValueNode): Option[ValueNode] = {
-    (lhs, rhs) match {
-      case (LitNode(a), LitNode(b)) =>
-        Some(LitNode(op(a, b)))
+  def binaryOpLLL(op: (Long, Long) => Long)(lhs: ValueNode, rhs: ValueNode) = {
+    binaryOpLLV((v1, v2) => LitNode(op(v1, v2)))(lhs, rhs)
+  }
+
+  def binaryOpLLB(op: (Long, Long) => Boolean)(lhs: ValueNode, rhs: ValueNode) = {
+    binaryOpLLV((v1, v2) => LitNode(op(v1, v2)))(lhs, rhs)
+  }
+
+  def unaryOpLB(op: Long => Boolean)(v: ValueNode) = {
+    unaryOpLV(b => LitNode(op(b)))(v)
+  }
+
+  def unaryOpLV(op: Long => ValueNode)(v: ValueNode): Option[ValueNode] = {
+    v match {
+      case LitLongNode(lv) =>
+        Some(op(lv))
       case _ =>
         None
     }
   }
+
+  def binaryOpLLV(op: (Long, Long) => ValueNode)(lhs: ValueNode, rhs: ValueNode): Option[ValueNode] = {
+    (lhs, rhs) match {
+      case (LitLongNode(a), LitLongNode(b)) =>
+        Some(op(a, b))
+      case _ =>
+        None
+    }
+  }
+
 
   def ADD(a: Long, b: Long) = a + b
   def SUB(a: Long, b: Long) = a - b
   def LT(a: Long, b: Long) = if (a < b) 1 else 0
 }
 
-sealed trait BinaryArithNode extends BinaryNode
+sealed trait Simplifiable extends ValueNode {
+  protected def simplified: Option[ValueNode]
+
+  final def simplifyInGraph(g: Graph): ValueNode = {
+    simplified match {
+      case Some(newValue) =>
+        replaceAllUsesWith(newValue)
+        tryRemove()
+        newValue
+      case None =>
+        this
+    }
+  }
+}
+
+sealed trait BinaryArithNode extends BinaryNode with Simplifiable {
+  import Simplifiable._
+  def denoteOp: (Long, Long) => Long
+  override protected def simplified: Option[ValueNode] = {
+    binaryOpLLL(denoteOp)(lhs, rhs)
+  }
+}
+
 case class AddNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryArithNode {
   def toShallowString: String = s"+"
+
+  override def denoteOp: (Long, Long) => Long = _ + _
 }
 
 case class SubNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryArithNode {
   def toShallowString: String = s"-"
+
+  override def denoteOp: (Long, Long) => Long = _ - _
 }
 
 sealed trait UnaryLogicNode extends UnaryNode with LogicNode
-sealed trait BinaryLogicNode extends BinaryNode with LogicNode
+sealed trait BinaryLogicNode extends BinaryNode with LogicNode with Simplifiable {
+  import Simplifiable._
+  def denoteOp: (Long, Long) => Boolean
+  override protected def simplified: Option[ValueNode] = {
+    binaryOpLLB(denoteOp)(lhs, rhs)
+  }
+}
 case class LessThanNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryLogicNode {
   def toShallowString: String = s"<"
+  override def denoteOp = _ < _
 }
-case class IsTruthyNode(var _value: ValueNode) extends UnaryLogicNode {
+case class IsTruthyNode(var _value: ValueNode) extends UnaryNode with LogicNode with Simplifiable {
+  import Simplifiable._
+  override protected def simplified: Option[ValueNode] = {
+    unaryOpLB(_ != 0)(value)
+  }
   def toShallowString: String = s"isTruthy"
 }
 
-case object TrueNode extends LogicNode {
+case object TrueNode extends LogicNode with LitNode {
   override def toShallowString: String = "True"
   def nodeClass: NodeClass[Node] = Node.nodeClass
 }
-case object FalseNode extends LogicNode {
+case object FalseNode extends LogicNode with LitNode {
   override def toShallowString: String = "False"
   def nodeClass: NodeClass[Node] = Node.nodeClass
 }

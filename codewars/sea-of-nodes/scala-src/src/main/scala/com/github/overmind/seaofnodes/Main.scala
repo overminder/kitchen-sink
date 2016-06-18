@@ -14,12 +14,11 @@ object Main {
   }
 
   def buildGraph(s: ast.Stmt, name: String): Unit = {
-    val builder = GraphFromAst.Builder(s)
-    builder.buildRoot()
     // Opt.simplifyControl(entry.successor.asInstanceOf[RegionNode], builder)
     // println(s"interp($name) => ${Graph.interp(entry)}")
 
-    renderNodeToDot(builder.end, name)
+    val g = GraphFromAst.build(s)
+    renderNodeToDot(g.entry, name)
 
     // val lgb = lir.GraphBuilder(entry)
     // val lg = lgb.build()
@@ -35,7 +34,7 @@ object Main {
   }
 
   def renderNodeToDot(s: Node, name: String): Unit = {
-    writeFile(s"dots/$name.dot", DotFromNode.gen(name, s, showBackedges = true))
+    writeFile(s"dots/$name.dot", DotFromNode.gen(name, s))
   }
 
   def main(args: Array[String]): Unit = {

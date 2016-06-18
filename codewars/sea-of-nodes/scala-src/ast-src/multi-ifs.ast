@@ -1,0 +1,10 @@
+{
+  x = 0
+  if x < 3 then {
+    ret 3
+  } else if x < 2 then {
+    ret 2
+  } else {
+    ret 1
+  }
+}

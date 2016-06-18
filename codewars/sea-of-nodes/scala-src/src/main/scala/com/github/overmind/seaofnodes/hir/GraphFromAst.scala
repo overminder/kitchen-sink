@@ -9,27 +9,60 @@ import com.github.overmind.seaofnodes.hir.Graph.UndefinedVarInGraph
 import com.github.overmind.seaofnodes.hir.nodes._
 
 object GraphFromAst {
+  def build(rootStmt: Stmt): Graph = {
+    val b = Builder(rootStmt)
+    b.buildRoot()
+    b.g
+  }
+
   case class Builder(rootStmt: Stmt) {
     val start = GraphEntryNode()
     val end = GraphExitNode()
-    var current: SingleNext[Node] = start
+    val g = Graph(start, end)
+    var current: Option[SingleNext[Node]] = Some(start)
     var nextBlockId = 1
 
+    val cached = mutable.Map.empty[Node, Node]
+
     def buildRoot(): Unit = {
-      if (!buildStmtThatMightReturn(consEnv(NilEnv), rootStmt)) {
-        if (current != null) {
-          sys.error("You forget to write a return.")
-        }
+      buildStmt(consEnv(NilEnv), rootStmt)
+      if (current.isDefined) {
+        sys.error("You forget to write a return.")
       }
     }
 
-    def attachNext[N <: Node](next: N): N = {
-      current.next = next
-      next match {
-        case n: SingleNext[_] =>
-          current = n.asInstanceOf[SingleNext[Node]]
+    // Maybe move this to Graph?
+    def unique[N <: Node](n: N): N = {
+      n match {
+        case vn: ValueNumberable =>
+          g.unique(n)
         case _ =>
-          current = null
+          n
+      }
+    }
+
+    def simplify(n: Node): Node = {
+      unique(n match {
+        case s: Simplifiable =>
+          s.simplifyInGraph(g)
+        case _ =>
+          n
+      })
+    }
+
+    def attachNext[N <: Node](next: N): N = {
+      current match {
+        case Some(c) =>
+          c.next = next
+          next match {
+            case n: SingleNext[_] =>
+              current = Some(n.asInstanceOf[SingleNext[Node]])
+            case _ =>
+              current = None
+          }
+        case None =>
+          sys.error(s"Attaching dead code: $next")
+          ()
       }
       next
     }
@@ -65,22 +98,36 @@ object GraphFromAst {
       })
     }
 
+    def killPhisInAbruptlyReturnedWhileBody(loopEnv: MergingEnv) = {
+      loopEnv.possiblePhis.foreach({ case (k, phi) =>
+        loopEnv.body.getOrElse(k, sys.error("Impossible")) match {
+          case n =>
+            // All the possible phis should be degenerated.
+            assert(n eq phi)
+            val pointsTo = phi.composedInputs.head
+            phi.replaceAllUsesWith(pointsTo)
+            phi.remove()
+            // Should probably do this in a later phase with a worklist.
+            pointsTo.uses.foreach(simplify)
+        }
+      })
+    }
+
     def attachPhisOnWhile(loopEnv: MergingEnv, loopMerge: LoopBeginNode) = {
       // For each possibly phi-introducing use in the loop body...
-      loopEnv.possiblePhis.foreach({
-        case (k, phi) =>
-          loopEnv.body.getOrElse(k, sys.error("Impossible")) match {
-            // Check its definition at the loop exit
-            case n if phi eq n =>
-              // Not defined in the loop: degenerated phi.
-              val pointsTo = phi.composedInputs.head
-              phi.replaceAllUsesWith(pointsTo)
-              loopEnv.body += (k -> pointsTo)
-            case n =>
-              // Defined in the loop: add this def to phi.
-              phi.anchor = loopMerge
-              phi.addComposedInput(n)
-          }
+      loopEnv.possiblePhis.foreach({ case (k, phi) =>
+        loopEnv.body.getOrElse(k, sys.error("Impossible")) match {
+          // Check its definition at the loop exit
+          case n if phi eq n =>
+            // Not defined in the loop: degenerated phi.
+            val pointsTo = phi.composedInputs.head
+            phi.replaceAllUsesWith(pointsTo)
+            loopEnv.body += (k -> pointsTo)
+          case n =>
+            // Defined in the loop: add this def to phi.
+            phi.anchor = loopMerge
+            phi.addComposedInput(n)
+        }
       })
 
       // Calculate escaped defs.
@@ -109,20 +156,14 @@ object GraphFromAst {
       })
     }
 
-    def buildStmtThatMightReturn(env: Env, s: Stmt): Boolean = {
-      try {
-        buildStmt(env, s)
-        false
-      } catch {
-        case ReturnFrom(v) =>
-          val ret = RetNode(v)
-          attachNext(ret)
-          end.addReturn(ret)
-          true
-      }
-    }
-
     def buildStmt(env: Env, s: Stmt): Unit = {
+      val currentWit = current match {
+        case Some(x) =>
+          x
+        case None =>
+          return
+      }
+
       s match {
         case Begin(ss) => ss.foreach(buildStmt(env, _))
         case Assign(v, e) => v match {
@@ -141,17 +182,19 @@ object GraphFromAst {
           val tBegin = makeBegin
           val fBegin = makeBegin
           attachNext(IfNode(condNode, tBegin, fBegin))
-          current = tBegin
+          current = Some(tBegin)
           val tEnv = consEnv(env)
-          val tReturned = buildStmtThatMightReturn(tEnv, t)
+          buildStmt(tEnv, t)
           val tEnd = EndNode()
+          val tReturned = current.isEmpty
           if (!tReturned) {
             attachNext(tEnd)
           }
 
-          current = fBegin
+          current = Some(fBegin)
           val fEnv = consEnv(env)
-          val fReturned = buildStmtThatMightReturn(fEnv, f)
+          buildStmt(fEnv, f)
+          val fReturned = current.isEmpty
           val fEnd = EndNode()
           if (!fReturned)  {
             attachNext(fEnd)
@@ -163,17 +206,17 @@ object GraphFromAst {
             // Reopen the false branch
             val prevNext = fEnd.predecessor.asInstanceOf[SingleNext[Node]]
             prevNext.next = null
-            current = prevNext
+            current = Some(prevNext)
             fEnv.collapseDefs()
           } else if (fReturned) {
             // Reopen the true branch
             val prevNext = tEnd.predecessor.asInstanceOf[SingleNext[Node]]
             prevNext.next = null
-            current = prevNext
+            current = Some(prevNext)
             tEnv.collapseDefs()
           } else {
             val merge = makeMerge
-            current = merge
+            current = Some(merge)
             merge.addComingFrom(tEnd)
             merge.addComingFrom(fEnd)
             attachPhisAfterIf(tEnv, fEnv, merge)
@@ -193,30 +236,36 @@ object GraphFromAst {
           loopMerge.addComingFrom(loopBodyEnd)
           loopMerge.next = IfNode(condNode, loopBodyStart, loopExit)
 
-          current = loopBodyStart
-          val abruptReturn = buildStmtThatMightReturn(loopEnv, body)
+          current = Some(loopBodyStart)
+          buildStmt(loopEnv, body)
+          val abruptReturn = current.isEmpty
           if (abruptReturn) {
             // We are not on a merge node anymore,
             // rewrite [ ... -> End <- Merge -> If ] into [ ... -> If ],
             // and don't let any of the the newly created defs escape.
-            blockEnd.replaceThisOnPredecessor(loopMerge.next)
+            val ifNode = loopMerge.next
             loopMerge.remove()
+            blockEnd.replaceThisOnPredecessor(ifNode)
+            blockEnd.remove()
+            killPhisInAbruptlyReturnedWhileBody(loopEnv)
           } else {
             attachNext(loopBodyEnd)
             attachPhisOnWhile(loopEnv, loopMerge)
           }
 
-          current = loopExit
+          current = Some(loopExit)
 
         case Ret(e) =>
-          throw ReturnFrom(buildExpr(env, e))
+          val ret = RetNode(buildExpr(env, e))
+          attachNext(ret)
+          end.addReturn(ret)
       }
     }
 
     def buildExpr(env: Env, e: Expr): ValueNode = {
       e match {
-        case Binary(op, lhs, rhs) => denoteOp(op)(buildExpr(env, lhs), buildExpr(env, rhs))
-        case Lit(lval) => LitNode(lval)
+        case Binary(op, lhs, rhs) => simplify(denoteOp(op)(buildExpr(env, lhs), buildExpr(env, rhs))).asInstanceOf[ValueNode]
+        case Lit(lval) => unique(LitNode(lval))
         case LVar(v) => env.useVarOrThrow(v)
         case LIndex(base, index) =>
           attachNext(
@@ -336,7 +385,5 @@ object GraphFromAst {
 
     override def keys: Iterable[String] = body.keys ++ parent.keys
   }
-
-  case class ReturnFrom(n: ValueNode) extends Exception
 }
 
