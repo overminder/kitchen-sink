@@ -1,3 +1,10 @@
+### SSA Construction
+
+- http://ssabook.gforge.inria.fr/latest/book.pdf
+- http://compilers.cs.uni-saarland.de/papers/bbhlmz13cc.pdf
+- http://www-plan.cs.colorado.edu/diwan/7135/p1684-brandis.pdf
+- https://www.cs.princeton.edu/courses/archive/fall03/cs528/handouts/a%20fast%20algorithm%20for%20finding.pdf
+
 ### Sea of Nodes
 
 - http://hllvm.group.iteye.com/group/topic/39493
@@ -14,11 +21,13 @@
 - http://ssw.t/General/Staff/GD/APPLC-2013-paper_12.pdf
 - http://ssw.t/Research/Papers/Stadler14PhD/Thesis_Stadler_14.pdf
 
-### SSA Construction
+### SSA: SCCP
 
-- http://ssabook.gforge.inria.fr/latest/book.pdf
-- http://compilers.cs.uni-saarland.de/papers/bbhlmz13cc.pdf
-- http://www-plan.cs.colorado.edu/diwan/7135/p1684-brandis.pdf
+- https://paulbiggar.com/research/fit-2009.pdf
+
+### SSA: Reg Alloc
+
+- http://compilers.cs.ucla.edu/fernando/publications/drafts/survey.pdf
 
 ### Trace Compilation
 

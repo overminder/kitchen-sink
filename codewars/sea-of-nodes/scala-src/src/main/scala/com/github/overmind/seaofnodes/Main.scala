@@ -18,7 +18,9 @@ object Main {
     // println(s"interp($name) => ${Graph.interp(entry)}")
 
     val g = GraphFromAst.build(s)
+    // Opt.simplifyControl(g.entry, g)
     renderNodeToDot(g.entry, name)
+    println(s"Interp => ${Interp.interp(g.entry)}")
 
     // val lgb = lir.GraphBuilder(entry)
     // val lg = lgb.build()
@@ -38,8 +40,13 @@ object Main {
   }
 
   def main(args: Array[String]): Unit = {
+    val fileName = if (args.length == 0) {
+      "ast-src/fibo-iter.ast"
+    } else {
+      args(0)
+    }
     // buildShallowRegion(Ast.Sample.returns)
-    val prog = ast.Parser.parseStmt(readFile(args(0)))
+    val prog = ast.Parser.parseStmt(readFile(fileName))
     println(s"AST: $prog")
     buildGraph(prog, "loopSum")
   }

@@ -1,5 +1,7 @@
 package com.github.overmind.seaofnodes.ast
 
+import scala.collection.mutable.ArrayBuffer
+
 sealed trait Value {
   final def +(that: Value): Value = {
     LongValue(asLong + that.asLong)
@@ -13,14 +15,15 @@ sealed trait Value {
   final def at(index: Value): Value = {
     asArray(index.asLong.toInt)
   }
-  final def setAt(index: Value, to: Value): Unit = {
+  final def setAt(index: Value, to: Value): Value = {
     asArray(index.asLong.toInt) = to
+    to
   }
 
   def asLong: Long = {
     throw UnexpectedValue("Not a LongValue", this)
   }
-  def asArray: Array[Value] = {
+  def asArray: ArrayBuffer[Value] = {
     throw UnexpectedValue("Not an ArrayValue", this)
   }
   def asBoolean: Boolean = {
@@ -55,13 +58,13 @@ case class LongValue(lval: Long) extends Value {
   override def asLong = lval
 }
 
-case class ArrayValue(vs: Array[Value]) extends Value {
+case class ArrayValue(vs: ArrayBuffer[Value]) extends Value {
   override def asArray = vs
 }
 
 object ArrayValue {
   def create(len: Int): ArrayValue = {
-    ArrayValue(Array.fill(len)(null))
+    ArrayValue(ArrayBuffer.fill(len)(null))
   }
 }
 

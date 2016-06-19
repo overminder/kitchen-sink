@@ -57,10 +57,10 @@ case class Graph(entry: GraphEntryNode, exit: GraphExitNode) {
 
   // n should be a fresh node.
   def unique[N <: Node](n: N): N = {
+    assert(n.isInstanceOf[ValueNumberable])
     cached.get(n) match {
       case Some(n0) =>
         n.replaceAllUsesWith(n0)
-        n.remove()
         n0.asInstanceOf[N]
       case None =>
         cached += (n -> n)

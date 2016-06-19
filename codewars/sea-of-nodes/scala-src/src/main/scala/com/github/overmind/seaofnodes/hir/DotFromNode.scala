@@ -20,7 +20,7 @@ object DotFromNode {
 
     def renderedNode(n: Node): DotGen.NodeId = {
       nodes.getOrElseUpdate(n, {
-        g.addText(n.toShallowString)
+        g.addText(n.toString)
       })
     }
 

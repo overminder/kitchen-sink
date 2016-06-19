@@ -106,29 +106,34 @@ object GraphFromAst {
             assert(n eq phi)
             val pointsTo = phi.composedInputs.head
             phi.replaceAllUsesWith(pointsTo)
-            phi.remove()
+
             // Should probably do this in a later phase with a worklist.
-            pointsTo.uses.foreach(simplify)
+            // Yep - either this or simplify is unsound.
+            // pointsTo.uses.foreach(simplify)
         }
       })
     }
 
     def attachPhisOnWhile(loopEnv: MergingEnv, loopMerge: LoopBeginNode) = {
       // For each possibly phi-introducing use in the loop body...
-      loopEnv.possiblePhis.foreach({ case (k, phi) =>
+      val resolvedPhis = loopEnv.possiblePhis.map({ case (k, phi) =>
         loopEnv.body.getOrElse(k, sys.error("Impossible")) match {
           // Check its definition at the loop exit
           case n if phi eq n =>
             // Not defined in the loop: degenerated phi.
             val pointsTo = phi.composedInputs.head
             phi.replaceAllUsesWith(pointsTo)
-            loopEnv.body += (k -> pointsTo)
+            k -> pointsTo
           case n =>
             // Defined in the loop: add this def to phi.
             phi.anchor = loopMerge
             phi.addComposedInput(n)
+            // And let this value escape
+            k -> phi
         }
       })
+
+      loopEnv.body ++= resolvedPhis
 
       // Calculate escaped defs.
       val escapedValues = loopEnv.body.flatMap({ case (k, v) =>
@@ -289,25 +294,25 @@ object GraphFromAst {
     }
 
     def makeBegin = {
-      val n = BeginNode(nextBlockId)
+      val n = BeginNode()
       nextBlockId += 1
       n
     }
 
     def makeMerge = {
-      val n = MergeNode(nextBlockId)
+      val n = MergeNode()
       nextBlockId += 1
       n
     }
 
     def makeLoopBegin = {
-      val n = LoopBeginNode(nextBlockId)
+      val n = LoopBeginNode()
       nextBlockId += 1
       n
     }
 
     def makeLoopExit = {
-      val n = LoopExitNode(nextBlockId)
+      val n = LoopExitNode()
       nextBlockId += 1
       n
     }
@@ -371,11 +376,14 @@ object GraphFromAst {
 
     override def useVar(v: String): Option[ValueNode] = {
       body.get(v).orElse({
-        val parentV = parent.useVarOrThrow(v)
-        val phi = ValuePhiNode(null, Seq(parentV))
-        possiblePhis += (v -> phi)
-        body += (v -> phi)
-        Some(phi)
+        // If the def is not already present locally, the outer env must contain that.
+        parent.useVar(v).flatMap({ parentV =>
+          // The value could possibly be defined later in the loop body so we make a dummy phi for it.
+          val phi = ValuePhiNode(null, Seq(parentV))
+          possiblePhis += (v -> phi)
+          body += (v -> phi)
+          Some(phi)
+        })
       })
     }
 

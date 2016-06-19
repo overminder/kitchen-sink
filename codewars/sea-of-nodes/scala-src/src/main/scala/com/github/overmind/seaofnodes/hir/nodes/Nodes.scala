@@ -31,12 +31,25 @@ object NodeClass {
   }
 }
 
+object Node {
+  private var idGen = 1
+  def nextId = {
+    val r = idGen
+    idGen += 1
+    r
+  }
+
+  val nodeClass = NodeClass[Node]()
+}
+
 // NOTE: We deliberately allow null inputs. This makes partial nodes easier at the cost
 // of maintainability.
 sealed trait Node {
   type Edges[A] = ArrayBuffer[A]
   protected val _uses: Edges[Node] = ArrayBuffer.empty
   protected var _predecessor: Node = _
+
+  val id = Node.nextId
 
   def nodeClass: NodeClass[this.type]
 
@@ -64,7 +77,7 @@ sealed trait Node {
   }
 
   def toShallowString: String
-  override def toString: String = toShallowString
+  override def toString: String = s"$toShallowString @ $id"
 
   def remove(): Unit = {
     inputs.foreach(removeInput)
@@ -113,6 +126,7 @@ sealed trait Node {
     uses.foreach(u => {
       u.replaceMatchingInputWith(this, replacement)
     })
+    tryRemove()
   }
 
   def replaceThisOnPredecessor(replacement: Node) = {
@@ -177,10 +191,6 @@ sealed trait Node {
   }
 }
 
-object Node {
-  val nodeClass = NodeClass[Node]()
-}
-
 // Graal attaches lattices on ValueNodes - I current don't have such thing.
 sealed trait ValueNode extends Node
 
@@ -204,9 +214,7 @@ sealed trait SingleNext[N <: Node] extends Node {
   addSuccessor(_next)
 
   def next = _next
-  def next_=(newSucc: N) = {
-    _next = replaceSuccessor(_next, newSucc)
-  }
+  def next_=(newSucc: N) = _next = replaceSuccessor(_next, newSucc)
 }
 
 object UseSingleValue {
@@ -268,7 +276,6 @@ case class GraphExitNode(protected var _returns: mutable.Buffer[Node] = ArrayBuf
 
 // Marks the begin of a basic block
 sealed trait BaseBeginNode extends SingleNext[Node] {
-  def id: Int
   def anchored = uses
 }
 
@@ -311,28 +318,26 @@ object BaseMergeNode {
   )
 }
 
-case class LoopBeginNode(id: Int,
-                         protected var _comingFrom: ArrayBuffer[BaseEndNode] = ArrayBuffer.empty,
+case class LoopBeginNode(protected var _comingFrom: ArrayBuffer[BaseEndNode] = ArrayBuffer.empty,
                          protected var _next: Node = null) extends BaseMergeNode {
 
   override def toShallowString: String = "LoopBegin"
   override final def nodeClass = BaseMergeNode.nodeClass
 }
 
-case class MergeNode(id: Int,
-                      protected var _comingFrom: ArrayBuffer[BaseEndNode] = ArrayBuffer.empty,
+case class MergeNode(protected var _comingFrom: ArrayBuffer[BaseEndNode] = ArrayBuffer.empty,
                      protected var _next: Node = null) extends BaseMergeNode {
 
   override def toShallowString: String = "Merge"
   override final def nodeClass = BaseMergeNode.nodeClass
 }
 
-case class BeginNode(id: Int, protected var _next: Node = null) extends BaseBeginNode {
+case class BeginNode(protected var _next: Node = null) extends BaseBeginNode {
   override def toShallowString: String = "Begin"
   override def nodeClass: NodeClass[SingleNext[Node]] = SingleNext.nodeClass
 }
 
-case class LoopExitNode(id: Int, protected var _next: Node = null) extends BaseBeginNode {
+case class LoopExitNode(protected var _next: Node = null) extends BaseBeginNode {
   override def toShallowString: String = "LoopExit"
 
   def loopBegin = {
@@ -342,7 +347,12 @@ case class LoopExitNode(id: Int, protected var _next: Node = null) extends BaseB
   override def nodeClass: NodeClass[SingleNext[Node]] = SingleNext.nodeClass
 }
 
-sealed trait BaseEndNode extends Node
+sealed trait BaseEndNode extends Node {
+  def cfgSuccessor = {
+    assert(uses.length == 1)
+    uses.head.asInstanceOf[BaseBeginNode]
+  }
+}
 
 // Just a marker.
 sealed trait BaseBlockExitNode extends Node
@@ -350,10 +360,7 @@ sealed trait BaseBlockExitNode extends Node
 case class LoopEndNode() extends BaseEndNode with BaseBlockExitNode {
   override def toShallowString: String = "BlockEnd"
 
-  def loopBegin = {
-    assert(uses.length == 1)
-    uses.head.asInstanceOf[LoopBeginNode]
-  }
+  def loopBegin = cfgSuccessor.asInstanceOf[LoopBeginNode]
   def nodeClass: NodeClass[Node] = Node.nodeClass
 }
 
@@ -361,10 +368,6 @@ case class LoopEndNode() extends BaseEndNode with BaseBlockExitNode {
 case class EndNode() extends BaseEndNode with BaseBlockExitNode {
   override def toShallowString: String = "BlockEnd"
 
-  def cfgSuccessor = {
-    assert(uses.length == 1)
-    uses.head.asInstanceOf[BaseBeginNode]
-  }
   def nodeClass: NodeClass[Node] = Node.nodeClass
 }
 
@@ -410,9 +413,9 @@ case class IfNode(protected var _value: LogicNode,
   override def toShallowString: String = s"If"
 
   def t = _t
-  def t_=(t: BaseBeginNode) = _t = replaceInput(_t, t)
+  def t_=(t: BaseBeginNode) = _t = replaceSuccessor(_t, t)
   def f = _f
-  def f_=(f: BaseBeginNode) = _f = replaceInput(_f, f)
+  def f_=(f: BaseBeginNode) = _f = replaceSuccessor(_f, f)
 
   override def cfgSuccessors: Array[BaseBeginNode] = Array(_t, _f)
   override def nodeClass: NodeClass[IfNode] = IfNode.nodeClass
@@ -522,7 +525,6 @@ sealed trait Simplifiable extends ValueNode {
     simplified match {
       case Some(newValue) =>
         replaceAllUsesWith(newValue)
-        tryRemove()
         newValue
       case None =>
         this
@@ -583,14 +585,17 @@ case object FalseNode extends LogicNode with LitNode {
 // they are simply threaded between the containing block's begin and end node. We will do
 // floating on later phases.
 
+sealed trait HLEffectNode extends SingleNext[Node]
+sealed trait HLMemoryEffectNode extends HLEffectNode
+
 case class AllocFixedArrayNode(length: Int,
                                protected var _next: Node = null)
-  extends ValueNode with SingleNext[Node] {
+  extends ValueNode with HLMemoryEffectNode {
   override def toShallowString: String = s"AllocFixedArray(length = $length)"
   override def nodeClass = SingleNext.nodeClass
 }
 
-sealed trait ArrayIndexNode extends ValueNode with SingleNext[Node] {
+sealed trait ArrayIndexNode extends ValueNode with HLMemoryEffectNode {
   protected var _base: ValueNode
   protected var _index: ValueNode
 
