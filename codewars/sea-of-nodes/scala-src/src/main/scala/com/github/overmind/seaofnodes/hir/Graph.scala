@@ -43,6 +43,19 @@ object Graph {
     go(n)
   }
 
+  def dfsIdom(n: Node, onNode: Node => Unit) = {
+    val visited = emptyIdentitySet[Node]
+    def go(n: Node): Unit = {
+      if (visited.add(n)) {
+        onNode(n)
+        n.idom.foreach(go)
+      } else {
+        println(s"XXX: $n visited multiple times")
+      }
+    }
+    go(n)
+  }
+
   def dfsEdge(n: Node)(f: Edge => Unit) = {
     dfsNodeAndEdge(n, _ => (), f)
   }

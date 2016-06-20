@@ -37,6 +37,11 @@ object DotFromNode {
       Graph.dfsEdge(n) { e =>
         renderEdge(renderedNode(e.from), renderedNode(e.to), e.ix, e.isControlDep)
       }
+      Graph.dfsIdom(n, { n =>
+        n.idom.foreach(to => {
+          g.addEdge(renderedNode(n), renderedNode(to), ("color", "red"), ("style", "dotted"))
+        })
+      })
     }
 
     def render = g.toDot

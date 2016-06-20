@@ -16,3 +16,5 @@ object Assign {
 case class If(cond: Expr, t: Stmt, f: Stmt) extends Stmt
 case class While(cond: Expr, body: Stmt) extends Stmt
 case class Ret(e: Expr) extends Stmt
+
+case class FuncDef(args: Seq[String], body: Stmt)

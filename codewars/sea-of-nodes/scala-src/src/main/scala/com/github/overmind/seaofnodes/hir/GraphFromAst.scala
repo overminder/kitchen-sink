@@ -10,8 +10,16 @@ import com.github.overmind.seaofnodes.hir.nodes._
 
 object GraphFromAst {
   def build(rootStmt: Stmt): Graph = {
-    val b = Builder(rootStmt)
-    b.buildRoot()
+    build(FuncDef(Seq(), rootStmt))
+  }
+
+  def build(func: FuncDef): Graph = {
+    val b = Builder(func.body)
+    def mkArgNode(k: String, ix: Int) = {
+      k -> FuncArgNode(ix).asInstanceOf[ValueNode]
+    }
+    val baseEnv = mutable.Map(func.args.zipWithIndex.map((mkArgNode _).tupled): _*)
+    b.buildRoot(ConsEnv(baseEnv, NilEnv))
     b.g
   }
 
@@ -24,8 +32,8 @@ object GraphFromAst {
 
     val cached = mutable.Map.empty[Node, Node]
 
-    def buildRoot(): Unit = {
-      buildStmt(consEnv(NilEnv), rootStmt)
+    def buildRoot(entryEnv: Env = NilEnv): Unit = {
+      buildStmt(consEnv(entryEnv), rootStmt)
       if (current.isDefined) {
         sys.error("You forget to write a return.")
       }
@@ -186,7 +194,8 @@ object GraphFromAst {
           val condNode = asLogicNode(buildExpr(env, cond))
           val tBegin = makeBegin
           val fBegin = makeBegin
-          attachNext(IfNode(condNode, tBegin, fBegin))
+          val ifNode = IfNode(condNode, tBegin, fBegin)
+          attachNext(ifNode)
           current = Some(tBegin)
           val tEnv = consEnv(env)
           buildStmt(tEnv, t)
@@ -221,6 +230,7 @@ object GraphFromAst {
             tEnv.collapseDefs()
           } else {
             val merge = makeMerge
+            ifNode.merge = merge
             current = Some(merge)
             merge.addComingFrom(tEnd)
             merge.addComingFrom(fEnd)
@@ -239,7 +249,9 @@ object GraphFromAst {
           val loopExit = makeLoopExit
           loopMerge.addComingFrom(blockEnd)
           loopMerge.addComingFrom(loopBodyEnd)
-          loopMerge.next = IfNode(condNode, loopBodyStart, loopExit)
+          val ifNode = IfNode(condNode, loopBodyStart, loopExit)
+          loopMerge.next = ifNode
+          ifNode.merge = loopMerge
 
           current = Some(loopBodyStart)
           buildStmt(loopEnv, body)
@@ -248,7 +260,6 @@ object GraphFromAst {
             // We are not on a merge node anymore,
             // rewrite [ ... -> End <- Merge -> If ] into [ ... -> If ],
             // and don't let any of the the newly created defs escape.
-            val ifNode = loopMerge.next
             loopMerge.remove()
             blockEnd.replaceThisOnPredecessor(ifNode)
             blockEnd.remove()

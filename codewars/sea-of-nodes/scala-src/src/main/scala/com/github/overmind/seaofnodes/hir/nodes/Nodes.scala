@@ -53,6 +53,9 @@ sealed trait Node {
 
   def nodeClass: NodeClass[this.type]
 
+  // In a structured graph, can we simply gather this information when building the graph?
+  def idom: Seq[Node]
+
   def uses = _uses.toArray
   final def inputs: Array[Node] = inputsInternal.flatMap(Option(_)).toArray
   final def inputsInternal = {
@@ -192,7 +195,9 @@ sealed trait Node {
 }
 
 // Graal attaches lattices on ValueNodes - I current don't have such thing.
-sealed trait ValueNode extends Node
+sealed trait ValueNode extends Node {
+  override def idom: Seq[Node] = Seq()
+}
 
 // Pure operations
 sealed trait ValueNumberable extends ValueNode
@@ -240,6 +245,7 @@ sealed trait UseSingleValue[N <: ValueNode] extends Node {
 case class GraphEntryNode(protected var _next: Node = null) extends SingleNext[Node] {
   override def toShallowString: String = "Start"
   override def nodeClass = SingleNext.nodeClass
+  def idom = Seq(next)
 }
 
 object GraphExitNode {
@@ -253,6 +259,8 @@ object GraphExitNode {
 
 case class GraphExitNode(protected var _returns: mutable.Buffer[Node] = ArrayBuffer.empty)
   extends Node {
+
+  def idom = Seq()
 
   _returns.foreach(addInput)
 
@@ -277,6 +285,8 @@ case class GraphExitNode(protected var _returns: mutable.Buffer[Node] = ArrayBuf
 // Marks the begin of a basic block
 sealed trait BaseBeginNode extends SingleNext[Node] {
   def anchored = uses
+
+  def idom = Seq(next)
 }
 
 sealed trait BaseMergeNode extends BaseBeginNode {
@@ -352,6 +362,16 @@ sealed trait BaseEndNode extends Node {
     assert(uses.length == 1)
     uses.head.asInstanceOf[BaseBeginNode]
   }
+
+  def idom = {
+    cfgSuccessor match {
+      case loop: LoopBeginNode if loop.comingFrom(0) eq this =>
+        // This is a loop header
+        Seq(loop)
+      case _ =>
+        Seq()
+    }
+  }
 }
 
 // Just a marker.
@@ -381,6 +401,8 @@ case class RetNode(protected var _value: ValueNode = null)
   override def toShallowString: String = s"Ret"
 
   override def nodeClass: NodeClass[UseSingleValue[ValueNode]] = UseSingleValue.nodeClass
+
+  def idom = Seq()
 }
 
 object IfNode {
@@ -407,6 +429,8 @@ case class IfNode(protected var _value: LogicNode,
                   protected var _f: BaseBeginNode)
   extends ControlSplitNode with UseSingleValue[LogicNode] {
 
+  protected var _merge: BaseMergeNode = _
+
   addSuccessor(_t)
   addSuccessor(_f)
 
@@ -416,9 +440,24 @@ case class IfNode(protected var _value: LogicNode,
   def t_=(t: BaseBeginNode) = _t = replaceSuccessor(_t, t)
   def f = _f
   def f_=(f: BaseBeginNode) = _f = replaceSuccessor(_f, f)
+  def merge = _merge
+  def merge_=(newM: BaseMergeNode) = _merge = newM
 
   override def cfgSuccessors: Array[BaseBeginNode] = Array(_t, _f)
   override def nodeClass: NodeClass[IfNode] = IfNode.nodeClass
+
+  def idom = {
+    val more = merge match {
+      case null =>
+        None
+      case _: LoopBeginNode =>
+        assert(predecessor eq merge)
+        None
+      case _: MergeNode =>
+        Some(merge)
+    }
+    Seq(t, f) ++ more
+  }
 }
 
 sealed trait LitNode extends ValueNode with ValueNumberable
@@ -572,6 +611,12 @@ case class IsTruthyNode(var _value: ValueNode) extends UnaryNode with LogicNode 
   def toShallowString: String = s"isTruthy"
 }
 
+case class FuncArgNode(ix: Int) extends ValueNode {
+  override def nodeClass: NodeClass[FuncArgNode] = Node.nodeClass
+
+  override def toShallowString: String = s"Arg($ix)"
+}
+
 case object TrueNode extends LogicNode with LitNode {
   override def toShallowString: String = "True"
   def nodeClass: NodeClass[Node] = Node.nodeClass
@@ -585,17 +630,19 @@ case object FalseNode extends LogicNode with LitNode {
 // they are simply threaded between the containing block's begin and end node. We will do
 // floating on later phases.
 
-sealed trait HLEffectNode extends SingleNext[Node]
+sealed trait HLEffectNode extends SingleNext[Node] with ValueNode {
+  override def idom: Seq[Node] = Seq(next)
+}
 sealed trait HLMemoryEffectNode extends HLEffectNode
 
 case class AllocFixedArrayNode(length: Int,
                                protected var _next: Node = null)
-  extends ValueNode with HLMemoryEffectNode {
+  extends HLMemoryEffectNode {
   override def toShallowString: String = s"AllocFixedArray(length = $length)"
   override def nodeClass = SingleNext.nodeClass
 }
 
-sealed trait ArrayIndexNode extends ValueNode with HLMemoryEffectNode {
+sealed trait ArrayIndexNode extends HLMemoryEffectNode {
   protected var _base: ValueNode
   protected var _index: ValueNode
 

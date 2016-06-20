@@ -4,6 +4,10 @@ object Parser {
   def parseStmt(source: String) = {
     ParserInternal.stmtEnd.parse(source).get.value
   }
+
+  def parseFuncDef(source: String) = {
+    ParserInternal.funcDefEnd.parse(source).get.value
+  }
 }
 
 private object ParserInternal {
@@ -37,6 +41,9 @@ private object ParserInternal {
   val stmt: P[Stmt] = P(ifS | whileS | blockS | retS | assignS)
 
   val stmtEnd = P(stmt ~ End)
+
+  val funcDef = P("(" ~/ ident.rep ~/ ")" ~/ "=>" ~/ stmt).map(FuncDef.tupled)
+  val funcDefEnd = P(funcDef ~ End)
 
   def mkCall(args: Expr)(base: Expr): Expr = {
     (args, base) match {

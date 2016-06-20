@@ -1,15 +1,13 @@
-{
+(n) => {
   x = 0
-  i = 0
-  while i < 100 do {
-    if i < 25 then {
+  while x < n do {
+    if x < 25 then {
       x = x + 1
-    } else if i < 50 then {
+    } else if x < 50 then {
       x = x + 2
     } else {
       x = x + 3
     }
-    i = i + 1
   }
   ret x
 }
