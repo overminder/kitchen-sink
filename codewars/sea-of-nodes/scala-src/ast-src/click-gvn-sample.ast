@@ -1,0 +1,14 @@
+(a) => {
+  i = 0
+  c = 0
+  while 1 do {
+    b = a + 1
+    i = i + b
+    c = i + i
+    if 10 < i then {
+      ret c
+    } else {
+    }
+  }
+  ret c
+}

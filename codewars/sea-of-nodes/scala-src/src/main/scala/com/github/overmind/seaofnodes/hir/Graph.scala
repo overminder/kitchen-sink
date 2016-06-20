@@ -43,17 +43,25 @@ object Graph {
     go(n)
   }
 
-  def dfsIdom(n: Node, onNode: Node => Unit) = {
+  case class IDomEdge(idom: Node, of: Node, treeDepth: Int, loopNestingDepth: Int)
+
+  def dfsIdom(n: Node, onEdge: IDomEdge => Unit) = {
     val visited = emptyIdentitySet[Node]
-    def go(n: Node): Unit = {
-      if (visited.add(n)) {
-        onNode(n)
-        n.idom.foreach(go)
-      } else {
-        println(s"XXX: $n visited multiple times")
+    def go(idom: Node, treeDepth: Int, loopNestingDepth: Int): Unit = {
+      val newDepth = treeDepth + 1
+      val loopDepthDiff = idom match {
+        case _: LoopBeginNode => 1
+        case _: LoopExitNode => -1
+        case _ => 0
       }
+      val newLoopNestingDepth = loopNestingDepth + loopDepthDiff
+      assert(visited.add(idom))
+      idom.isIDomOf.foreach(of => {
+        onEdge(IDomEdge(idom, of, newDepth, newLoopNestingDepth))
+        go(of, newDepth, newLoopNestingDepth)
+      })
     }
-    go(n)
+    go(n, 0, 0)
   }
 
   def dfsEdge(n: Node)(f: Edge => Unit) = {

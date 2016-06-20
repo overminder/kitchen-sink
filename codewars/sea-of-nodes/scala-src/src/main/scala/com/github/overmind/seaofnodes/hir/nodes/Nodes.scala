@@ -54,7 +54,7 @@ sealed trait Node {
   def nodeClass: NodeClass[this.type]
 
   // In a structured graph, can we simply gather this information when building the graph?
-  def idom: Seq[Node]
+  def isIDomOf: Seq[Node]
 
   def uses = _uses.toArray
   final def inputs: Array[Node] = inputsInternal.flatMap(Option(_)).toArray
@@ -196,7 +196,7 @@ sealed trait Node {
 
 // Graal attaches lattices on ValueNodes - I current don't have such thing.
 sealed trait ValueNode extends Node {
-  override def idom: Seq[Node] = Seq()
+  override def isIDomOf: Seq[Node] = Seq()
 }
 
 // Pure operations
@@ -245,7 +245,7 @@ sealed trait UseSingleValue[N <: ValueNode] extends Node {
 case class GraphEntryNode(protected var _next: Node = null) extends SingleNext[Node] {
   override def toShallowString: String = "Start"
   override def nodeClass = SingleNext.nodeClass
-  def idom = Seq(next)
+  def isIDomOf = Seq(next)
 }
 
 object GraphExitNode {
@@ -260,7 +260,7 @@ object GraphExitNode {
 case class GraphExitNode(protected var _returns: mutable.Buffer[Node] = ArrayBuffer.empty)
   extends Node {
 
-  def idom = Seq()
+  def isIDomOf = Seq()
 
   _returns.foreach(addInput)
 
@@ -286,7 +286,7 @@ case class GraphExitNode(protected var _returns: mutable.Buffer[Node] = ArrayBuf
 sealed trait BaseBeginNode extends SingleNext[Node] {
   def anchored = uses
 
-  def idom = Seq(next)
+  def isIDomOf = Seq(next)
 }
 
 sealed trait BaseMergeNode extends BaseBeginNode {
@@ -363,7 +363,7 @@ sealed trait BaseEndNode extends Node {
     uses.head.asInstanceOf[BaseBeginNode]
   }
 
-  def idom = {
+  def isIDomOf = {
     cfgSuccessor match {
       case loop: LoopBeginNode if loop.comingFrom(0) eq this =>
         // This is a loop header
@@ -402,7 +402,7 @@ case class RetNode(protected var _value: ValueNode = null)
 
   override def nodeClass: NodeClass[UseSingleValue[ValueNode]] = UseSingleValue.nodeClass
 
-  def idom = Seq()
+  def isIDomOf = Seq()
 }
 
 object IfNode {
@@ -446,7 +446,7 @@ case class IfNode(protected var _value: LogicNode,
   override def cfgSuccessors: Array[BaseBeginNode] = Array(_t, _f)
   override def nodeClass: NodeClass[IfNode] = IfNode.nodeClass
 
-  def idom = {
+  def isIDomOf = {
     val more = merge match {
       case null =>
         None
@@ -631,7 +631,7 @@ case object FalseNode extends LogicNode with LitNode {
 // floating on later phases.
 
 sealed trait HLEffectNode extends SingleNext[Node] with ValueNode {
-  override def idom: Seq[Node] = Seq(next)
+  override def isIDomOf: Seq[Node] = Seq(next)
 }
 sealed trait HLMemoryEffectNode extends HLEffectNode
 

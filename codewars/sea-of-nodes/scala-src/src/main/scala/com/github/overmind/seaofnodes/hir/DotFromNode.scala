@@ -18,9 +18,9 @@ object DotFromNode {
     val g = DotGen.Graph(name)
     val nodes = Graph.emptyIdentityMap[Node, NodeId]
 
-    def renderedNode(n: Node): DotGen.NodeId = {
+    def renderedNode(n: Node, extra: String = ""): DotGen.NodeId = {
       nodes.getOrElseUpdate(n, {
-        g.addText(n.toString)
+        g.addText(n.toString + extra)
       })
     }
 
@@ -34,14 +34,13 @@ object DotFromNode {
     }
 
     def addNode(n: Node) = {
+      Graph.dfsIdom(n, { e =>
+        val renderedOf = renderedNode(e.of, s", td(${e.treeDepth}):ld(${e.loopNestingDepth})")
+        g.addEdge(renderedNode(e.idom), renderedOf, ("color", "red"), ("style", "dotted"))
+      })
       Graph.dfsEdge(n) { e =>
         renderEdge(renderedNode(e.from), renderedNode(e.to), e.ix, e.isControlDep)
       }
-      Graph.dfsIdom(n, { n =>
-        n.idom.foreach(to => {
-          g.addEdge(renderedNode(n), renderedNode(to), ("color", "red"), ("style", "dotted"))
-        })
-      })
     }
 
     def render = g.toDot
