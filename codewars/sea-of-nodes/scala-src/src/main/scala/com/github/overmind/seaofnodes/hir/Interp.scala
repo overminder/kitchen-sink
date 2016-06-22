@@ -79,8 +79,8 @@ case class Interp(args: Seq[Value] = Seq(),
       case n: RetNode =>
         throw ReturnException(goV(n.value))
 
-      case eff: HLEffectNode =>
-        eff match {
+      case fix: FixedWithNextNode =>
+        fix match {
           case n: AllocFixedArrayNode =>
             // XXX: Control dependency
             val v = ArrayValue.create(n.length)
@@ -92,8 +92,10 @@ case class Interp(args: Seq[Value] = Seq(),
           case n: WriteArrayNode =>
             // XXX: Control dependency
             goV(n.base).setAt(goV(n.index), goV(n.value))
+          case n: ScheduledNode =>
+            env += (n -> goV(n.value))
         }
-        go(eff.next)
+        go(fix.next)
 
       case n: ValueNode =>
         sys.error(s"Shouldn't evaluate value nodes here: $n")
@@ -136,8 +138,9 @@ case class Interp(args: Seq[Value] = Seq(),
         BoolValue(goV(n).asInstanceOf[LongValue].lval)
       case phi: ValuePhiNode =>
         env(phi)
-      case eff: HLEffectNode =>
-        env(eff)
+      case fix: FixedWithNextNode =>
+        // This should have been evaluated in go.
+        env(fix)
       case arg: FuncArgNode =>
         args(arg.ix)
       case _ =>

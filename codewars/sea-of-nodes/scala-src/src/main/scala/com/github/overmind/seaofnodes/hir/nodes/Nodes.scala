@@ -630,10 +630,7 @@ case object FalseNode extends LogicNode with LitNode {
 // they are simply threaded between the containing block's begin and end node. We will do
 // floating on later phases.
 
-sealed trait HLEffectNode extends SingleNext[Node] with ValueNode {
-  override def isIDomOf: Seq[Node] = Seq(next)
-}
-sealed trait HLMemoryEffectNode extends HLEffectNode
+sealed trait HLMemoryEffectNode extends FixedWithNextNode
 
 case class AllocFixedArrayNode(length: Int,
                                protected var _next: Node = null)
@@ -730,6 +727,37 @@ sealed trait AnchoredNode extends ValueNode {
   def anchor_=(newAnchor: BaseBeginNode): Unit = {
     _anchor = replaceInput(_anchor, newAnchor)
   }
+}
+
+object ScheduledNode {
+  val nodeClass = NodeClass(
+    Array[NodeField[ScheduledNode, Node]](
+      SimpleNodeField[ScheduledNode, Node](
+        _.value,
+        (s, a) => s.value = a.asInstanceOf[ValueNode]
+      )
+    ),
+    Array[NodeField[ScheduledNode, Node]](
+      SimpleNodeField(
+        _.next,
+        (s, a) => s.next = a
+      )
+    )
+  )
+}
+
+sealed trait FixedWithNextNode extends SingleNext[Node] with ValueNode {
+  override def isIDomOf: Seq[Node] = Seq(_next)
+}
+
+case class ScheduledNode(protected var _value: ValueNode,
+                         protected var _next: Node)
+  extends UseSingleValue[ValueNode] with FixedWithNextNode {
+  override def nodeClass: NodeClass[ScheduledNode] = ScheduledNode.nodeClass
+
+  override def toShallowString: String = value.toShallowString
+
+  override def isIDomOf: Seq[Node] = Seq(_next)
 }
 
 sealed trait BasePhiNode[N <: ValueNode] extends AnchoredNode {

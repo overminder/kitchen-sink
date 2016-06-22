@@ -49,14 +49,14 @@ object Graph {
     val visited = emptyIdentitySet[Node]
     def go(idom: Node, treeDepth: Int, loopNestingDepth: Int): Unit = {
       val newDepth = treeDepth + 1
-      val loopDepthDiff = idom match {
-        case _: LoopBeginNode => 1
-        case _: LoopExitNode => -1
-        case _ => 0
-      }
-      val newLoopNestingDepth = loopNestingDepth + loopDepthDiff
       assert(visited.add(idom))
       idom.isIDomOf.foreach(of => {
+        val newLoopNestingDepth = of match {
+          case _: LoopBeginNode => 1 + loopNestingDepth
+          case _: LoopExitNode => -1 + loopNestingDepth
+          case _: RetNode => 0
+          case _ => loopNestingDepth
+        }
         onEdge(IDomEdge(idom, of, newDepth, newLoopNestingDepth))
         go(of, newDepth, newLoopNestingDepth)
       })
