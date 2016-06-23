@@ -43,7 +43,7 @@ object Graph {
     go(n)
   }
 
-  case class IDomEdge(idom: Node, of: Node, treeDepth: Int, loopNestingDepth: Int)
+  case class IDomEdge(idom: Option[Node], of: Node, treeDepth: Int, loopNestingDepth: Int)
 
   def dfsIdom(n: Node, onEdge: IDomEdge => Unit) = {
     val visited = emptyIdentitySet[Node]
@@ -57,10 +57,11 @@ object Graph {
           case _: RetNode => 0
           case _ => loopNestingDepth
         }
-        onEdge(IDomEdge(idom, of, newDepth, newLoopNestingDepth))
+        onEdge(IDomEdge(Some(idom), of, newDepth, newLoopNestingDepth))
         go(of, newDepth, newLoopNestingDepth)
       })
     }
+    onEdge(IDomEdge(None, n, 0, 0))
     go(n, 0, 0)
   }
 

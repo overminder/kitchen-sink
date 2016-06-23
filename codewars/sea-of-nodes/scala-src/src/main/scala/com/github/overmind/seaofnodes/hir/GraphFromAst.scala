@@ -27,7 +27,11 @@ object GraphFromAst {
     val start = GraphEntryNode()
     val end = GraphExitNode()
     val g = Graph(start, end)
-    var current: Option[SingleNext[Node]] = Some(start)
+    var current: Option[SingleNext[Node]] = {
+      val b = BeginNode()
+      start.next = b
+      Some(b)
+    }
     var nextBlockId = 1
 
     val cached = mutable.Map.empty[Node, Node]

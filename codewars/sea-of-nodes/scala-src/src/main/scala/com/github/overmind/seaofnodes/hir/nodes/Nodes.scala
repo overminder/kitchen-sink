@@ -125,11 +125,13 @@ sealed trait Node {
     }
   }
 
-  def replaceAllUsesWith(replacement: Node) = {
+  def replaceAllUsesWith(replacement: Node, keepAlive: Boolean = false) = {
     uses.foreach(u => {
       u.replaceMatchingInputWith(this, replacement)
     })
-    tryRemove()
+    if (!keepAlive) {
+      tryRemove()
+    }
   }
 
   def replaceThisOnPredecessor(replacement: Node) = {
@@ -245,7 +247,9 @@ sealed trait UseSingleValue[N <: ValueNode] extends Node {
 case class GraphEntryNode(protected var _next: Node = null) extends SingleNext[Node] {
   override def toShallowString: String = "Start"
   override def nodeClass = SingleNext.nodeClass
-  def isIDomOf = Seq(next)
+
+  // In a structured graph, can we simply gather this information when building the graph?
+  override def isIDomOf: Seq[Node] = Seq(next)
 }
 
 object GraphExitNode {
@@ -375,7 +379,9 @@ sealed trait BaseEndNode extends Node {
 }
 
 // Just a marker.
-sealed trait BaseBlockExitNode extends Node
+sealed trait BaseBlockExitNode extends Node {
+  def belongsToBlock = predecessor.asInstanceOf[BaseBeginNode]
+}
 
 case class LoopEndNode() extends BaseEndNode with BaseBlockExitNode {
   override def toShallowString: String = "BlockEnd"
@@ -719,7 +725,7 @@ object WriteArrayNode {
   )
 }
 
-sealed trait AnchoredNode extends ValueNode {
+sealed trait BaseAnchoredNode extends ValueNode {
   protected var _anchor: BaseBeginNode
   addInput(_anchor)
 
@@ -727,6 +733,26 @@ sealed trait AnchoredNode extends ValueNode {
   def anchor_=(newAnchor: BaseBeginNode): Unit = {
     _anchor = replaceInput(_anchor, newAnchor)
   }
+}
+
+object AnchoredNode {
+  val nodeClass = NodeClass(
+    SimpleNodeField[AnchoredNode, Node](
+      _.value,
+      (s, a) => s.value = a.asInstanceOf[ValueNode]
+    ),
+    SimpleNodeField[AnchoredNode, Node](
+      _.anchor,
+      (s, a) => s.anchor = a.asInstanceOf[BaseBeginNode]
+    )
+  )
+}
+
+case class AnchoredNode(protected var _value: ValueNode, protected var _anchor: BaseBeginNode)
+  extends BaseAnchoredNode with UseSingleValue[ValueNode] {
+  override def nodeClass: NodeClass[AnchoredNode] = AnchoredNode.nodeClass
+
+  override def toShallowString: String = "Anchored"
 }
 
 object ScheduledNode {
@@ -760,9 +786,11 @@ case class ScheduledNode(protected var _value: ValueNode,
   override def isIDomOf: Seq[Node] = Seq(_next)
 }
 
-sealed trait BasePhiNode[N <: ValueNode] extends AnchoredNode {
+sealed trait BasePhiNode[N <: ValueNode] extends BaseAnchoredNode {
   protected var _composedInputs: ArrayBuffer[N]
   _composedInputs.foreach(addInput)
+
+  override def anchor: BaseMergeNode = _anchor.asInstanceOf[BaseMergeNode]
 
   def composedInputs = _composedInputs
   def addComposedInput(n: N): N = {

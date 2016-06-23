@@ -36,7 +36,9 @@ object DotFromNode {
     def addNode(n: Node) = {
       Graph.dfsIdom(n, { e =>
         val renderedOf = renderedNode(e.of, s", td(${e.treeDepth}):ld(${e.loopNestingDepth})")
-        g.addEdge(renderedNode(e.idom), renderedOf, ("color", "red"), ("style", "dotted"))
+        e.idom.foreach(idom => {
+          g.addEdge(renderedNode(idom), renderedOf, ("color", "red"), ("style", "dotted"))
+        })
       })
       Graph.dfsEdge(n) { e =>
         renderEdge(renderedNode(e.from), renderedNode(e.to), e.ix, e.isControlDep)

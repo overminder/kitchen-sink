@@ -63,6 +63,13 @@ case class Interp(args: Seq[Value] = Seq(),
         go(n.next)
 
       case n: BaseBeginNode =>
+        n.anchored.foreach {
+          case n: AnchoredNode =>
+            // Populate their values
+            goV(n)
+          case _ =>
+            sys.error(s"Unexpected node in BaseBeginNode: $n")
+        }
         go(n.next)
 
       case n: BaseEndNode =>
@@ -138,6 +145,8 @@ case class Interp(args: Seq[Value] = Seq(),
         BoolValue(goV(n).asInstanceOf[LongValue].lval)
       case phi: ValuePhiNode =>
         env(phi)
+      case anc: AnchoredNode =>
+        env.getOrElseUpdate(anc, goV(anc.value))
       case fix: FixedWithNextNode =>
         // This should have been evaluated in go.
         env(fix)
