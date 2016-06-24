@@ -1,0 +1,9 @@
+() => {
+  i = 0
+  s = 0
+  while i < 10 do {
+    i = i + 1
+    s = s + i
+  }
+  ret s
+}

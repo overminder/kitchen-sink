@@ -15,7 +15,7 @@ object Main {
   }
 
   def interpGraph(g: Graph, args: Seq[ast.Value]) = {
-    val terp = Interp(args)
+    val terp = Interp(args, verbose = true)
     println(s"Interp => ${terp.run(g.entry)}")
   }
 
@@ -24,7 +24,8 @@ object Main {
     // println(s"interp($name) => ${Graph.interp(entry)}")
 
     val g = GraphFromAst.build(s)
-    Gcm(g).scheduleLate(true)
+    // Gcm(g).scheduleEarly(true)
+    // Gcm(g).scheduleLate(true)
     // Opt.simplifyControl(g.entry, g)
     renderNodeToDot(g.entry, name)
     g
@@ -56,6 +57,7 @@ object Main {
     val func = ast.Parser.parseFuncDef(readFile(fileName))
     println(s"AST: $func")
     val g = buildGraph(func, "last")
+    println("Before interp")
     interpGraph(g, funcArgs)
   }
 }

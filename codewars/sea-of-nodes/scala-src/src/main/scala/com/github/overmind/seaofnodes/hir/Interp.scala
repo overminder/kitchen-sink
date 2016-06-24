@@ -36,40 +36,38 @@ case class Interp(args: Seq[Value] = Seq(),
         go(n.next)
       case n: GraphExitNode =>
         throw UnexpectedNode("GraphExitNode reached", n)
-      case n: BaseMergeNode =>
-        // Calculate phi
-        comingFrom match {
-          case None =>
-            assert(n.valuePhis.isEmpty, s"Entry region has phis: $n")
-          case Some(lastR) =>
-            val comingFromIx = n.comingFrom.indexWhere(_ eq lastR)
-            val newPhis = n.valuePhis.map(phi => {
-              val c = phi.composedInputs(comingFromIx)
-              pIndent(s"Pulling $phi from ix($comingFromIx)")
-              // Copy the value from the compose node to the phi.
-              val v = goV(c)
-              pDedent(s"$phi = $v")
-              (phi, v)
-            })
-            // And write back the freshly composed values.
-            // This has to be done in a two-step style so that the newly composed values will not
-            // interfere with the old ones consumed by the phi nodes.
-            newPhis.foreach({ case (phi, v) =>
-              putPhi(phi, v)
-            })
-        }
-
-        // And jump to the next region.
-        go(n.next)
 
       case n: BaseBeginNode =>
-        n.anchored.foreach {
-          case n: AnchoredNode =>
-            // Populate their values
-            goV(n)
+        n match {
+          // Is merge: calculate phi
+          case merge: BaseMergeNode =>
+            comingFrom match {
+              case None =>
+                assert(merge.valuePhis.isEmpty, s"Entry region has phis: $n")
+              case Some(lastR) =>
+                val comingFromIx = merge.comingFrom.indexWhere(_ eq lastR)
+                val newPhis = merge.valuePhis.map(phi => {
+                  val c = phi.composedInputs(comingFromIx)
+                  pIndent(s"Pulling $phi from ix($comingFromIx)")
+                  // Copy the value from the compose node to the phi.
+                  val v = goV(c)
+                  pDedent(s"$phi = $v")
+                  (phi, v)
+                })
+                // And write back the freshly composed values.
+                // This has to be done in a two-step style so that the newly composed values will not
+                // interfere with the old ones consumed by the phi nodes.
+                newPhis.foreach({ case (phi, v) =>
+                  putPhi(phi, v)
+                })
+            }
           case _ =>
-            sys.error(s"Unexpected node in BaseBeginNode: $n")
+            ()
         }
+        // `Forget` old anchored values.
+        n.anchored.foreach(env -= _)
+        // Evaluate other anchored nodes.
+        n.anchored.foreach(goV)
         go(n.next)
 
       case n: BaseEndNode =>
@@ -145,7 +143,7 @@ case class Interp(args: Seq[Value] = Seq(),
         BoolValue(goV(n).asInstanceOf[LongValue].lval)
       case phi: ValuePhiNode =>
         env(phi)
-      case anc: AnchoredNode =>
+      case anc: AnchoringNode =>
         env.getOrElseUpdate(anc, goV(anc.value))
       case fix: FixedWithNextNode =>
         // This should have been evaluated in go.

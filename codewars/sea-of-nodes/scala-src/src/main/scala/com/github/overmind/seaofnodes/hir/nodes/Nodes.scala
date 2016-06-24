@@ -51,7 +51,17 @@ object Node {
     }
   }
 
+  def asNodeOtherThan[A <: Node: ClassTag](n: Node): Option[Node] = {
+    n match {
+      case v: A =>
+        None
+      case _ =>
+        Some(n)
+    }
+  }
+
   def asValueNode(n: Node) = asSomeNode[ValueNode](n)
+  def asControlNode(n: Node) = asNodeOtherThan[ValueNode](n)
 }
 
 // NOTE: We deliberately allow null inputs. This makes partial nodes easier at the cost
@@ -68,7 +78,8 @@ sealed trait Node {
   // In a structured graph, can we simply gather this information when building the graph?
   def isIDomOf: Seq[Node]
 
-  final def uses: Seq[Node] = _uses
+  final def uses: Seq[Node] = _uses.flatMap(Option(_))
+  final def controlUses: Seq[Node] = _uses.flatMap(Node.asNodeOtherThan(_))
   final def valueUses: Seq[ValueNode] = _uses.flatMap(Node.asValueNode)
 
   final def inputs: Seq[Node] = inputsInternal.flatMap(Option(_))
@@ -304,7 +315,7 @@ case class GraphExitNode(protected var _returns: mutable.Buffer[Node] = ArrayBuf
 
 // Marks the begin of a basic block
 sealed trait BaseBeginNode extends SingleNext[Node] {
-  def anchored = uses
+  def anchored = uses.flatMap(Node.asSomeNode[AnchoringNode](_))
 
   def isIDomOf = Seq(next)
 }
@@ -429,7 +440,7 @@ object IfNode {
   val nodeClass = NodeClass(
     Seq[NodeField[IfNode, Node]](SimpleNodeField(
       _.value,
-      (s, a) => s.value = a.asInstanceOf[LogicNode]
+      (s, a) => s.value = a.asInstanceOf[ValueNode]
     )),
     Seq[NodeField[IfNode, Node]](
       SimpleNodeField(
@@ -444,10 +455,10 @@ object IfNode {
   )
 }
 
-case class IfNode(protected var _value: LogicNode,
+case class IfNode(protected var _value: ValueNode,
                   protected var _t: BaseBeginNode,
                   protected var _f: BaseBeginNode)
-  extends ControlSplitNode with UseSingleValue[LogicNode] {
+  extends ControlSplitNode with UseSingleValue[ValueNode] {
 
   protected var _merge: BaseMergeNode = _
 
@@ -749,24 +760,24 @@ sealed trait BaseAnchoredNode extends ValueNode {
   }
 }
 
-object AnchoredNode {
+object AnchoringNode {
   val nodeClass = NodeClass(
-    SimpleNodeField[AnchoredNode, Node](
+    SimpleNodeField[AnchoringNode, Node](
       _.value,
       (s, a) => s.value = a.asInstanceOf[ValueNode]
     ),
-    SimpleNodeField[AnchoredNode, Node](
+    SimpleNodeField[AnchoringNode, Node](
       _.anchor,
       (s, a) => s.anchor = a.asInstanceOf[BaseBeginNode]
     )
   )
 }
 
-case class AnchoredNode(protected var _value: ValueNode, protected var _anchor: BaseBeginNode)
+case class AnchoringNode(protected var _value: ValueNode, protected var _anchor: BaseBeginNode)
   extends BaseAnchoredNode with UseSingleValue[ValueNode] {
-  override def nodeClass: NodeClass[AnchoredNode] = AnchoredNode.nodeClass
+  override def nodeClass: NodeClass[AnchoringNode] = AnchoringNode.nodeClass
 
-  override def toShallowString: String = "Anchored"
+  override def toShallowString: String = "Anchoring"
 }
 
 object ScheduledNode {

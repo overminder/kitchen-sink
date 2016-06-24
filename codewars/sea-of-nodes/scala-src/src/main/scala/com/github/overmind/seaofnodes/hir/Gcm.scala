@@ -22,8 +22,32 @@ object IDomTree {
 // Click's Global Code Motion.
 case class Gcm(g: Graph) {
   val idomTree = IDomTree.build(g)
-  val earliestScheduleOf = Graph.emptyIdentityMap[ValueNode, BaseBeginNode]
-  val latestScheduleOf = Graph.emptyIdentityMap[ValueNode, BaseBeginNode]
+  val earliestSchedules = Graph.emptyIdentityMap[ValueNode, BaseBeginNode]
+  val latestSchedules = Graph.emptyIdentityMap[ValueNode, BaseBeginNode]
+
+  def latestScheduleOf(n: ValueNode): BaseBeginNode = {
+    val onExit = n.controlUses.flatMap({
+      case exit: BaseBlockExitNode =>
+        Some(exit)
+      case _ =>
+        None
+    })
+    assert(onExit.length <= 1)
+    if (onExit.isEmpty) {
+      latestSchedules(n)
+    } else {
+      onExit.head.belongsToBlock
+    }
+  }
+
+  def earliestScheduleOf(n: ValueNode): BaseBeginNode = {
+    n match {
+      case an: BaseAnchoredNode =>
+        an.anchor
+      case _ =>
+        earliestSchedules(n)
+    }
+  }
 
   def firstBlock = g.entry.next
 
@@ -55,11 +79,13 @@ case class Gcm(g: Graph) {
     schedule.foreach({ case (n, nb) =>
       n match {
         case an: BaseAnchoredNode =>
-        // Already anchored.
+          // Already anchored.
+          ()
 
         case _ =>
+          println(s"writeBack: wrapping $n")
           // Not an anchored node: need to wrap it
-          val anchored = AnchoredNode(null, nb.asInstanceOf[BaseBeginNode])
+          val anchored = AnchoringNode(null, nb.asInstanceOf[BaseBeginNode])
           n.replaceAllUsesWith(anchored, keepAlive = true)
           anchored.value = n
       }
@@ -67,32 +93,38 @@ case class Gcm(g: Graph) {
   }
 
   def writeBackEarlySchedule(): Unit = {
-    writeBackSchedule(earliestScheduleOf)
+    writeBackSchedule(earliestSchedules)
   }
 
   def writeBackLateSchedule(): Unit = {
-    writeBackSchedule(latestScheduleOf)
+    writeBackSchedule(latestSchedules)
   }
 
   def scheduleAnchoredNodeEarly(n: ValueNode, anchor: BaseBeginNode, visited: NodeSet): Unit = {
-    assert(visited.add(n))
-    earliestScheduleOf += (n -> anchor)
+    assert(visited.add(n), s"Duplicated node: $n")
+    earliestSchedules += (n -> anchor)
     n.valueInputs.foreach(scheduleEarly(_, visited))
   }
 
   def scheduleEarly(n: ValueNode, visited: NodeSet): Unit = {
+    if (n.isInstanceOf[BaseAnchoredNode]) {
+      // Already anchored.
+      return
+    }
+
     if (!visited.add(n)) {
       return
     }
 
-    earliestScheduleOf += (n -> firstBlock)
+
+    earliestSchedules += (n -> firstBlock)
     n.valueInputs.foreach({ i =>
       scheduleEarly(i, visited)
       val ib = earliestScheduleOf(i)
       val nb = earliestScheduleOf(n)
       if (idomDepth(ib) > idomDepth(nb)) {
         // Need to move n downwards, as otherwise this input will not be available when n is evaluated.
-        earliestScheduleOf += (n -> ib)
+        earliestSchedules += (n -> ib)
       }
     })
   }
@@ -102,7 +134,13 @@ case class Gcm(g: Graph) {
 
     // For each control-dependent node that uses values:
     Graph.dfsNode(g.entry) {
-      case n: BaseBlockExitNode =>
+      case vn: ValueNode =>
+        val onExit = vn.controlUses.flatMap({
+          case exit: BaseBlockExitNode =>
+            Some(exit)
+          case _ =>
+            None
+        })
         // Inputs: the values used by this control node.
         n.valueInputs.foreach(scheduleAnchoredNodeLate(_, n.belongsToBlock, visited))
 
@@ -116,8 +154,9 @@ case class Gcm(g: Graph) {
   }
 
   def scheduleAnchoredNodeLate(v: ValueNode, n: BaseBeginNode, visited: NodeSet): Unit = {
-    assert(visited.add(v))
-    latestScheduleOf += (v -> n)
+    assert(visited.add(v), s"Duplicated node: $v on $n")
+    println(s"schedule late: $v -> $n")
+    latestSchedules += (v -> n)
     v.valueUses.foreach(scheduleLate(_, visited))
   }
 
@@ -141,7 +180,9 @@ case class Gcm(g: Graph) {
 
       lca = Some(findLca(lca, ub))
     })
-    latestScheduleOf += (n -> lca.getOrElse(firstBlock))
+
+    println(s"schedule late: $n -> $lca")
+    latestSchedules += (n -> lca.getOrElse(firstBlock))
   }
 
   // LCA: Lowest common ancestor
