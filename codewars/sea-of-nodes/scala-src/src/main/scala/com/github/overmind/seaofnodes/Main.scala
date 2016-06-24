@@ -24,7 +24,7 @@ object Main {
     // println(s"interp($name) => ${Graph.interp(entry)}")
 
     val g = GraphFromAst.build(s)
-    Gcm(g).scheduleEarly()
+    Gcm(g).scheduleLate(true)
     // Opt.simplifyControl(g.entry, g)
     renderNodeToDot(g.entry, name)
     g

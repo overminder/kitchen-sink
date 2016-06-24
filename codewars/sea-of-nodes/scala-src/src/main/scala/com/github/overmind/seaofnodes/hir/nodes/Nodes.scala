@@ -4,6 +4,7 @@ import com.github.overmind.seaofnodes.hir.Graph
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
 
 sealed trait NodeField[-S <: Node, A <: Node]
 
@@ -12,9 +13,9 @@ case class SimpleNodeField[S <: Node, A <: Node](getter: S => A, setter: (S, A) 
   def set(s: S, a: A): Unit = setter(s, a)
 }
 
-case class NodeListField[S <: Node, A <: Node](getter: S => Array[A], setter: (S, Array[A]) => Unit) extends NodeField[S, A] {
-  def get(s: S): Array[A] = getter(s)
-  def set(s: S, a: Array[A]): Unit = setter(s, a)
+case class NodeListField[S <: Node, A <: Node](getter: S => Seq[A], setter: (S, Seq[A]) => Unit) extends NodeField[S, A] {
+  def get(s: S): Seq[A] = getter(s)
+  def set(s: S, a: Seq[A]): Unit = setter(s, a)
 }
 
 case class NodeClass[-S <: Node](inputFields: NodeClass.Fields[S],
@@ -23,11 +24,11 @@ case class NodeClass[-S <: Node](inputFields: NodeClass.Fields[S],
 object NodeClass {
   type Fields[-S <: Node] = Seq[NodeField[S, Node]]
   def apply[S <: Node](inputFields: NodeField[S, Node]*): NodeClass[S] = {
-    NodeClass[S](inputFields.toArray)
+    NodeClass[S](inputFields)
   }
 
   def successorOnly[S <: Node](successorFields: NodeField[S, Node]*): NodeClass[S] = {
-    NodeClass[S](Array.empty[NodeField[S, Node]], successorFields.toArray)
+    NodeClass[S](Seq.empty[NodeField[S, Node]], successorFields)
   }
 }
 
@@ -40,6 +41,17 @@ object Node {
   }
 
   val nodeClass = NodeClass[Node]()
+
+  def asSomeNode[A <: Node: ClassTag](n: Node): Option[A] = {
+    n match {
+      case v: A =>
+        Some(v)
+      case _ =>
+        None
+    }
+  }
+
+  def asValueNode(n: Node) = asSomeNode[ValueNode](n)
 }
 
 // NOTE: We deliberately allow null inputs. This makes partial nodes easier at the cost
@@ -56,12 +68,15 @@ sealed trait Node {
   // In a structured graph, can we simply gather this information when building the graph?
   def isIDomOf: Seq[Node]
 
-  def uses = _uses.toArray
-  final def inputs: Array[Node] = inputsInternal.flatMap(Option(_)).toArray
+  final def uses: Seq[Node] = _uses
+  final def valueUses: Seq[ValueNode] = _uses.flatMap(Node.asValueNode)
+
+  final def inputs: Seq[Node] = inputsInternal.flatMap(Option(_))
+  final def valueInputs: Seq[ValueNode] = inputs.flatMap(Node.asValueNode)
   final def inputsInternal = {
     nodeClass.inputFields.flatMap({
       case s: SimpleNodeField[this.type, Node] =>
-        Array(s.get(this))
+        Seq(s.get(this))
       case ss: NodeListField[this.type, Node] =>
         ss.get(this)
     })
@@ -69,11 +84,11 @@ sealed trait Node {
 
   def predecessor = _predecessor
 
-  final def successors: Array[Node] = successorsInternal.flatMap(Option(_)).toArray
+  final def successors: Seq[Node] = successorsInternal.flatMap(Option(_))
   final def successorsInternal = {
     nodeClass.successorFields.flatMap({
       case s: SimpleNodeField[this.type, Node] =>
-        Array(s.get(this))
+        Seq(s.get(this))
       case ss: NodeListField[this.type, Node] =>
         ss.get(this)
     })
@@ -116,8 +131,7 @@ sealed trait Node {
         val ns = ss.get(this)
         val ix = ns.indexWhere(_ eq oldInput)
         if (ix >= 0) {
-          ns(ix) = newInput
-          ss.set(this, ns)
+          ss.set(this, ns.updated(ix, newInput))
           true
         } else {
           false
@@ -248,6 +262,8 @@ case class GraphEntryNode(protected var _next: Node = null) extends SingleNext[N
   override def toShallowString: String = "Start"
   override def nodeClass = SingleNext.nodeClass
 
+  override def next = _next.asInstanceOf[BaseBeginNode]
+
   // In a structured graph, can we simply gather this information when building the graph?
   override def isIDomOf: Seq[Node] = Seq(next)
 }
@@ -270,14 +286,14 @@ case class GraphExitNode(protected var _returns: mutable.Buffer[Node] = ArrayBuf
 
   override def toShallowString: String = "End"
 
-  def returns: Array[Node] = _returns.toArray
+  def returns: Seq[Node] = _returns
 
   def addReturn(r: RetNode): RetNode = {
     _returns += addInput(r)
     r
   }
 
-  def setReturns(ns: Array[Node]) = {
+  def setReturns(ns: Seq[Node]) = {
     _returns.foreach(removeInput)
     ns.foreach(addInput)
     _returns = ns.toBuffer
@@ -297,16 +313,14 @@ sealed trait BaseMergeNode extends BaseBeginNode {
   protected var _comingFrom: ArrayBuffer[BaseEndNode]
 
   _comingFrom.foreach(addInput)
-  def valuePhis: Array[ValuePhiNode] = uses.flatMap({
-    case n: ValuePhiNode => Some(n)
-    case _ => None
-  })
+  def valuePhis: Seq[ValuePhiNode] = uses.flatMap(
+    Node.asSomeNode[ValuePhiNode](_))  // <- Idea really want me to write it in this way.
 
-  def comingFrom: Array[Node] = _comingFrom.toArray
-  def setComingFrom(xs: Array[Node]) = {
+  def comingFrom: Seq[BaseEndNode] = _comingFrom
+  def setComingFrom(xs: Seq[BaseEndNode]) = {
     _comingFrom.foreach(removeInput)
     xs.foreach(addInput)
-    _comingFrom = xs.map(_.asInstanceOf[BaseEndNode]).to[ArrayBuffer]
+    _comingFrom = xs.to[ArrayBuffer]
   }
   def removeComingFrom(n: BaseEndNode) = {
     removeRefFromArray(n, _comingFrom)
@@ -321,11 +335,11 @@ sealed trait BaseMergeNode extends BaseBeginNode {
 
 object BaseMergeNode {
   val nodeClass = NodeClass(
-    Array[NodeField[BaseMergeNode, Node]](NodeListField(
+    Seq[NodeField[BaseMergeNode, Node]](NodeListField(
       _.comingFrom,
-      _.setComingFrom(_)
+      (s, a) => s.setComingFrom(a.map(_.asInstanceOf[BaseEndNode]))
     )),
-    Array[NodeField[BaseMergeNode, Node]](SimpleNodeField(
+    Seq[NodeField[BaseMergeNode, Node]](SimpleNodeField(
       _.next,
       _.next = _
     ))
@@ -361,7 +375,12 @@ case class LoopExitNode(protected var _next: Node = null) extends BaseBeginNode 
   override def nodeClass: NodeClass[SingleNext[Node]] = SingleNext.nodeClass
 }
 
-sealed trait BaseEndNode extends Node {
+// Just a marker.
+sealed trait BaseBlockExitNode extends Node {
+  def belongsToBlock = predecessor.asInstanceOf[BaseBeginNode]
+}
+
+sealed trait BaseEndNode extends BaseBlockExitNode {
   def cfgSuccessor = {
     assert(uses.length == 1)
     uses.head.asInstanceOf[BaseBeginNode]
@@ -369,18 +388,13 @@ sealed trait BaseEndNode extends Node {
 
   def isIDomOf = {
     cfgSuccessor match {
-      case loop: LoopBeginNode if loop.comingFrom(0) eq this =>
+      case loop: LoopBeginNode if loop.comingFrom.head eq this =>
         // This is a loop header
         Seq(loop)
       case _ =>
         Seq()
     }
   }
-}
-
-// Just a marker.
-sealed trait BaseBlockExitNode extends Node {
-  def belongsToBlock = predecessor.asInstanceOf[BaseBeginNode]
 }
 
 case class LoopEndNode() extends BaseEndNode with BaseBlockExitNode {
@@ -398,7 +412,7 @@ case class EndNode() extends BaseEndNode with BaseBlockExitNode {
 }
 
 sealed trait ControlSplitNode extends BaseBlockExitNode {
-  def cfgSuccessors: Array[BaseBeginNode]
+  def cfgSuccessors: Seq[BaseBeginNode]
 }
 
 case class RetNode(protected var _value: ValueNode = null)
@@ -413,11 +427,11 @@ case class RetNode(protected var _value: ValueNode = null)
 
 object IfNode {
   val nodeClass = NodeClass(
-    Array[NodeField[IfNode, Node]](SimpleNodeField(
+    Seq[NodeField[IfNode, Node]](SimpleNodeField(
       _.value,
       (s, a) => s.value = a.asInstanceOf[LogicNode]
     )),
-    Array[NodeField[IfNode, Node]](
+    Seq[NodeField[IfNode, Node]](
       SimpleNodeField(
         _.t,
         (s, a) => s.t = a.asInstanceOf[BaseBeginNode]
@@ -449,7 +463,7 @@ case class IfNode(protected var _value: LogicNode,
   def merge = _merge
   def merge_=(newM: BaseMergeNode) = _merge = newM
 
-  override def cfgSuccessors: Array[BaseBeginNode] = Array(_t, _f)
+  override def cfgSuccessors: Seq[BaseBeginNode] = Seq(_t, _f)
   override def nodeClass: NodeClass[IfNode] = IfNode.nodeClass
 
   def isIDomOf = {
@@ -668,7 +682,7 @@ case class ReadArrayNode(protected var _base: ValueNode,
 
 object ReadArrayNode {
   val nodeClass: NodeClass[ReadArrayNode] = NodeClass(
-    Array[NodeField[ReadArrayNode, Node]](
+    Seq[NodeField[ReadArrayNode, Node]](
       SimpleNodeField(
         _.base,
         (s, a) => s.base = a.asInstanceOf[ValueNode]
@@ -678,7 +692,7 @@ object ReadArrayNode {
         (s, a) => s.index = a.asInstanceOf[ValueNode]
       )
     ),
-    Array[NodeField[ReadArrayNode, Node]](
+    Seq[NodeField[ReadArrayNode, Node]](
       SimpleNodeField(
         _.next,
         _.next = _
@@ -702,7 +716,7 @@ case class WriteArrayNode(protected var _base: ValueNode,
 
 object WriteArrayNode {
   val nodeClass: NodeClass[WriteArrayNode] = NodeClass(
-    Array[NodeField[WriteArrayNode, Node]](
+    Seq[NodeField[WriteArrayNode, Node]](
       SimpleNodeField(
         _.base,
         (s, a) => s.base = a.asInstanceOf[ValueNode]
@@ -716,7 +730,7 @@ object WriteArrayNode {
         (s, a) => s.value = a.asInstanceOf[ValueNode]
       )
     ),
-    Array[NodeField[WriteArrayNode, Node]](
+    Seq[NodeField[WriteArrayNode, Node]](
       SimpleNodeField(
         _.next,
         _.next = _
@@ -757,13 +771,13 @@ case class AnchoredNode(protected var _value: ValueNode, protected var _anchor: 
 
 object ScheduledNode {
   val nodeClass = NodeClass(
-    Array[NodeField[ScheduledNode, Node]](
+    Seq[NodeField[ScheduledNode, Node]](
       SimpleNodeField[ScheduledNode, Node](
         _.value,
         (s, a) => s.value = a.asInstanceOf[ValueNode]
       )
     ),
-    Array[NodeField[ScheduledNode, Node]](
+    Seq[NodeField[ScheduledNode, Node]](
       SimpleNodeField(
         _.next,
         (s, a) => s.next = a
@@ -797,7 +811,7 @@ sealed trait BasePhiNode[N <: ValueNode] extends BaseAnchoredNode {
     _composedInputs += addInput(n)
     n
   }
-  def setComposedInputs(newInputs: Array[N]) = {
+  def setComposedInputs(newInputs: Seq[N]) = {
     _composedInputs.foreach(removeInput)
     newInputs.foreach(addInput)
     _composedInputs = newInputs.to[ArrayBuffer]
@@ -811,7 +825,7 @@ object BasePhiNode {
       (s, a) => s.anchor = a.asInstanceOf[BaseBeginNode]
     ),
     NodeListField[BasePhiNode[ValueNode], Node](
-      _.composedInputs.toArray,
+      _.composedInputs,
       (s, a) => s.setComposedInputs(a.map(_.asInstanceOf[ValueNode]))
     )
   )
@@ -822,7 +836,7 @@ object BasePhiNode {
       (s, a) => s.anchor = a.asInstanceOf[BaseBeginNode]
     ),
     NodeListField[BasePhiNode[MemoryStateNode], Node](
-      _.composedInputs.toArray,
+      _.composedInputs,
       (s, a) => s.setComposedInputs(a.map(_.asInstanceOf[MemoryStateNode]))
     )
   )

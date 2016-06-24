@@ -11,10 +11,17 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 object Graph {
+  type NodeSet = mutable.Set[Node]
+  type NodeMap[A] = mutable.Map[Node, A]
+
   def emptyIdentitySet[A <: AnyRef] =
     Collections.newSetFromMap(new util.IdentityHashMap[A, java.lang.Boolean]()).asScala
 
+  def emptyIdentityNodeSet: NodeSet = emptyIdentitySet[Node]
+
   def emptyIdentityMap[A <: AnyRef, B] = new util.IdentityHashMap[A, B]().asScala
+
+  def emptyIdentityNodeMap[A]: NodeMap[A] = emptyIdentityMap[Node, A]
 
   case class UndefinedVarInGraph(name: String) extends Exception
   case class Unexpected(what: String) extends Exception
