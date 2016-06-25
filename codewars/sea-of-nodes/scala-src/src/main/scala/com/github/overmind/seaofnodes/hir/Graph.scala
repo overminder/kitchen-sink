@@ -82,17 +82,17 @@ object Graph {
 }
 
 case class Graph(entry: GraphEntryNode, exit: GraphExitNode) {
-  val cached = mutable.Map.empty[Node, Node]
+  val cached = mutable.Map.empty[ValueNumberable, Node]
 
   // n should be a fresh node.
   def unique[N <: Node](n: N): N = {
-    assert(n.isInstanceOf[ValueNumberable])
-    cached.get(n) match {
+    val vn = n.asInstanceOf[ValueNumberable]
+    cached.get(vn) match {
       case Some(n0) =>
         n.replaceAllUsesWith(n0)
         n0.asInstanceOf[N]
       case None =>
-        cached += (n -> n)
+        cached += (vn -> n)
         n
     }
   }

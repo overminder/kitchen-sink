@@ -19,8 +19,17 @@ private object ParserInternal {
   import fastparse.noApi._
   import White._
 
-  val ident = P(CharIn('a' to 'z') | CharIn('A' to 'Z')).repX(1).!
-  val number = P(CharIn('0' to '9').repX(1)).!.map(_.toLong)
+  val (ident, number) = {
+    import fastparse.all._
+    val alpha = P(CharIn('a' to 'z') | CharIn('A' to 'Z'))
+    val digit = P(CharIn('0' to '9'))
+
+    val ident = P(alpha ~ (alpha | digit).rep).!
+    val number = P(digit.rep(1)).!.map(_.toLong)
+
+    (ident, number)
+  }
+  // val ident = P(alpha).repX(1).!
   val varE: P[Loc] = ident.map(LVar)
   val litE: P[Expr] = number.map(Lit)
   val parenE = P("(" ~/ expr ~ ")")

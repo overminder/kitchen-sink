@@ -15,7 +15,7 @@ object Main {
   }
 
   def interpGraph(g: Graph, args: Seq[ast.Value]) = {
-    val terp = Interp(args, verbose = true)
+    val terp = Interp(args, verbose = false)
     println(s"Interp => ${terp.run(g.entry)}")
   }
 
@@ -24,9 +24,10 @@ object Main {
     // println(s"interp($name) => ${Graph.interp(entry)}")
 
     val g = GraphFromAst.build(s)
+    // Opt.simplifyControl(g.entry, g)
     // Gcm(g).scheduleEarly(true)
     // Gcm(g).scheduleLate(true)
-    // Opt.simplifyControl(g.entry, g)
+    Gcm(g, verbose = true).run()
     renderNodeToDot(g.entry, name)
     g
 

@@ -78,6 +78,8 @@ sealed trait Node {
   // In a structured graph, can we simply gather this information when building the graph?
   def isIDomOf: Seq[Node]
 
+  def identityHashCode = System.identityHashCode(this)
+
   final def uses: Seq[Node] = _uses.flatMap(Option(_))
   final def controlUses: Seq[Node] = _uses.flatMap(Node.asNodeOtherThan(_))
   final def valueUses: Seq[ValueNode] = _uses.flatMap(Node.asValueNode)
@@ -227,7 +229,10 @@ sealed trait ValueNode extends Node {
 }
 
 // Pure operations
-sealed trait ValueNumberable extends ValueNode
+sealed trait ValueNumberable extends ValueNode {
+  def shallowHashCode: Int
+  final override def hashCode = shallowHashCode
+}
 
 sealed trait LogicNode extends ValueNode
 
@@ -510,11 +515,15 @@ object LitNode {
 case class LitLongNode(v: Long) extends LitNode {
   def toShallowString: String = s"LitLong $v"
   override def nodeClass = Node.nodeClass
+
+  override def shallowHashCode = v.hashCode
 }
 
 // Pure
 sealed trait UnaryNode extends ValueNode with UseSingleValue[ValueNode] with ValueNumberable {
   override def nodeClass = UseSingleValue.nodeClass
+
+  override def shallowHashCode = getClass.hashCode + value.identityHashCode
 }
 
 object BinaryNode {
@@ -537,6 +546,8 @@ sealed trait BinaryNode extends ValueNode with ValueNumberable {
 
   addInput(_lhs)
   addInput(_rhs)
+
+  override def shallowHashCode = getClass.hashCode + lhs.identityHashCode + rhs.identityHashCode
 
   def lhs = _lhs
   def lhs_=(newLhs: ValueNode): Unit = {
@@ -651,10 +662,14 @@ case class FuncArgNode(ix: Int) extends ValueNode {
 case object TrueNode extends LogicNode with LitNode {
   override def toShallowString: String = "True"
   def nodeClass: NodeClass[Node] = Node.nodeClass
+
+  override def shallowHashCode = true.hashCode
 }
 case object FalseNode extends LogicNode with LitNode {
   override def toShallowString: String = "False"
   def nodeClass: NodeClass[Node] = Node.nodeClass
+
+  override def shallowHashCode = false.hashCode
 }
 
 // High-level array ops. All the high-level memory-related ops are treated pessimistically:
