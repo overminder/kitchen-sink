@@ -323,6 +323,8 @@ sealed trait BaseBeginNode extends SingleNext[Node] {
   def anchored = uses.flatMap(Node.asSomeNode[AnchoringNode](_))
 
   def isIDomOf = Seq(next)
+
+  def endsWithReturn = next.ne(null) && next.isInstanceOf[RetNode]
 }
 
 sealed trait BaseMergeNode extends BaseBeginNode {

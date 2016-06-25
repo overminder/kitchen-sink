@@ -59,9 +59,10 @@ object Graph {
       assert(visited.add(idom))
       idom.isIDomOf.foreach(of => {
         val newLoopNestingDepth = of match {
+          case b: BaseBeginNode if b.endsWithReturn => 0
           case _: LoopBeginNode => 1 + loopNestingDepth
           case _: LoopExitNode => -1 + loopNestingDepth
-          case _: RetNode => 0
+          // case _: RetNode => 0
           case _ => loopNestingDepth
         }
         onEdge(IDomEdge(Some(idom), of, newDepth, newLoopNestingDepth))

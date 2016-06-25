@@ -192,34 +192,40 @@ case class Gcm(g: Graph, verbose: Boolean = false) {
 
   def scheduleLate(n: ValueNode, visited: NodeSet): Unit = {
     // Already pinned.
-    if (pinnedWithLatestBlock(n).isDefined) {
-      return
-    }
+    // if (pinnedWithLatestBlock(n).isDefined) {
+    //   return
+    // }
 
     if (!visited.add(n)) {
       return
     }
 
     var lca: Option[BaseBeginNode] = None
-    n.valueUses.foreach({ i =>
-      scheduleLate(i, visited)
-      var ub = earliestScheduleOf(i)
-      i match {
-        // A phi node's input cannot be scheduled later than the incoming block that it resides in.
+    n.uses.foreach({ i =>
+      // Find the scheduled block for each use
+      val ib = i match {
+        case pinned: BaseBlockExitNode =>
+          pinned.belongsToBlock
         case phi: ValuePhiNode =>
+          // A phi node's input cannot be scheduled later than the incoming block that it resides in.
+          scheduleLate(phi, visited)
           val nthPhiInput = phi.composedInputs.indexWhere(_ eq n)
-          ub = phi.anchor.comingFrom(nthPhiInput).belongsToBlock
+          phi.anchor.comingFrom(nthPhiInput).belongsToBlock
+        case v: ValueNode =>
+          scheduleLate(v, visited)
+          earliestScheduleOf(v)
         case _ =>
-          ()
+          sys.error(s"Unknown use $i on $n")
       }
 
-      lca = Some(findLca(lca, ub))
+      // And make sure this node dominate this use
+      lca = Some(findLca(lca, ib))
     })
 
     if (verbose) {
       println(s"Latest schedule: $n -> $lca")
     }
-    scheduleFromLatestToEarliest(n, lca.getOrElse(firstBlock))
+    scheduleFromLatestToEarliest(n, lca.get)
   }
 
   def scheduleFromLatestToEarliest(n: ValueNode, latest: BaseBeginNode): Unit = {
