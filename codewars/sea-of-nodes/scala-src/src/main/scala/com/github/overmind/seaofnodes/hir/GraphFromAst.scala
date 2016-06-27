@@ -43,11 +43,10 @@ object GraphFromAst {
       }
     }
 
-    // Maybe move this to Graph?
     def unique[N <: Node](n: N): N = {
       n match {
         case vn: ValueNumberable =>
-          g.unique(n)
+          g.unique(vn).asInstanceOf[N]
         case _ =>
           n
       }

@@ -4,31 +4,9 @@ import com.github.overmind.seaofnodes.hir.nodes._
 
 object Opt {
   object Kit {
-    // This can be perfectly solved by looking up the IfNode's immediate dominator...
-    def mergeForIf(n: IfNode): Option[MergeNode] = {
-      def go(n0: Node): Option[MergeNode] = {
-        n0 match {
-          case n: IfNode =>
-            mergeForIf(n).flatMap(go)
-          case n: LoopBeginNode =>
-            go(n.next)
-          case m: MergeNode =>
-            Some(m)
-          case n: SingleNext[_] =>
-            go(n.next)
-          case n: BaseEndNode =>
-            go(n.cfgSuccessor)
-          case _ =>
-            None
-        }
-      }
-      (go(n.t), go(n.f)) match {
-        case (Some(tm), Some(fm)) =>
-          assert(tm eq fm)
-          Some(tm)
-        case _ =>
-          None
-      }
+    // This can be perfectly solved by looking up the node that the IfNode immediately dominates...
+    def mergeForIf(n: IfNode): Option[BaseMergeNode] = {
+      Option(n.merge)
     }
 
     // In a forward way.
@@ -77,6 +55,10 @@ object Opt {
         n.f = null
         (1, br, n.t)
       }
+      // Kill the value node
+      val condNode = n.value
+      n.value = null
+      condNode.tryRemove()
       // Replace this IfNode by the chosen branch
       n.replaceThisOnPredecessor(br)
       merge match {

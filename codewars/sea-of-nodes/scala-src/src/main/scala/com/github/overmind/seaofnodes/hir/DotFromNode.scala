@@ -16,7 +16,7 @@ object DotFromNode {
     import DotGen.NodeId
 
     val g = DotGen.Graph(name)
-    val nodes = Graph.emptyIdentityMap[Node, NodeId]
+    val nodes = Graph.emptyIdentityNodeMap[NodeId]
 
     def renderedNode(n: Node, extra: String = ""): DotGen.NodeId = {
       nodes.getOrElseUpdate(n, {

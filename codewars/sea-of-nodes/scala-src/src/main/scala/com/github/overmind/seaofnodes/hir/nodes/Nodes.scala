@@ -79,6 +79,21 @@ sealed trait Node {
   def isIDomOf: Seq[Node]
 
   def identityHashCode = System.identityHashCode(this)
+  override def hashCode: Int = sys.error(s"Node($this).hashCode is disabled - use identityHashCode or Graph.identityMap instead")
+  override def equals(that: Any): Boolean = {
+    sys.error(s"Node($this).equals($that) is disabled - use identityHashCode or Graph.identityMap instead")
+  }
+
+  final def edges: Seq[Edge] = {
+    val useEdges = uses.zipWithIndex.map({ case (i, ix) =>
+        Edge(this, i, ix, isControlDep = false)
+    })
+    val succEdges = successors.zipWithIndex.map({ case (s, ix) =>
+      Edge(this, s, ix, isControlDep = true)
+    })
+    useEdges ++ succEdges
+  }
+  def cfgEdges: Seq[Edge] = edges.filter(_.isControlDep)
 
   final def uses: Seq[Node] = _uses.flatMap(Option(_))
   final def controlUses: Seq[Node] = _uses.flatMap(Node.asNodeOtherThan(_))
@@ -117,7 +132,7 @@ sealed trait Node {
 
   // Call this after uses / preds is shrinked.
   def tryRemove(): Unit = {
-    if (uses.isEmpty && predecessor == null) {
+    if (uses.isEmpty && predecessor.eq(null)) {
       remove()
     }
   }
@@ -167,7 +182,7 @@ sealed trait Node {
 
   def addSuccessor[N <: Node](successor: N): N = {
     if (successor != null) {
-      assert(successor.predecessor == null)
+      assert(successor.predecessor.eq(null))
       successor._predecessor = this
     }
     successor
@@ -175,7 +190,7 @@ sealed trait Node {
 
   def removeSuccessor(successor: Node): Unit = {
     if (successor != null) {
-      assert(successor.predecessor == this)
+      assert(successor.predecessor.eq(this))
       successor._predecessor = null
     }
     // successor.tryRemove()
@@ -223,6 +238,9 @@ sealed trait Node {
   }
 }
 
+
+
+
 // Graal attaches lattices on ValueNodes - I current don't have such thing.
 sealed trait ValueNode extends Node {
   override def isIDomOf: Seq[Node] = Seq()
@@ -232,6 +250,15 @@ sealed trait ValueNode extends Node {
 sealed trait ValueNumberable extends ValueNode {
   def shallowHashCode: Int
   final override def hashCode = shallowHashCode
+
+  def shallowEquals(that: this.type): Boolean
+  override def equals(that: Any): Boolean = {
+    if (that.getClass.eq(getClass)) {
+      shallowEquals(that.asInstanceOf[this.type])
+    } else {
+      false
+    }
+  }
 }
 
 sealed trait LogicNode extends ValueNode
@@ -334,6 +361,7 @@ sealed trait BaseMergeNode extends BaseBeginNode {
   def valuePhis: Seq[ValuePhiNode] = uses.flatMap(
     Node.asSomeNode[ValuePhiNode](_))  // <- Idea really want me to write it in this way.
 
+  def comingFromEdges: Seq[Edge] = comingFrom.flatMap(_.cfgEdges)
   def comingFrom: Seq[BaseEndNode] = _comingFrom
   def setComingFrom(xs: Seq[BaseEndNode]) = {
     _comingFrom.foreach(removeInput)
@@ -403,6 +431,7 @@ sealed trait BaseEndNode extends BaseBlockExitNode {
     assert(uses.length == 1)
     uses.head.asInstanceOf[BaseBeginNode]
   }
+  override def cfgEdges: Seq[Edge] = Seq(Edge(this, cfgSuccessor, 0, isControlDep = true))
 
   def isIDomOf = {
     cfgSuccessor match {
@@ -519,6 +548,9 @@ case class LitLongNode(v: Long) extends LitNode {
   override def nodeClass = Node.nodeClass
 
   override def shallowHashCode = v.hashCode
+  override def shallowEquals(that: this.type): Boolean = {
+    v == that.v
+  }
 }
 
 // Pure
@@ -526,6 +558,9 @@ sealed trait UnaryNode extends ValueNode with UseSingleValue[ValueNode] with Val
   override def nodeClass = UseSingleValue.nodeClass
 
   override def shallowHashCode = getClass.hashCode + value.identityHashCode
+  override def shallowEquals(that: this.type): Boolean = {
+    value eq that.value
+  }
 }
 
 object BinaryNode {
@@ -550,6 +585,9 @@ sealed trait BinaryNode extends ValueNode with ValueNumberable {
   addInput(_rhs)
 
   override def shallowHashCode = getClass.hashCode + lhs.identityHashCode + rhs.identityHashCode
+  override def shallowEquals(that: this.type): Boolean = {
+    lhs.eq(that.lhs) && rhs.eq(that.rhs)
+  }
 
   def lhs = _lhs
   def lhs_=(newLhs: ValueNode): Unit = {
@@ -627,6 +665,9 @@ case class AddNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryArith
   def toShallowString: String = s"+"
 
   override def denoteOp: (Long, Long) => Long = _ + _
+  override def shallowEquals(that: this.type): Boolean = {
+    lhs.eq(that.lhs) && rhs.eq(that.rhs) || lhs.eq(that.rhs) && rhs.eq(that.lhs)
+  }
 }
 
 case class SubNode(var _lhs: ValueNode, var _rhs: ValueNode) extends BinaryArithNode {
@@ -666,12 +707,14 @@ case object TrueNode extends LogicNode with LitNode {
   def nodeClass: NodeClass[Node] = Node.nodeClass
 
   override def shallowHashCode = true.hashCode
+  override def shallowEquals(that: this.type): Boolean = this.eq(that)
 }
 case object FalseNode extends LogicNode with LitNode {
   override def toShallowString: String = "False"
   def nodeClass: NodeClass[Node] = Node.nodeClass
 
   override def shallowHashCode = false.hashCode
+  override def shallowEquals(that: this.type): Boolean = this.eq(that)
 }
 
 // High-level array ops. All the high-level memory-related ops are treated pessimistically:
@@ -834,7 +877,17 @@ sealed trait BasePhiNode[N <: ValueNode] extends BaseAnchoredNode {
 
   override def anchor: BaseMergeNode = _anchor.asInstanceOf[BaseMergeNode]
 
-  def composedInputs = _composedInputs
+  def composedInputsWithIncomingEdge: Seq[(Edge, Edge)] = {
+    composedInputEdges.zip(anchor.comingFromEdges)
+  }
+
+  def composedInputEdges: Seq[Edge] = composedInputs.map(c => {
+    val es = c.edges.filter(_.to eq c)
+    assert(es.length == 1)
+    es.head
+  })
+
+  def composedInputs: Seq[ValueNode] = _composedInputs
   def addComposedInput(n: N): N = {
     _composedInputs += addInput(n)
     n

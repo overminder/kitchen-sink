@@ -7,7 +7,7 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 
 case class Interp(args: Seq[Value] = Seq(),
-                  env: Interp.Env = Graph.emptyIdentityMap,
+                  env: Interp.Env = Graph.emptyIdentityNodeMap,
                   verbose: Boolean = false) {
 
   import Interp._

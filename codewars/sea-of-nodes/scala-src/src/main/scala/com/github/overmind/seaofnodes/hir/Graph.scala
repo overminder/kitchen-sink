@@ -14,34 +14,33 @@ object Graph {
   type NodeSet = mutable.Set[Node]
   type NodeMap[A] = mutable.Map[Node, A]
 
+  type EdgeSet = mutable.Set[Edge]
+  type EdgeMap[A] = mutable.Map[Edge, A]
+
   def emptyIdentitySet[A <: AnyRef] =
     Collections.newSetFromMap(new util.IdentityHashMap[A, java.lang.Boolean]()).asScala
 
   def emptyIdentityNodeSet: NodeSet = emptyIdentitySet[Node]
+  // Doesn't need to (and probably can't) be identity-based - we use a shallow hashCode/equality
+  // based key instead.
+  def emptyEdgeSet: EdgeSet = mutable.Set.empty[Edge]
+
+  def emptyIdentityNodeMap[A]: NodeMap[A] = emptyIdentityMap[Node, A]
+  def emptyEdgeMap[A]: EdgeMap[A] = mutable.Map.empty[Edge, A]
 
   def emptyIdentityMap[A <: AnyRef, B] = new util.IdentityHashMap[A, B]().asScala
 
-  def emptyIdentityNodeMap[A]: NodeMap[A] = emptyIdentityMap[Node, A]
-
   case class UndefinedVarInGraph(name: String) extends Exception
   case class Unexpected(what: String) extends Exception
-
-  // def interp(n: Node) = Interp.interp(n)
-
-  case class Edge(from: Node, to: Node, ix: Int, isControlDep: Boolean)
 
   def dfsNodeAndEdge(n: Node, onNode: Node => Unit, onEdge: Edge => Unit) = {
     val visited = emptyIdentitySet[Node]
     def go(n: Node): Unit = {
       if (visited.add(n)) {
         onNode(n)
-        n.uses.zipWithIndex.foreach({ case (i, ix) =>
-          onEdge(Edge(n, i, ix, isControlDep = false))
-          go(i)
-        })
-        n.successors.zipWithIndex.foreach({ case (s, ix) =>
-          onEdge(Edge(n, s, ix, isControlDep = true))
-          go(s)
+        n.edges.foreach(e => {
+          onEdge(e)
+          go(e.to)
         })
         n.inputs.foreach(go)
         Option(n.predecessor).foreach(go)
@@ -83,17 +82,16 @@ object Graph {
 }
 
 case class Graph(entry: GraphEntryNode, exit: GraphExitNode) {
-  val cached = mutable.Map.empty[ValueNumberable, Node]
+  val valueNumbered = mutable.Map.empty[ValueNumberable, Node]
 
   // n should be a fresh node.
-  def unique[N <: Node](n: N): N = {
-    val vn = n.asInstanceOf[ValueNumberable]
-    cached.get(vn) match {
+  def unique[N <: ValueNumberable](n: N): N = {
+    valueNumbered.get(n) match {
       case Some(n0) =>
         n.replaceAllUsesWith(n0)
         n0.asInstanceOf[N]
       case None =>
-        cached += (vn -> n)
+        valueNumbered += (n -> n)
         n
     }
   }
