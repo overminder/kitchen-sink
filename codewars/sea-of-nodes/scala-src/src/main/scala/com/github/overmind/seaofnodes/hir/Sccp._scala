@@ -74,7 +74,6 @@ case class Sccp(g: Graph, verbose: Boolean = false) {
     edge.to match {
       case n: BaseMergeNode =>
         n.valuePhis.foreach(goPhi)
-        n.comingFromEdges.
       case ex: BaseBlockExitNode =>
         // ex.valueUses.foreach()
       case _ =>

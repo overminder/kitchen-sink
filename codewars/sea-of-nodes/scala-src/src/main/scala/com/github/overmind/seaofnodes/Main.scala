@@ -3,6 +3,7 @@ package com.github.overmind.seaofnodes
 import java.io.FileWriter
 
 import com.github.overmind.seaofnodes.ast.LongValue
+import com.github.overmind.seaofnodes.hir.Trace.TGraph
 import com.github.overmind.seaofnodes.hir._
 import com.github.overmind.seaofnodes.hir.nodes.Node
 
@@ -36,6 +37,10 @@ object Main {
     // println(lg)
   }
 
+  def graphToTrace(g: Graph): TGraph = {
+    Trace.build(g)
+  }
+
   def writeFile(path: String, content: String): Unit = {
     new FileWriter(path).append(content).close()
   }
@@ -48,6 +53,10 @@ object Main {
     writeFile(s"dots/$name.dot", DotFromNode.gen(name, s))
   }
 
+  def renderTraceToDot(g: TGraph, name: String): Unit = {
+    writeFile(s"dots/$name.dot", Trace.toDot(g))
+  }
+
   def main(args: Array[String]): Unit = {
     val (fileName, funcArgs) = if (args.length == 0) {
       ("ast-src/fibo-iter.ast", Seq(LongValue(10L)))
@@ -58,7 +67,9 @@ object Main {
     val func = ast.Parser.parseFuncDef(readFile(fileName))
     println(s"AST: $func")
     val g = buildGraph(func, "last")
-    println("Before interp")
-    interpGraph(g, funcArgs)
+    val tg = graphToTrace(g)
+    renderTraceToDot(tg, "last-trace")
+    // println("Before interp")
+    // interpGraph(g, funcArgs)
   }
 }

@@ -352,6 +352,10 @@ sealed trait BaseBeginNode extends SingleNext[Node] {
   def isIDomOf = Seq(next)
 
   def endsWithReturn = next.ne(null) && next.isInstanceOf[RetNode]
+  def cfgPredecessor: BaseBlockExitNode = {
+    assert(predecessor ne null)
+    predecessor.asInstanceOf[BaseBlockExitNode]
+  }
 }
 
 sealed trait BaseMergeNode extends BaseBeginNode {
@@ -421,9 +425,11 @@ case class LoopExitNode(protected var _next: Node = null) extends BaseBeginNode 
   override def nodeClass: NodeClass[SingleNext[Node]] = SingleNext.nodeClass
 }
 
-// Just a marker.
 sealed trait BaseBlockExitNode extends Node {
+  // XXX This is wrong in the presence of effectful nodes.
   def belongsToBlock = predecessor.asInstanceOf[BaseBeginNode]
+
+  def cfgSuccessors: Seq[BaseBeginNode]
 }
 
 sealed trait BaseEndNode extends BaseBlockExitNode {
@@ -431,6 +437,7 @@ sealed trait BaseEndNode extends BaseBlockExitNode {
     assert(uses.length == 1)
     uses.head.asInstanceOf[BaseBeginNode]
   }
+  def cfgSuccessors = Seq(cfgSuccessor)
   override def cfgEdges: Seq[Edge] = Seq(Edge(this, cfgSuccessor, 0, isControlDep = true))
 
   def isIDomOf = {
@@ -458,9 +465,7 @@ case class EndNode() extends BaseEndNode with BaseBlockExitNode {
   def nodeClass: NodeClass[Node] = Node.nodeClass
 }
 
-sealed trait ControlSplitNode extends BaseBlockExitNode {
-  def cfgSuccessors: Seq[BaseBeginNode]
-}
+sealed trait ControlSplitNode extends BaseBlockExitNode
 
 case class RetNode(protected var _value: ValueNode = null)
   extends Node with UseSingleValue[ValueNode] with BaseBlockExitNode {
@@ -470,6 +475,8 @@ case class RetNode(protected var _value: ValueNode = null)
   override def nodeClass: NodeClass[UseSingleValue[ValueNode]] = UseSingleValue.nodeClass
 
   def isIDomOf = Seq()
+
+  override def cfgSuccessors: Seq[BaseBeginNode] = Seq()
 }
 
 object IfNode {
