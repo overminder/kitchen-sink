@@ -28,7 +28,7 @@ object Main {
     // Opt.simplifyControl(g.entry, g)
     // Gcm(g).scheduleEarly(true)
     // Gcm(g).scheduleLate(true)
-    Gcm(g, verbose = true).run()
+    Gcm(g, verbose = false).run()
     renderNodeToDot(g.entry, name)
     g
 
@@ -69,6 +69,10 @@ object Main {
     val g = buildGraph(func, "last")
     val tg = graphToTrace(g)
     renderTraceToDot(tg, "last-trace")
+
+    val liveness = Lsra.Liveness.build(tg)
+    println(s"Liveness: $liveness")
+
     // println("Before interp")
     // interpGraph(g, funcArgs)
   }

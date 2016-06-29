@@ -401,6 +401,8 @@ case class LoopBeginNode(protected var _comingFrom: ArrayBuffer[BaseEndNode] = A
 
   override def toShallowString: String = "LoopBegin"
   override final def nodeClass = BaseMergeNode.nodeClass
+
+  def loopEnd = comingFrom(1).asInstanceOf[LoopEndNode]
 }
 
 case class MergeNode(protected var _comingFrom: ArrayBuffer[BaseEndNode] = ArrayBuffer.empty,
@@ -446,6 +448,7 @@ sealed trait BaseEndNode extends BaseBlockExitNode {
         // This is a loop header
         Seq(loop)
       case _ =>
+        // Successor is a merge node.
         Seq()
     }
   }
