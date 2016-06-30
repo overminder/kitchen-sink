@@ -10,7 +10,7 @@ object Trace {
   def build(g: Graph): TGraph = {
     val tg = TGraph(g)
 
-    var nextInstrIx = 1
+    var nextInstrIx = instrIxIncr
 
     var blockEntry = Option.empty[BaseBeginNode]
     val blockBody = ArrayBuffer.empty[ValueNode]
@@ -105,24 +105,26 @@ object Trace {
     ctx.toDot
   }
 
+  def instrIxIncr = 2
+
   case class TBlock(g: TGraph, first: BaseBeginNode, mids: Seq[ValueNode], last: BaseBlockExitNode) {
 
     def id: Int = first.id
 
     var instrIxStart: Int = -1
-    def instrIxEnd = instrIxStart + mids.length + 2
+    def instrIxEnd = instrIxStart + (mids.length + 2) * instrIxIncr
 
     def numberInstrs(nextInstrIx: Int): Int = {
       instrIxStart = nextInstrIx
       // Reserve one more ix to denote 'live-out'.
-      instrIxEnd + 1
+      instrIxEnd
     }
 
     def range = (instrIxStart, instrIxEnd)
 
     def instrs: Seq[Node] = first +: mids :+ last
     def numberedInstrs: Seq[(Int, Node)] = {
-      Range(instrIxStart, Int.MaxValue).view.zip(instrs)
+      Range(instrIxStart, Int.MaxValue, instrIxIncr).view.zip(instrs)
     }
 
     def isIDomOf = last.isIDomOf.map(n => g.blocks(n.asInstanceOf[BaseBeginNode]))
