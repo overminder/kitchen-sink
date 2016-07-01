@@ -887,6 +887,7 @@ sealed trait BasePhiNode[N <: ValueNode] extends BaseAnchoredNode {
 
   override def anchor: BaseMergeNode = _anchor.asInstanceOf[BaseMergeNode]
 
+  // Zip of (compose -> phi) and (comingFrom -> anchor)
   def composedInputsWithIncomingEdge: Seq[(Edge, Edge)] = {
     composedInputEdges.zip(anchor.comingFromEdges)
   }
