@@ -70,9 +70,10 @@ object Main {
     val tg = graphToTrace(g)
     renderTraceToDot(tg, "last-trace")
 
-    val lsra = Lsra(tg, verbose = false)
-    val liveness = lsra.buildLiveness()
-    println(s"Liveness: $liveness")
+    val lsra = Lsra(tg, verbose = true)
+    lsra.buildLiveness()
+    lsra.lsra()
+    lsra.printLiveness()
 
     // println("Before interp")
     // interpGraph(g, funcArgs)

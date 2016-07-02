@@ -78,7 +78,9 @@ sealed trait Node {
   // In a structured graph, can we simply gather this information when building the graph?
   def isIDomOf: Seq[Node]
 
-  def identityHashCode = System.identityHashCode(this)
+  // Try not to use System.identityHashCode as that's not deterministic (e.g., Hash{Map,Set} iteration order
+  // can be different across multiple runs and that would cause instruction linearization to give different results.)
+  def identityHashCode = id * 41
   override def hashCode: Int = sys.error(s"Node($this).hashCode is disabled - use identityHashCode or Graph.identityMap instead")
   override def equals(that: Any): Boolean = {
     sys.error(s"Node($this).equals($that) is disabled - use identityHashCode or Graph.identityMap instead")

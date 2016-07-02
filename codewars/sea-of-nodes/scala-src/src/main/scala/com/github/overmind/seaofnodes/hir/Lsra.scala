@@ -110,9 +110,7 @@ object Lsra {
         x <- ranges
         y <- other.ranges
       } yield (x, y)
-      product
-        .find({ case (x, y) => x.intersects(y) })
-        .isDefined
+      product.exists { case (x, y) => x.intersects(y) }
     }
 
     def firstIntersection(other: LiveRangeBag): Option[Item] = {
@@ -174,12 +172,12 @@ object Lsra {
 
     rpre.foreach(b => {
       log(s"Scanning Block ${b.id}")
-      // Calculate live out
+      // Combine successor's liveIn as this block's liveOut.
       var live = b.cfgSuccessors.map(liveIn).foldRight(Set.empty[Int])(_ union _)
       log(s"Live = $live")
       log(s"Intervals = $intervals")
 
-      // Also add each successor's phi input
+      // Also add each successor's phi input.
       b.cfgSuccessors.foreach(s => {
         s.valuePhis.foreach(phi => {
           val nthBlock = phi.anchor.comingFrom.indexWhere(_ eq b.last)
@@ -189,30 +187,33 @@ object Lsra {
         })
       })
 
-      // Build initial live range for each operand.
+      // For each liveOut pessimistically assume it's not defined in this block.
       val (bFrom, bTo) = b.range
       live.foreach(opr => ensureInterval(opr).add(bFrom, bTo))
 
+      // For each mid and last instruction, calculate their kill/gen.
       b.numberedInstrs.reverse.foreach({ case (ix, instr) =>
         outputs(instr).foreach(o => {
           log(s"$instr.output: $o, setFrom($ix)")
-          // Def: cut the live range here.
+          // Def: kill the live range here.
           intervals(o.id).setFrom(ix)
           live -= o.id
         })
         instr.valueInputs.foreach(i => {
-          // Use: extend the live range.
+          // Use: gen a live range.
           ensureInterval(i.id).add(bFrom, ix)
           live += i.id
         })
       })
 
-      // Phi def: kill the live in
+      // For each phi def in the block entry: kill the live range.
       b.valuePhis.foreach(phi => {
         live -= phi.id
       })
 
-      // Special case: add loop begin's live in to loop end's live out?
+      // Special case: add loop begin's live in to loop end's live out.
+      // Without this, a value that's defined before
+      // the loop and only used after the loop will not be live in the loop body.
       if (b.isLoopBegin) {
         val loopEnd = b.first.asInstanceOf[LoopBeginNode].loopEnd
         val loopEndTo = g.blocks(loopEnd.belongsToBlock).instrIxEnd
@@ -266,13 +267,18 @@ object Lsra {
   }
 }
 
+case class PReg(id: Int)
+
 case class Lsra(g: TGraph, verbose: Boolean = false) {
   // For now.
-  type PReg = String
-
   var intervals: IntervalMap = _
 
-  val pRegs = Seq("rax", "rbx", "rcx", "rdx", "rdi", "rsi", "r8", "r9")
+  var unhandled: mutable.Queue[LiveRangeBag] = _
+  val active = Graph.emptyIdentityMap[PReg, LiveRangeBag]
+  val inactive = Graph.emptyIdentityMap[LiveRangeBag, PReg]
+  val handled = Graph.emptyIdentityMap[LiveRangeBag, PReg]
+
+  val pRegs = (1 to 8).map(PReg)
 
   def log(s: String) = {
     if (verbose) {
@@ -286,100 +292,141 @@ case class Lsra(g: TGraph, verbose: Boolean = false) {
     intervals
   }
 
-  def splitBefore(current: LiveRangeBag, regFreeUntil: Int) = {
+  def printLiveness(): Unit = {
+    println("Lsra.liveInterval:")
+    intervals.toSeq.sortBy(_._1).foreach({ case (vreg, ranges) =>
+      val moar = handled.get(ranges).map(r => s" ;; %${r.toString}").getOrElse("")
+      println(s"  v$vreg: $ranges$moar")
+    })
+  }
 
+  def splitBefore(current: LiveRangeBag, regFreeUntil: Int) = {
+    sys.error("Not implemented")
+  }
+
+  def spillAt(bag: LiveRangeBag, pos: Int): PReg = {
+    sys.error("Not implemented")
   }
 
   def lsra() = {
-    val unhandled = intervals.values.toSeq.sortBy(_.firstRange)(ItemOrdering).to[mutable.Queue]
-    val active = Graph.emptyIdentityMap[LiveRangeBag, PReg]
-    val inactive = Graph.emptyIdentityMap[LiveRangeBag, PReg]
-    val handled = Graph.emptyIdentityMap[LiveRangeBag, PReg]
+    lsraInternal()
+  }
 
-    var nextSpillSlot = 1
-    val spills =
+  def tryAllocateFreeReg(current: LiveRangeBag): Option[PReg] = {
+    val freeUntilPos = mutable.Map(pRegs.zip(Stream.continually(Int.MaxValue)) : _*)
 
-    def tryAllocateFreeReg(current: LiveRangeBag): Option[String] = {
-      val freeUntilPos = mutable.Map(pRegs.zip(Stream.continually(Int.MaxValue)) : _*)
+    active.foreach(act => {
+      // Active intervals: can't allocate them.
+      freeUntilPos += (act._1 -> 0)
+    })
 
-      active.foreach(act => {
-        // Active intervals: can't allocate them.
-        freeUntilPos += (act._2 -> 0)
+    inactive.foreach(ina => {
+      // Inactive intervals might intersect with the current allocation.
+      ina._1.firstIntersection(current).foreach(sect => {
+        freeUntilPos += (ina._2 -> sect.from)
       })
+    })
 
-      inactive.foreach(ina => {
-        // Inactive intervals might intersect with the current allocation.
-        ina._1.firstIntersection(current).foreach(sect => {
-          freeUntilPos += (ina._2 -> sect.from)
-        })
-      })
-
-      val (reg, regFreeUntil) = freeUntilPos.maxBy(_._2)
-      if (regFreeUntil == 0) {
-        // Failed.
-        None
-      } else if (current.endsBefore(regFreeUntil)) {
-        // Available for the entire interval.
-        Some(reg)
-      } else {
-        splitBefore(current, regFreeUntil)
-        // Available for the first part.
-        Some(reg)
-      }
+    // Selection heuristic: the most free reg.
+    // We also use register hint when possible.
+    val (reg, regFreeUntil) = freeUntilPos.maxBy(_._2)
+    if (regFreeUntil == 0) {
+      // Failed.
+      None
+    } else if (current.endsBefore(regFreeUntil)) {
+      // Available for the entire interval.
+      Some(reg)
+    } else {
+      splitBefore(current, regFreeUntil)
+      // Available for the first part.
+      Some(reg)
     }
+  }
 
-    def allocateBlockedReg(current: LiveRangeBag) = {
-      val nextUsePos = mutable.Map(pRegs.zip(Stream.continually(Int.MaxValue)) : _*)
-      val currentFrom = current.firstRange.from
+  def allocateBlockedReg(current: LiveRangeBag): PReg = {
+    val nextUsePos = mutable.Map(pRegs.zip(Stream.continually(Int.MaxValue)) : _*)
+    val currentFrom = current.firstRange.from
 
-      active.foreach(act => {
-        nextUsePos += (act._2 -> act._1.nextUseAfter(currentFrom).get)
-      })
+    active.foreach(act => {
+      nextUsePos += (act._1 -> act._2.nextUseAfter(currentFrom).get)
+    })
 
-      inactive.filter(_._1.intersects(current)).foreach(ina => {
-        nextUsePos += (ina._2 -> ina._1.nextUseAfter(currentFrom).get)
-      })
-
-      // The farthest use will be chosen as the victim.
-      val (reg, usePos) = nextUsePos.maxBy(_._2)
-      val currentFirstUse = current.firstRange.usePositions.min
-
-      if (currentFirstUse > usePos) {
-        // Current's first use is even farther - spill this instead.
-        nextSpillSlot
-      } else {
-        // Spill `reg`
+    inactive.filter(_._1.intersects(current)).foreach(ina => {
+      val newPos = ina._1.nextUseAfter(currentFrom).get
+      val pos = nextUsePos.get(ina._2) match {
+        case Some(oldPos) => newPos.min(oldPos)
+        case None => newPos
       }
+      nextUsePos += (ina._2 -> pos)
+    })
+
+    // The farthest use will be chosen as the victim.
+    val (reg, usePos) = nextUsePos.maxBy(_._2)
+    val currentFirstUse = current.firstRange.usePositions.min
+
+    if (currentFirstUse > usePos) {
+      // Current's first use is even farther - spill this instead.
+      sys.error("Spill current: not implemented yet")
+    } else {
+      // Spill `reg`
+      spillAt(active(reg), usePos)
     }
+  }
+
+  def lsraInternal(): Unit = {
+    unhandled = intervals.values.toSeq.sortBy(_.firstRange)(ItemOrdering).to[mutable.Queue]
+
+    // var nextSpillSlot = 1
 
     while (unhandled.nonEmpty) {
       val current = unhandled.dequeue()
       val position = current.firstRange.from
 
+      log(s"Lsra: Handling $current")
+
       // Demote active intervals that are expired or temporarily inactive.
       active.toSeq.foreach(act => {
-        if (act._1.endsBefore(position)) {
+        if (act._2.endsBefore(position)) {
+          log(s"Lsra: Done handling active $act")
           active -= act._1
-          handled += act
-        } else if (act._1.doesNotCover(position)) {
+          handled += act.swap
+        } else if (act._2.doesNotCover(position)) {
+          log(s"Lsra: Hole on $act")
           active -= act._1
-          inactive += act
+          inactive += act.swap
         }
       })
 
       // Promote or demote inactive intervals.
       inactive.toSeq.foreach(ina => {
         if (ina._1.endsBefore(position)) {
+          log(s"Lsra: Done handling inactive $ina")
           inactive -= ina._1
           handled += ina
         } else if (ina._1.covers(position)) {
+          log(s"Lsra: Hole ends on $ina")
           inactive -= ina._1
-          active += ina
+          active += ina.swap
         }
       })
 
       // Done housekeeping intervals.
-      tryAllocateFreeReg(current)
+      tryAllocateFreeReg(current) match {
+        case Some(r) =>
+          log(s"Lsra: tryAlloc($current) gives $r")
+          active += (r -> current)
+        case None =>
+          val r = allocateBlockedReg(current)
+          log(s"Lsra: allocBlocked($current) gives $r")
+          active += (r -> current)
+      }
     }
+
+    // All are handled. We might not have the chance to move some of the intervals to handled in the above loop
+    // so we clear them here.
+    active.foreach(handled += _.swap)
+    active.clear()
+    inactive.foreach(handled += _)
+    inactive.clear()
   }
 }
