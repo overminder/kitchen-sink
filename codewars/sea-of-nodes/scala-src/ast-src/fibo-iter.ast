@@ -1,7 +1,8 @@
-(nIter) => {
+() => {
   x = 0
   y = 1
   iter = 0
+  nIter = 10
   while iter < nIter do {
     t = x + y
     x = y

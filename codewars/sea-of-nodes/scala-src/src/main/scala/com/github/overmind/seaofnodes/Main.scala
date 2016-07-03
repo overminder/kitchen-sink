@@ -6,6 +6,7 @@ import com.github.overmind.seaofnodes.ast.LongValue
 import com.github.overmind.seaofnodes.hir.Trace.TGraph
 import com.github.overmind.seaofnodes.hir._
 import com.github.overmind.seaofnodes.hir.nodes.Node
+import com.github.overmind.seaofnodes.backend.x64.{ISel, X64Arch}
 
 import scala.io.Source
 
@@ -70,10 +71,19 @@ object Main {
     val tg = graphToTrace(g)
     renderTraceToDot(tg, "last-trace")
 
-    val lsra = Lsra(tg, verbose = true)
-    lsra.buildLiveness()
-    lsra.lsra()
+    val arch = X64Arch
+
+    val lsra = Lsra(tg, arch, verbose = true)
+    lsra.run()
     lsra.printLiveness()
+
+    val isel = ISel(lsra, arch)
+    val x64instrs = isel.emitGraph(tg)
+
+    println("ISel:")
+    x64instrs.zipWithIndex.foreach({ case (i, ix) =>
+      println(s"  $ix: $i")
+    })
 
     // println("Before interp")
     // interpGraph(g, funcArgs)

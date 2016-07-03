@@ -1,21 +1,21 @@
 package com.github.overmind.seaofnodes.hir
 
+import com.github.overmind.seaofnodes.backend.{MachineSpec, PReg, RegProvider}
+import com.github.overmind.seaofnodes.hir.Lsra.LiveRangeBag.ItemOrdering
+import com.github.overmind.seaofnodes.hir.Lsra._
 import com.github.overmind.seaofnodes.hir.Trace.{TBlock, TGraph}
 import com.github.overmind.seaofnodes.hir.nodes._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-import Lsra._
-import LiveRangeBag.ItemOrdering
-
 object Lsra {
-  type IntervalMap = mutable.Map[Int, LiveRangeBag]
+  type IntervalMap = mutable.Map[ValueNode, LiveRangeBag]
 
   import LiveRangeBag._
 
   object LiveRangeBag {
-    def empty = LiveRangeBag(ArrayBuffer.empty)
+    def empty(v: ValueNode) = LiveRangeBag(v, ArrayBuffer.empty)
 
     object ItemOrdering extends Ordering[Item] {
       override def compare(x: Item, y: Item): Int = {
@@ -82,7 +82,7 @@ object Lsra {
     }
   }
 
-  case class LiveRangeBag(ranges: ArrayBuffer[LiveRangeBag.Item]) {
+  case class LiveRangeBag(definedBy: ValueNode, ranges: ArrayBuffer[LiveRangeBag.Item]) {
 
     def nextUseAfter(currentFrom: Int): Option[Int] = {
       val first = ranges.find(r => {
@@ -159,21 +159,25 @@ object Lsra {
     val rpre = preorder.reverse
 
     // Block -> VReg
-    val liveIns = mutable.Map.empty[Int, Set[Int]]
-    def liveIn(b: TBlock): Set[Int] = {
-      liveIns.getOrElseUpdate(b.id, Set.empty)
+    val liveIns = mutable.Map.empty[Int, mutable.Set[ValueNode]]
+    def liveIn(b: TBlock): mutable.Set[ValueNode] = {
+      liveIns.getOrElseUpdate(b.id, Graph.emptyIdentitySet[ValueNode])
     }
 
     // VReg -> LiveRange
-    val intervals = mutable.Map.empty[Int, LiveRangeBag]
-    def ensureInterval(vreg: Int) = {
-      intervals.getOrElseUpdate(vreg, LiveRangeBag.empty)
+    val intervals = Graph.emptyIdentityMap[ValueNode, LiveRangeBag]
+    def ensureInterval(v: ValueNode) = {
+      intervals.getOrElseUpdate(v, LiveRangeBag.empty(v))
     }
 
     rpre.foreach(b => {
       log(s"Scanning Block ${b.id}")
       // Combine successor's liveIn as this block's liveOut.
-      var live = b.cfgSuccessors.map(liveIn).foldRight(Set.empty[Int])(_ union _)
+      val live = b.cfgSuccessors.map(liveIn).foldRight(Graph.emptyIdentitySet[ValueNode])({ case (x, y) =>
+        // Can't use union as the created HashSet is not an identity set.
+        x.foreach(y += _)
+        y
+      })
       log(s"Live = $live")
       log(s"Intervals = $intervals")
 
@@ -181,7 +185,7 @@ object Lsra {
       b.cfgSuccessors.foreach(s => {
         s.valuePhis.foreach(phi => {
           val nthBlock = phi.anchor.comingFrom.indexWhere(_ eq b.last)
-          val phiUse = phi.composedInputs(nthBlock).id
+          val phiUse = phi.composedInputs(nthBlock)
           live += phiUse
           log(s"Add phiUse $phiUse to live")
         })
@@ -196,19 +200,19 @@ object Lsra {
         outputs(instr).foreach(o => {
           log(s"$instr.output: $o, setFrom($ix)")
           // Def: kill the live range here.
-          intervals(o.id).setFrom(ix)
-          live -= o.id
+          intervals(o).setFrom(ix)
+          live -= o
         })
         instr.valueInputs.foreach(i => {
           // Use: gen a live range.
-          ensureInterval(i.id).add(bFrom, ix)
-          live += i.id
+          ensureInterval(i).add(bFrom, ix)
+          live += i
         })
       })
 
       // For each phi def in the block entry: kill the live range.
       b.valuePhis.foreach(phi => {
-        live -= phi.id
+        live -= phi
       })
 
       // Special case: add loop begin's live in to loop end's live out.
@@ -234,20 +238,20 @@ object Lsra {
     g.dfsIdom(b => {
       b.numberedInstrs.foreach({ case (ix, instr) =>
         outputs(instr).foreach(o => {
-          intervals(o.id).firstRange.addUsePosition(ix)
+          intervals(o).firstRange.addUsePosition(ix)
         })
         instr.valueInputs.foreach(i => {
-          intervals(i.id).firstRangeThatContains(ix).get.addUsePosition(ix)
+          intervals(i).firstRangeThatContains(ix).get.addUsePosition(ix)
         })
       })
-      val (bFrom, bTo) = b.range
+      val (bFrom, _) = b.range
       b.valuePhis.foreach(phi => {
-        intervals(phi.id).firstRange.addUsePosition(bFrom)
+        intervals(phi).firstRange.addUsePosition(bFrom)
         // Phi inputs are used in the coming from block.
         phi.composedInputs.zip(phi.anchor.comingFrom).foreach({ case (v, end) =>
           val comingFrom = g.blocks(end.belongsToBlock)
           val (_, comingFromLast) = comingFrom.range
-          intervals(v.id).firstRangeThatContains(comingFromLast).get.addUsePosition(comingFromLast)
+          intervals(v).firstRangeThatContains(comingFromLast).get.addUsePosition(comingFromLast)
         })
       })
     })
@@ -267,9 +271,7 @@ object Lsra {
   }
 }
 
-case class PReg(id: Int)
-
-case class Lsra(g: TGraph, verbose: Boolean = false) {
+case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends RegProvider {
   // For now.
   var intervals: IntervalMap = _
 
@@ -278,12 +280,17 @@ case class Lsra(g: TGraph, verbose: Boolean = false) {
   val inactive = Graph.emptyIdentityMap[LiveRangeBag, PReg]
   val handled = Graph.emptyIdentityMap[LiveRangeBag, PReg]
 
-  val pRegs = (1 to 8).map(PReg)
-
   def log(s: String) = {
     if (verbose) {
       println(s)
     }
+  }
+
+  def pRegs = mspec.gpRegs
+
+  def run() = {
+    buildLiveness()
+    lsraInternal()
   }
 
   def buildLiveness() = {
@@ -294,10 +301,14 @@ case class Lsra(g: TGraph, verbose: Boolean = false) {
 
   def printLiveness(): Unit = {
     println("Lsra.liveInterval:")
-    intervals.toSeq.sortBy(_._1).foreach({ case (vreg, ranges) =>
+    intervals.toSeq.sortBy(_._1.id).foreach({ case (vreg, ranges) =>
       val moar = handled.get(ranges).map(r => s" ;; %${r.toString}").getOrElse("")
-      println(s"  v$vreg: $ranges$moar")
+      println(s"  v${vreg.id}: $ranges$moar")
     })
+  }
+
+  override def pregFor(v: ValueNode): PReg = {
+    handled(intervals(v))
   }
 
   def splitBefore(current: LiveRangeBag, regFreeUntil: Int) = {
@@ -306,10 +317,6 @@ case class Lsra(g: TGraph, verbose: Boolean = false) {
 
   def spillAt(bag: LiveRangeBag, pos: Int): PReg = {
     sys.error("Not implemented")
-  }
-
-  def lsra() = {
-    lsraInternal()
   }
 
   def tryAllocateFreeReg(current: LiveRangeBag): Option[PReg] = {
@@ -329,6 +336,9 @@ case class Lsra(g: TGraph, verbose: Boolean = false) {
 
     // Selection heuristic: the most free reg.
     // We also use register hint when possible.
+    if (current.definedBy.isInstanceOf[ValuePhiNode]) {
+
+    }
     val (reg, regFreeUntil) = freeUntilPos.maxBy(_._2)
     if (regFreeUntil == 0) {
       // Failed.

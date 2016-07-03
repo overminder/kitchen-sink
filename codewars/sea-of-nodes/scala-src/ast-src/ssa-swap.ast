@@ -1,0 +1,10 @@
+() => {
+  x = 3
+  y = 6
+  while x < y do {
+    t = x
+    x = y
+    y = t
+  }
+  ret x
+}
