@@ -2,7 +2,7 @@
   x = 1
   y = 2
   if x < y then {
-    x = 5
+    x = 999
   } else {
     y = 6
   }

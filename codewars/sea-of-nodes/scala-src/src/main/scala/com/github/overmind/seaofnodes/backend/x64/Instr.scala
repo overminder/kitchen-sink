@@ -40,13 +40,24 @@ object BlockStart {
 }
 
 sealed trait MidInstr extends Instr
-case class Add(dst: Reg, src: Op) extends MidInstr
-case class Lea(dst: Reg, src: Mem) extends MidInstr
-case class Mov(dst: Reg, src: Op) extends MidInstr
-case class Sub(dst: Reg, src: Op) extends MidInstr
-case class Cmp(dst: Reg, src: Op) extends MidInstr
+sealed trait SimpleInstr extends Instr {
+  def shortName = getClass.getSimpleName.toLowerCase
+  def dst: Reg
+  def src: Op
+}
+case class Add(dst: Reg, src: Op) extends MidInstr with SimpleInstr
+case class Lea(dst: Reg, src: Mem) extends MidInstr with SimpleInstr
+case class Mov(dst: Reg, src: Op) extends MidInstr with SimpleInstr
+case class Sub(dst: Reg, src: Op) extends MidInstr with SimpleInstr
+case class Cmp(dst: Reg, src: Op) extends MidInstr with SimpleInstr
+
+sealed trait Cond
+object Cond {
+  case object LT extends Cond
+  case object GE extends Cond
+}
 
 sealed trait LastInstr extends Instr
-case class Jnz(t: BlockLabel, f: BlockLabel) extends LastInstr
+case class Jcc(cond: Cond, t: BlockLabel, f: BlockLabel) extends LastInstr
 case class Jmp(t: BlockLabel) extends LastInstr
 case object Ret extends LastInstr

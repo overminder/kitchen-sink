@@ -6,7 +6,7 @@ import com.github.overmind.seaofnodes.ast.LongValue
 import com.github.overmind.seaofnodes.hir.Trace.TGraph
 import com.github.overmind.seaofnodes.hir._
 import com.github.overmind.seaofnodes.hir.nodes.Node
-import com.github.overmind.seaofnodes.backend.x64.{ISel, X64Arch}
+import com.github.overmind.seaofnodes.backend.x64.{Gas, ISel, X64Arch}
 
 import scala.io.Source
 
@@ -73,17 +73,16 @@ object Main {
 
     val arch = X64Arch
 
-    val lsra = Lsra(tg, arch, verbose = true)
+    val lsra = Lsra(tg, arch, verbose = false)
     lsra.run()
     lsra.printLiveness()
 
     val isel = ISel(lsra, arch)
-    val x64instrs = isel.emitGraph(tg)
+    val instrs = isel.emitGraph(tg)
 
-    println("ISel:")
-    x64instrs.zipWithIndex.foreach({ case (i, ix) =>
-      println(s"  $ix: $i")
-    })
+    val gas = Gas(arch).instrs(instrs)
+    println("GAS:")
+    println(gas)
 
     // println("Before interp")
     // interpGraph(g, funcArgs)
