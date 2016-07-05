@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-find src -name "*.scala" -exec wc {} +
+find src -name "*.scala" -exec wc {} + | sort -n

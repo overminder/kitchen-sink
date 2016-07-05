@@ -1,7 +1,7 @@
 package com.github.overmind.seaofnodes.backend.x64
 
 import com.github.overmind.seaofnodes.backend.{MachineSpec, PReg, RegProvider}
-import com.github.overmind.seaofnodes.hir.Trace.{TBlock, TGraph}
+import com.github.overmind.seaofnodes.hir.Linearize.{TBlock, TGraph}
 import com.github.overmind.seaofnodes.hir.nodes._
 
 import scala.collection.mutable

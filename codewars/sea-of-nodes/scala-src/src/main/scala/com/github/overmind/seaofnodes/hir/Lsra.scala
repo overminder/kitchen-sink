@@ -1,155 +1,132 @@
 package com.github.overmind.seaofnodes.hir
 
 import com.github.overmind.seaofnodes.backend.{MachineSpec, PReg, RegProvider}
-import com.github.overmind.seaofnodes.hir.Lsra.LiveRangeBag.ItemOrdering
 import com.github.overmind.seaofnodes.hir.Lsra._
-import com.github.overmind.seaofnodes.hir.Trace.{TBlock, TGraph}
+import com.github.overmind.seaofnodes.hir.Linearize.{TBlock, TGraph}
 import com.github.overmind.seaofnodes.hir.nodes._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 object Lsra {
-  type IntervalMap = mutable.Map[ValueNode, LiveRangeBag]
+  type IntervalMap = mutable.Map[ValueNode, Interval]
 
-  import LiveRangeBag._
-
-  object LiveRangeBag {
-    def empty(v: ValueNode) = LiveRangeBag(v, ArrayBuffer.empty)
-
-    object ItemOrdering extends Ordering[Item] {
-      override def compare(x: Item, y: Item): Int = {
-        Ordering.Tuple2[Int, Int].compare((x.from, x.to), (y.from, y.to))
-      }
-    }
-
-    case class Item(from: Int, to: Int, var usePositions: Set[Int]) {
-      usePositions.foreach(checkPos)
-
-      def checkPos(p: Int): Unit = {
-        assert(from <= p && p <= to)
-      }
-
-      def addUsePosition(pos: Int): Unit = {
-        checkPos(pos)
-        usePositions += pos
-      }
-
-      override def toString = {
-        s"($from:$to @ {${usePositions.toSeq.sorted.mkString(", ")}})"
-      }
-      protected def createUnion(newFrom: Int, newTo: Int, other: Item): Item = {
-        Item(newFrom, newTo, usePositions ++ other.usePositions)
-      }
-
-      protected def createIntersection(newFrom: Int, newTo: Int, other: Item): Item = {
-        def contained(x: Int) = {
-          newFrom <= x && x <= newTo
-        }
-        Item(newFrom, newTo, (usePositions ++ other.usePositions).filter(contained))
-      }
-
-      def mergeAll(oldRs: ArrayBuffer[Item]): Unit = {
-        val canMergeAt = oldRs.indexWhere(this.intersects)
-        if (canMergeAt >= 0) {
-          val toMerge = oldRs.remove(canMergeAt)
-          unionOf(toMerge).mergeAll(oldRs)
-        } else {
-          oldRs += this
-          val sorted = oldRs.sorted(ItemOrdering)
-          oldRs.clear()
-          oldRs ++= sorted
-        }
-      }
-
-      def intersects(other: Item): Boolean = {
-        if (to < other.from || other.to < from) {
-          false
-        } else {
-          true
-        }
-      }
-
-      def unionOf(other: Item): Item = {
-        createUnion(from.min(other.from), to.max(other.to), other)
-      }
-
-      def intersectionOf(other: Item): Item = {
-        val (newFrom, newTo) = (from.max(other.from), to.min(other.to))
-        assert(newFrom < newTo)
-        createIntersection(newFrom, newTo, other)
-      }
-    }
-  }
-
-  case class LiveRangeBag(definedBy: ValueNode, ranges: ArrayBuffer[LiveRangeBag.Item]) {
-
-    def nextUseAfter(currentFrom: Int): Option[Int] = {
-      val first = ranges.find(r => {
-        r.usePositions.exists(_ > currentFrom)
-      })
-      first.flatMap(_.usePositions.toSeq.sorted.find(_ > currentFrom))
-    }
-
-    def endsBefore(position: Int): Boolean = {
-      // Last range ends before this position. XXX: < or <=?
-      ranges.last.to <= position
-    }
-
-    def doesNotCover(position: Int): Boolean = !covers(position)
-    def covers(position: Int): Boolean = {
-      // XXX: Same question: < or <=?
-      ranges.exists({ case r =>
-        r.from <= position || position <= r.to
-      })
-    }
-
-    def intersects(other: LiveRangeBag): Boolean = {
-      // O(N^2)...
-      val product = for {
-        x <- ranges
-        y <- other.ranges
-      } yield (x, y)
-      product.exists { case (x, y) => x.intersects(y) }
-    }
-
-    def firstIntersection(other: LiveRangeBag): Option[Item] = {
-      val product = for {
-        x <- ranges
-        y <- other.ranges
-      } yield (x, y)
-      product
-        .find({ case (x, y) => x.intersects(y) })
-        .map({ case (x, y) => x.intersectionOf(y) })
-    }
+  case class Interval(definedBy: ValueNode,
+                      ranges: mutable.TreeSet[RangePair], usePositions: mutable.TreeSet[UsePosition],
+                      children: ArrayBuffer[Interval], parent: Option[Interval]) {
 
     def firstRange = ranges.head
 
-    def firstRangeThatContains(pos: Int): Option[Item] = {
-      ranges.find(r => {
-        r.from <= pos && pos <= r.to
-      })
+    def firstRangeThatContains(pos: Int): Option[RangePair] = {
+      ranges.find(_.contains(pos))
     }
 
-    def add(newFrom: Int, newTo: Int): Unit = {
-      sanityCheck(newFrom, newTo)
-      Item(newFrom, newTo, Set.empty).mergeAll(ranges)
+    def covers(pos: Int): Boolean = {
+      firstRangeThatContains(pos).isDefined
+    }
+
+    def endsBefore(pos: Int): Boolean = {
+      // Last range ends before this position.
+      range.endsBefore(pos)
+    }
+
+    def nextUseAfter(pos: Int): Option[UsePosition] = {
+      usePositions.iteratorFrom(UsePosition(pos + 1)).toStream.headOption
+    }
+
+    def intersects(other: Interval): Boolean = {
+      firstIntersection(other).nonEmpty
+    }
+
+    def firstIntersection(other: Interval): Option[RangePair] = {
+      ranges.flatMap(_.firstIntersection(other.ranges)).headOption
+    }
+
+    def range: RangePair = {
+      RangePair(ranges.head.from, ranges.last.to)
+    }
+
+    def addUsePosition(pos: UsePosition): Unit = {
+      usePositions += pos
+    }
+
+    def addUsePosition(ix: Int): Unit = {
+      addUsePosition(UsePosition(ix))
+    }
+
+    def add(from: Int, to: Int): Unit = {
+      RangePair(from, to).mergeAll(ranges)
     }
 
     def setFrom(newFrom: Int): Unit = {
       // Must always set the first one?
-      assert(newFrom < ranges(0).to)
-      val r0 = ranges(0)
-      ranges(0) = r0.copy(from = newFrom, usePositions = r0.usePositions + newFrom)
+      val r0 = firstRange
+      assert(newFrom < r0.to)
+      ranges.remove(r0)
+      ranges += r0.copy(from = newFrom)
+    }
+  }
+
+  object Interval {
+    def empty(v: ValueNode) = Interval(definedBy = v,
+      ranges = mutable.TreeSet.empty[RangePair],
+      usePositions = mutable.TreeSet.empty[UsePosition],
+      children = ArrayBuffer.empty, parent = None)
+  }
+
+  // [from, to)
+  case class RangePair(from: Int, to: Int) extends Ordered[RangePair] {
+    assert(from < to)
+
+    def contains(p: Int): Boolean = {
+      from <= p && p < to
     }
 
-    protected def sanityCheck(f: Int, t: Int) = {
-      assert(f < t)
+    def startsAfter(pos: Int): Boolean = {
+      pos < from
     }
 
-    override def toString = {
-      val body = ranges.map(_.toString).mkString(", ")
-      s"LiveRanges[$body]"
+    def endsBefore(pos: Int): Boolean = {
+      to <= pos
+    }
+
+    def intersects(other: RangePair): Boolean = {
+      if (to <= other.from || other.to <= from) {
+        false
+      } else {
+        true
+      }
+    }
+
+    def firstIntersection(other: Iterable[RangePair]): Option[RangePair] =
+      other.find(intersects).map(intersectionWith)
+
+    def unionWith(other: RangePair): RangePair = {
+      RangePair(from.min(other.from), to.max(other.to))
+    }
+
+    def intersectionWith(other: RangePair): RangePair = {
+      RangePair(from.max(other.from), to.min(other.to))
+    }
+
+    def mergeAll(rs: mutable.TreeSet[RangePair]): Unit = {
+      rs.find(intersects) match {
+        case Some(toMerge) =>
+          rs.remove(toMerge)
+          unionWith(toMerge).mergeAll(rs)
+        case None =>
+          rs += this
+      }
+    }
+
+    override def compare(that: RangePair): Int = {
+      Ordering.Tuple2[Int, Int].compare((from, to), (that.from, that.to))
+    }
+  }
+
+  case class UsePosition(ix: Int, mustBeInReg: Boolean = true) extends Ordered[UsePosition] {
+    override def compare(that: UsePosition): Int = {
+      ix.compare(that.ix)
     }
   }
 
@@ -165,9 +142,9 @@ object Lsra {
     }
 
     // VReg -> LiveRange
-    val intervals = Graph.emptyIdentityMap[ValueNode, LiveRangeBag]
+    val intervals = Graph.emptyIdentityMap[ValueNode, Interval]
     def ensureInterval(v: ValueNode) = {
-      intervals.getOrElseUpdate(v, LiveRangeBag.empty(v))
+      intervals.getOrElseUpdate(v, Interval.empty(v))
     }
 
     rpre.foreach(b => {
@@ -238,20 +215,20 @@ object Lsra {
     g.dfsIdom(b => {
       b.numberedInstrs.foreach({ case (ix, instr) =>
         outputs(instr).foreach(o => {
-          intervals(o).firstRange.addUsePosition(ix)
+          intervals(o).addUsePosition(ix)
         })
         instr.valueInputs.foreach(i => {
-          intervals(i).firstRangeThatContains(ix).get.addUsePosition(ix)
+          intervals(i).addUsePosition(ix)
         })
       })
       val (bFrom, _) = b.range
       b.valuePhis.foreach(phi => {
-        intervals(phi).firstRange.addUsePosition(bFrom)
+        intervals(phi).addUsePosition(bFrom)
         // Phi inputs are used in the coming from block.
         phi.composedInputs.zip(phi.anchor.comingFrom).foreach({ case (v, end) =>
           val comingFrom = g.blocks(end.belongsToBlock)
           val (_, comingFromLast) = comingFrom.range
-          intervals(v).firstRangeThatContains(comingFromLast).get.addUsePosition(comingFromLast)
+          intervals(v).addUsePosition(comingFromLast)
         })
       })
     })
@@ -275,10 +252,10 @@ case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends
   // For now.
   var intervals: IntervalMap = _
 
-  var unhandled: mutable.Queue[LiveRangeBag] = _
-  val active = Graph.emptyIdentityMap[PReg, LiveRangeBag]
-  val inactive = Graph.emptyIdentityMap[LiveRangeBag, PReg]
-  val handled = Graph.emptyIdentityMap[LiveRangeBag, PReg]
+  var unhandled: mutable.Queue[Interval] = _
+  val active = Graph.emptyIdentityMap[PReg, Interval]
+  val inactive = Graph.emptyIdentityMap[Interval, PReg]
+  val handled = Graph.emptyIdentityMap[Interval, PReg]
 
   def log(s: String) = {
     if (verbose) {
@@ -311,15 +288,15 @@ case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends
     handled(intervals(v))
   }
 
-  def splitBefore(current: LiveRangeBag, regFreeUntil: Int) = {
+  def splitBefore(current: Interval, regFreeUntil: Int) = {
     sys.error("Not implemented")
   }
 
-  def spillAt(bag: LiveRangeBag, pos: Int): PReg = {
+  def spillAt(bag: Interval, pos: Int): PReg = {
     sys.error("Not implemented")
   }
 
-  def tryAllocateFreeReg(current: LiveRangeBag): Option[PReg] = {
+  def tryAllocateFreeReg(current: Interval): Option[PReg] = {
     val freeUntilPos = mutable.Map(pRegs.zip(Stream.continually(Int.MaxValue)) : _*)
 
     active.foreach(act => {
@@ -353,28 +330,28 @@ case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends
     }
   }
 
-  def allocateBlockedReg(current: LiveRangeBag): PReg = {
+  def allocateBlockedReg(current: Interval): PReg = {
     val nextUsePos = mutable.Map(pRegs.zip(Stream.continually(Int.MaxValue)) : _*)
     val currentFrom = current.firstRange.from
 
     active.foreach(act => {
-      nextUsePos += (act._1 -> act._2.nextUseAfter(currentFrom).get)
+      nextUsePos += (act._1 -> act._2.nextUseAfter(currentFrom).get.ix)
     })
 
     inactive.filter(_._1.intersects(current)).foreach(ina => {
       val newPos = ina._1.nextUseAfter(currentFrom).get
       val pos = nextUsePos.get(ina._2) match {
-        case Some(oldPos) => newPos.min(oldPos)
-        case None => newPos
+        case Some(oldPos) => newPos.ix.min(oldPos)
+        case None => newPos.ix
       }
       nextUsePos += (ina._2 -> pos)
     })
 
     // The farthest use will be chosen as the victim.
     val (reg, usePos) = nextUsePos.maxBy(_._2)
-    val currentFirstUse = current.firstRange.usePositions.min
+    val currentFirstUse = current.usePositions.head
 
-    if (currentFirstUse > usePos) {
+    if (currentFirstUse.ix > usePos) {
       // Current's first use is even farther - spill this instead.
       sys.error("Spill current: not implemented yet")
     } else {
@@ -384,7 +361,7 @@ case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends
   }
 
   def lsraInternal(): Unit = {
-    unhandled = intervals.values.toSeq.sortBy(_.firstRange)(ItemOrdering).to[mutable.Queue]
+    unhandled = intervals.values.toSeq.sortBy(_.firstRange).to[mutable.Queue]
 
     // var nextSpillSlot = 1
 
@@ -400,7 +377,7 @@ case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends
           log(s"Lsra: Done handling active $act")
           active -= act._1
           handled += act.swap
-        } else if (act._2.doesNotCover(position)) {
+        } else if (!act._2.covers(position)) {
           log(s"Lsra: Hole on $act")
           active -= act._1
           inactive += act.swap

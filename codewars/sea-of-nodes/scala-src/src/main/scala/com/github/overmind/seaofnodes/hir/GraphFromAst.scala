@@ -1,12 +1,11 @@
 package com.github.overmind.seaofnodes.hir
 
 import com.github.overmind.seaofnodes.ast.BinaryOp.{Add, LessThan, Sub}
-import com.github.overmind.seaofnodes.ast.Interp.UndefinedVar
-
-import scala.collection.mutable
 import com.github.overmind.seaofnodes.ast._
 import com.github.overmind.seaofnodes.hir.Graph.UndefinedVarInGraph
 import com.github.overmind.seaofnodes.hir.nodes._
+
+import scala.collection.mutable
 
 object GraphFromAst {
   def build(rootStmt: Stmt): Graph = {
@@ -183,8 +182,8 @@ object GraphFromAst {
       s match {
         case Begin(ss) => ss.foreach(buildStmt(env, _))
         case Assign(v, e) => v match {
-          case LVar(v) =>
-            env.defVar(v, buildExpr(env, e))
+          case LVar(name) =>
+            env.defVar(name, buildExpr(env, e))
           case LIndex(base, index) =>
             attachNext(
               WriteArrayNode(
@@ -194,50 +193,56 @@ object GraphFromAst {
               ))
         }
         case If(cond, t, f) =>
-          val condNode = asLogicNode(buildExpr(env, cond))
-          val tBegin = makeBegin
-          val fBegin = makeBegin
-          val ifNode = IfNode(condNode, tBegin, fBegin)
-          attachNext(ifNode)
-          current = Some(tBegin)
-          val tEnv = consEnv(env)
-          buildStmt(tEnv, t)
-          val tEnd = EndNode()
-          val tReturned = current.isEmpty
-          if (!tReturned) {
-            attachNext(tEnd)
-          }
+          asLogicNode(buildExpr(env, cond)) match {
+            case TrueNode =>
+              buildStmt(env, t)
+            case FalseNode =>
+              buildStmt(env, f)
+            case condNode =>
+              val tBegin = makeBegin
+              val fBegin = makeBegin
+              val ifNode = IfNode(condNode, tBegin, fBegin)
+              attachNext(ifNode)
+              current = Some(tBegin)
+              val tEnv = consEnv(env)
+              buildStmt(tEnv, t)
+              val tEnd = EndNode()
+              val tReturned = current.isEmpty
+              if (!tReturned) {
+                attachNext(tEnd)
+              }
 
-          current = Some(fBegin)
-          val fEnv = consEnv(env)
-          buildStmt(fEnv, f)
-          val fReturned = current.isEmpty
-          val fEnd = EndNode()
-          if (!fReturned)  {
-            attachNext(fEnd)
-          }
+              current = Some(fBegin)
+              val fEnv = consEnv(env)
+              buildStmt(fEnv, f)
+              val fReturned = current.isEmpty
+              val fEnd = EndNode()
+              if (!fReturned)  {
+                attachNext(fEnd)
+              }
 
-          if (tReturned && fReturned) {
-            // We are done - both branches are end.
-          } else if (tReturned) {
-            // Reopen the false branch
-            val prevNext = fEnd.predecessor.asInstanceOf[SingleNext[Node]]
-            prevNext.next = null
-            current = Some(prevNext)
-            fEnv.collapseDefs()
-          } else if (fReturned) {
-            // Reopen the true branch
-            val prevNext = tEnd.predecessor.asInstanceOf[SingleNext[Node]]
-            prevNext.next = null
-            current = Some(prevNext)
-            tEnv.collapseDefs()
-          } else {
-            val merge = makeMerge
-            ifNode.merge = merge
-            current = Some(merge)
-            merge.addComingFrom(tEnd)
-            merge.addComingFrom(fEnd)
-            attachPhisAfterIf(tEnv, fEnv, merge)
+              if (tReturned && fReturned) {
+                // We are done - both branches are end.
+              } else if (tReturned) {
+                // Reopen the false branch
+                val prevNext = fEnd.predecessor.asInstanceOf[SingleNext[Node]]
+                prevNext.next = null
+                current = Some(prevNext)
+                fEnv.collapseDefs()
+              } else if (fReturned) {
+                // Reopen the true branch
+                val prevNext = tEnd.predecessor.asInstanceOf[SingleNext[Node]]
+                prevNext.next = null
+                current = Some(prevNext)
+                tEnv.collapseDefs()
+              } else {
+                val merge = makeMerge
+                ifNode.merge = merge
+                current = Some(merge)
+                merge.addComingFrom(tEnd)
+                merge.addComingFrom(fEnd)
+                attachPhisAfterIf(tEnv, fEnv, merge)
+              }
           }
 
         case While(cond, body) =>
@@ -334,6 +339,7 @@ object GraphFromAst {
     def asLogicNode(node: ValueNode) = {
       node match {
         case x: LogicNode => x
+        case LitLongNode(i) => LitNode(i != 0)
         case _ => IsTruthyNode(node)
       }
     }

@@ -6,7 +6,8 @@ import com.github.overmind.seaofnodes.hir.nodes._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
-object Trace {
+// Naively linearize and number instrutions for LSRA's consumption.
+object Linearize {
   def build(g: Graph): TGraph = {
     val tg = TGraph(g)
 

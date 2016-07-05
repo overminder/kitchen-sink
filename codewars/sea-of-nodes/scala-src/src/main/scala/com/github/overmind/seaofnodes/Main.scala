@@ -3,7 +3,7 @@ package com.github.overmind.seaofnodes
 import java.io.FileWriter
 
 import com.github.overmind.seaofnodes.ast.LongValue
-import com.github.overmind.seaofnodes.hir.Trace.TGraph
+import com.github.overmind.seaofnodes.hir.Linearize.TGraph
 import com.github.overmind.seaofnodes.hir._
 import com.github.overmind.seaofnodes.hir.nodes.Node
 import com.github.overmind.seaofnodes.backend.x64.{Gas, ISel, X64Arch}
@@ -39,7 +39,7 @@ object Main {
   }
 
   def graphToTrace(g: Graph): TGraph = {
-    Trace.build(g)
+    Linearize.build(g)
   }
 
   def writeFile(path: String, content: String): Unit = {
@@ -55,7 +55,7 @@ object Main {
   }
 
   def renderTraceToDot(g: TGraph, name: String): Unit = {
-    writeFile(s"dots/$name.dot", Trace.toDot(g))
+    writeFile(s"dots/$name.dot", Linearize.toDot(g))
   }
 
   def main(args: Array[String]): Unit = {
