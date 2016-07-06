@@ -7,13 +7,10 @@ import com.github.overmind.seaofnodes.hir.nodes._
 
 import scala.collection.mutable
 
-object GraphFromAst {
-  def build(rootStmt: Stmt): Graph = {
-    build(FuncDef(Seq(), rootStmt))
-  }
 
-  def build(func: FuncDef): Graph = {
-    val b = Builder(func.body)
+object GraphFromAst {
+  def build(func: FuncDef, cfold: Boolean = true): Graph = {
+    val b = Builder(func.body, cfold = cfold)
     def mkArgNode(k: String, ix: Int) = {
       k -> FuncArgNode(ix).asInstanceOf[ValueNode]
     }
@@ -22,7 +19,7 @@ object GraphFromAst {
     b.g
   }
 
-  case class Builder(rootStmt: Stmt) {
+  case class Builder(rootStmt: Stmt, cfold: Boolean = true) {
     val start = GraphEntryNode()
     val end = GraphExitNode()
     val g = Graph(start, end)
@@ -53,7 +50,7 @@ object GraphFromAst {
 
     def simplify(n: Node): Node = {
       unique(n match {
-        case s: Simplifiable =>
+        case s: Simplifiable if cfold =>
           s.simplifyInGraph(g)
         case _ =>
           n
@@ -117,9 +114,9 @@ object GraphFromAst {
             val pointsTo = phi.composedInputs.head
             phi.replaceAllUsesWith(pointsTo)
 
-            // Should probably do this in a later phase with a worklist.
-            // Yep - either this or simplify is unsound.
-            // pointsTo.uses.foreach(simplify)
+          // Should probably do this in a later phase with a worklist.
+          // Yep - either this or simplify is unsound.
+          // pointsTo.uses.foreach(simplify)
         }
       })
     }

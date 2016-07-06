@@ -9,7 +9,7 @@ import scala.collection.mutable.ArrayBuffer
 
 case object X64Arch extends MachineSpec {
   val regNames = "rax rcx rbx rdx rdi rsi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15".split(' ')
-  val allGpRegs: IndexedSeq[PReg] = ((0 to 5) ++ (8 +: (10 to 15))).map(PReg(_))
+  val allGpRegs: IndexedSeq[PReg] = ((0 to 5) ++ (8 +: (10 to 15))).map(PReg(_)).take(5)
   override val gpRegs = allGpRegs.take(10)
   override val scratch = PReg(10)
 

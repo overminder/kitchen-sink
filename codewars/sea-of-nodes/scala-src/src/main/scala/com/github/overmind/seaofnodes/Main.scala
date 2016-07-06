@@ -25,7 +25,7 @@ object Main {
     // Opt.simplifyControl(entry.successor.asInstanceOf[RegionNode], builder)
     // println(s"interp($name) => ${Graph.interp(entry)}")
 
-    val g = GraphFromAst.build(s)
+    val g = GraphFromAst.build(s, cfold = false)
     // Opt.simplifyControl(g.entry, g)
     // Gcm(g).scheduleEarly(true)
     // Gcm(g).scheduleLate(true)
@@ -73,7 +73,7 @@ object Main {
 
     val arch = X64Arch
 
-    val lsra = Lsra(tg, arch, verbose = false)
+    val lsra = Lsra(tg, arch, verbose = true)
     lsra.run()
     lsra.printLiveness()
 

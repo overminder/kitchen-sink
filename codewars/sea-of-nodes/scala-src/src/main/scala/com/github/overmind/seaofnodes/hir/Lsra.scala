@@ -12,8 +12,10 @@ object Lsra {
   type IntervalMap = mutable.Map[ValueNode, Interval]
 
   case class Interval(definedBy: ValueNode,
-                      ranges: mutable.TreeSet[RangePair], usePositions: mutable.TreeSet[UsePosition],
-                      children: ArrayBuffer[Interval], parent: Option[Interval]) {
+                      ranges: mutable.SortedSet[RangePair], usePositions: mutable.SortedSet[UsePosition],
+                      children: ArrayBuffer[Interval], parent: Option[Interval]) extends Ordered[Interval] {
+
+    def toplevel = parent.getOrElse(this)
 
     def firstRange = ranges.head
 
@@ -32,6 +34,10 @@ object Lsra {
 
     def nextUseAfter(pos: Int): Option[UsePosition] = {
       usePositions.iteratorFrom(UsePosition(pos + 1)).toStream.headOption
+    }
+
+    def prevUseBefore(pos: Int): Option[UsePosition] = {
+      usePositions.range(usePositions.head, UsePosition(pos)).lastOption
     }
 
     def intersects(other: Interval): Boolean = {
@@ -65,18 +71,59 @@ object Lsra {
       ranges.remove(r0)
       ranges += r0.copy(from = newFrom)
     }
+
+    def spiltBetween(from: Int, to: Int): Interval = {
+      val spill = ranges.find(_.adjoins(from)).get
+      val restore = ranges.find(_.adjoins(to)).get
+      assert(spill eq restore)
+
+      // Split ranges
+      val rhsRanges = ranges.iteratorFrom(spill).to[mutable.SortedSet]
+      ranges --= rhsRanges
+      ranges ++= RangePair.mightBeEmpty(spill.from, from)
+      rhsRanges -= spill
+      rhsRanges ++= RangePair.mightBeEmpty(to, spill.to)
+
+      // Split usePoses
+      val rhsPoses = usePositions.iteratorFrom(UsePosition(from)).to[mutable.SortedSet]
+      usePositions --= rhsPoses
+
+      // Link tree
+      val child = Interval(definedBy, rhsRanges, usePositions, ArrayBuffer.empty, Some(toplevel))
+      children += child
+      child
+    }
+
+    override def toString = {
+      val rgs = ranges.map(p => s"${p.from}:${p.to}").mkString(", ")
+      s"Interval[($rgs) @ {${usePositions.map(_.ix).mkString(", ")}})"
+    }
+
+    override def compare(that: Interval): Int = {
+      firstRange.compare(that.firstRange)
+    }
   }
 
   object Interval {
     def empty(v: ValueNode) = Interval(definedBy = v,
-      ranges = mutable.TreeSet.empty[RangePair],
-      usePositions = mutable.TreeSet.empty[UsePosition],
+      ranges = mutable.SortedSet.empty[RangePair],
+      usePositions = mutable.SortedSet.empty[UsePosition],
       children = ArrayBuffer.empty, parent = None)
+  }
+
+  object RangePair {
+    def mightBeEmpty(from: Int, to: Int): Option[RangePair] = {
+      if (from == to) {
+        None
+      } else {
+        Some(RangePair(from, to))
+      }
+    }
   }
 
   // [from, to)
   case class RangePair(from: Int, to: Int) extends Ordered[RangePair] {
-    assert(from < to)
+    assert(from < to, s"RangePair($from, $to)")
 
     def contains(p: Int): Boolean = {
       from <= p && p < to
@@ -88,6 +135,22 @@ object Lsra {
 
     def endsBefore(pos: Int): Boolean = {
       to <= pos
+    }
+
+    def adjoins(pos: Int): Boolean = {
+      if (pos < from || to < pos) {
+        false
+      } else {
+        true
+      }
+    }
+
+    def adjoins(other: RangePair): Boolean = {
+      if (to < other.from || other.to < from) {
+        false
+      } else {
+        true
+      }
     }
 
     def intersects(other: RangePair): Boolean = {
@@ -109,8 +172,8 @@ object Lsra {
       RangePair(from.max(other.from), to.min(other.to))
     }
 
-    def mergeAll(rs: mutable.TreeSet[RangePair]): Unit = {
-      rs.find(intersects) match {
+    def mergeAll(rs: mutable.SortedSet[RangePair]): Unit = {
+      rs.find(adjoins) match {
         case Some(toMerge) =>
           rs.remove(toMerge)
           unionWith(toMerge).mergeAll(rs)
@@ -248,14 +311,16 @@ object Lsra {
   }
 }
 
-case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends RegProvider {
+case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends RegProvider {
   // For now.
   var intervals: IntervalMap = _
 
-  var unhandled: mutable.Queue[Interval] = _
+  var unhandled: mutable.SortedSet[Interval] = _
   val active = Graph.emptyIdentityMap[PReg, Interval]
   val inactive = Graph.emptyIdentityMap[Interval, PReg]
   val handled = Graph.emptyIdentityMap[Interval, PReg]
+  val spillInstrs = ArrayBuffer.empty[(Int /* instr ix */, PReg, /* spill slot */ Int)]
+  var nextSpillSlot = 1
 
   def log(s: String) = {
     if (verbose) {
@@ -263,7 +328,7 @@ case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends
     }
   }
 
-  def pRegs = mspec.gpRegs
+  def pRegs = arch.gpRegs
 
   def run() = {
     buildLiveness()
@@ -279,7 +344,7 @@ case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends
   def printLiveness(): Unit = {
     println("Lsra.liveInterval:")
     intervals.toSeq.sortBy(_._1.id).foreach({ case (vreg, ranges) =>
-      val moar = handled.get(ranges).map(r => s" ;; %${r.toString}").getOrElse("")
+      val moar = handled.get(ranges).map(r => s" ;; ${arch.showReg(r)}").getOrElse("")
       println(s"  v${vreg.id}: $ranges$moar")
     })
   }
@@ -288,12 +353,17 @@ case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends
     handled(intervals(v))
   }
 
-  def splitBefore(current: Interval, regFreeUntil: Int) = {
+  def splitBefore(interval: Interval, regFreeUntil: Int) = {
     sys.error("Not implemented")
   }
 
-  def spillAt(bag: Interval, pos: Int): PReg = {
-    sys.error("Not implemented")
+  def spillAt(parent: Interval, reg: PReg, pos: Int): Interval = {
+    Interval.empty(parent.definedBy)
+    val prevUse = parent.prevUseBefore(pos).get.ix
+    val nextUse = parent.nextUseAfter(pos).get.ix
+    spillInstrs += ((prevUse + 1, reg, nextSpillSlot))
+    nextSpillSlot += 1
+    parent.spiltBetween(prevUse + 1, nextUse - 1)
   }
 
   def tryAllocateFreeReg(current: Interval): Option[PReg] = {
@@ -356,17 +426,25 @@ case class Lsra(g: TGraph, mspec: MachineSpec, verbose: Boolean = false) extends
       sys.error("Spill current: not implemented yet")
     } else {
       // Spill `reg`
-      spillAt(active(reg), usePos)
+      val victim = active.remove(reg).get
+      val spillPos = currentFirstUse
+      log(s"SpillAt($spillPos): victim = $victim")
+      val laterPart = spillAt(victim, reg, spillPos.ix)
+      log(s"Spilling: become $victim + $laterPart")
+      handled += (victim -> reg)
+      unhandled += laterPart
+      reg
     }
   }
 
   def lsraInternal(): Unit = {
-    unhandled = intervals.values.toSeq.sortBy(_.firstRange).to[mutable.Queue]
+    unhandled = intervals.values.to
 
     // var nextSpillSlot = 1
 
     while (unhandled.nonEmpty) {
-      val current = unhandled.dequeue()
+      val current = unhandled.head
+      unhandled.remove(current)
       val position = current.firstRange.from
 
       log(s"Lsra: Handling $current")
