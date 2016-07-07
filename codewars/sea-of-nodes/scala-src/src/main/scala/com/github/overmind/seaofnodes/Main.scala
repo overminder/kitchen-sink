@@ -77,7 +77,7 @@ object Main {
     lsra.run()
     lsra.printLiveness()
 
-    val isel = ISel(lsra, arch)
+    val isel = ISel(lsra)
     val instrs = isel.emitGraph(tg)
 
     val gas = Gas(arch).instrs(instrs)

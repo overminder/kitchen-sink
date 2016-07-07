@@ -852,6 +852,20 @@ case class AnchoringNode(protected var _value: ValueNode, protected var _anchor:
   override def toShallowString: String = "Anchoring"
 }
 
+sealed trait MachineNode extends ValueNode {
+  override def nodeClass = Node.nodeClass
+}
+
+sealed trait RegAllocNode extends MachineNode
+
+case class SpillNode(ix: Int, v: ValueNode) extends RegAllocNode {
+  override def toShallowString: String = s"Spill($ix)"
+}
+
+case class RestoreNode(ix: Int) extends RegAllocNode {
+  override def toShallowString: String = s"Restore($ix)"
+}
+
 object ScheduledNode {
   val nodeClass = NodeClass(
     Seq[NodeField[ScheduledNode, Node]](

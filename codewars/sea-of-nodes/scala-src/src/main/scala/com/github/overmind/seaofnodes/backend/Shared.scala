@@ -1,9 +1,9 @@
 package com.github.overmind.seaofnodes.backend
 
-import com.github.overmind.seaofnodes.hir.nodes.ValueNode
+import com.github.overmind.seaofnodes.hir.nodes.{RegAllocNode, ValueNode}
 
-trait Op
-trait Reg extends Op
+trait Operand
+trait Reg extends Operand
 case class PReg(id: Int) extends Reg
 
 trait MachineSpec {
@@ -17,4 +17,5 @@ object MachineSpec {
 
 trait RegProvider {
   def pregFor(v: ValueNode): PReg
+  def spillRestoreInstrs: Seq[(Int, RegAllocNode)]
 }

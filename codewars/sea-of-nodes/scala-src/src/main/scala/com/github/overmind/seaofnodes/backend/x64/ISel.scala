@@ -9,6 +9,7 @@ import scala.collection.mutable.ArrayBuffer
 
 case object X64Arch extends MachineSpec {
   val regNames = "rax rcx rbx rdx rdi rsi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15".split(' ')
+  val allRegs: IndexedSeq[PReg] = regNames.indices.map(PReg(_))
   val allGpRegs: IndexedSeq[PReg] = ((0 to 5) ++ (8 +: (10 to 15))).map(PReg(_)).take(5)
   override val gpRegs = allGpRegs.take(10)
   override val scratch = PReg(10)
@@ -16,12 +17,28 @@ case object X64Arch extends MachineSpec {
   override def showReg(r: PReg): String = {
     s"%${regNames(r.id)}"
   }
+
+  val rsp = {
+    val r = allRegs(7)
+    assert(showReg(r) == "%rsp")
+    r
+  }
 }
 
 // Let's do it in a simple way for now.
-case class ISel(rp: RegProvider, mspec: MachineSpec) {
+case class ISel(rp: RegProvider) {
+  import Instr._
+
+  val arch = X64Arch
+  val spillStores = {
+    val kvs = rp.spillRestoreInstrs
+    val m = Map(kvs: _*)
+    assert(kvs.length == m.size, s"${kvs.length} != ${m.size}")
+    m
+  }
+
   def emitBlock(b: TBlock): Seq[Instr] = {
-    emitNodes(b.instrs.reverse.toList).reverse
+    emitNodes(b.mergedInstrs(spillStores).reverse.toList).reverse
   }
 
   def emitGraph(g: TGraph): Seq[Instr] = {
@@ -37,7 +54,7 @@ case class ISel(rp: RegProvider, mspec: MachineSpec) {
       case (n: BaseBeginNode) :: rest =>
         BlockStart.of(n.id) +: emitNodes(rest)
       case (n: IfNode) :: (lt @ LessThanNode(v1, v2)) :: rest if n.value.eq(lt) =>
-        Seq(Jcc(Cond.GE, b(n.t), b(n.f)), Cmp(r(v1), r(v2))) ++ emitNodes(rest)
+        Seq(Jcc(Cond.GE, b(n.t), b(n.f)), cmp(r(v1), r(v2))) ++ emitNodes(rest)
       case (n: IfNode) :: TrueNode :: rest if n.value.eq(TrueNode) =>
         // Shouldn't really happen..
         Seq(Jmp(b(n.t))) ++ emitNodes(rest)
@@ -51,15 +68,15 @@ case class ISel(rp: RegProvider, mspec: MachineSpec) {
             })
             // Parallel move.
             // Swap to convert src->dst to dst<-src
-            val orderedDstSrcs = orderWindmill(srcDsts, mspec.scratch).map(_.swap)
+            val orderedDstSrcs = orderWindmill(srcDsts, arch.scratch).map(_.swap)
             // Reverse again since we emit in the reverse order.
-            orderedDstSrcs.reverse.map(Mov.tupled)
+            orderedDstSrcs.reverse.map({ case (dst, src) => mov(dst, src) })
           case _ =>
             Seq()
         }
         Jmp(b(n.cfgSuccessor)) +: (phiMoves ++ emitNodes(rest))
       case (n: RetNode) :: rest =>
-        Seq(Ret, Mov(PReg(0), r(n.value))) ++ emitNodes(rest)
+        Seq(Ret, mov(PReg(0), r(n.value))) ++ emitNodes(rest)
       case (v: ValueNode) :: rest =>
         emitNode(v).reverse ++ emitNodes(rest)
       case _ =>
@@ -109,22 +126,27 @@ case class ISel(rp: RegProvider, mspec: MachineSpec) {
 
   // In the correct order.
   def emitNode(v: ValueNode): Seq[Instr] = {
+
     v match {
       case AddNode(v1, v2) =>
         val r0 = r(v)
         val r1 = r(v1)
         val r2 = r(v2)
         if (r0 == r1) {
-          Seq(Add(r1, r2))
+          Seq(add(r1, r2))
         } else if (r0 == r2) {
-          Seq(Add(r2, r1))
+          Seq(add(r2, r1))
         } else {
-          Seq(Lea(r0, Mem.addReg(r1, r2)))
+          Seq(lea(r0, Mem.addReg(r1, r2)))
         }
       case SubNode(v1, v2) =>
-        Seq(Mov(r(v), r(v1)), Sub(r(v), r(v2)))
+        Seq(mov(r(v), r(v1)), sub(r(v), r(v2)))
       case LitLongNode(imm) =>
-        Seq(Mov(r(v), Imm(imm.toInt)))
+        Seq(mov(r(v), Imm(imm.toInt)))
+      case SpillNode(ix, v1) =>
+        Seq(mov(Mem.constIx(arch.rsp, ix * -8), r(v1)))
+      case RestoreNode(ix) =>
+        Seq(mov(r(v), Mem.constIx(arch.rsp, ix * -8)))
       case _ =>
         sys.error(s"Unhandled node: $v")
     }

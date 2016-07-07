@@ -124,6 +124,13 @@ object Linearize {
     def range = (instrIxStart, instrIxEnd)
 
     def instrs: Seq[Node] = first +: mids :+ last
+    def mergedInstrs(from: collection.Map[Int, Node]): Seq[Node] = {
+      val (bStart, bEnd) = range
+      val orig = Map(numberedInstrs: _*)
+      (bStart to bEnd).flatMap(ix => {
+        orig.get(ix).iterator ++ from.get(ix)
+      })
+    }
     def numberedInstrs: Seq[(Int, Node)] = {
       Range(instrIxStart, Int.MaxValue, instrIxIncr).view.zip(instrs)
     }

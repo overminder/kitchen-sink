@@ -1,6 +1,6 @@
 package com.github.overmind.seaofnodes.backend.x64
 
-import com.github.overmind.seaofnodes.backend.{MachineSpec, Op, PReg}
+import com.github.overmind.seaofnodes.backend.{MachineSpec, Operand, PReg}
 
 case class Gas(arch: MachineSpec) {
   def instrs(is: Seq[Instr]): String = {
@@ -20,7 +20,7 @@ case class Gas(arch: MachineSpec) {
   def midInstr(m: MidInstr): String = {
     m match {
       case s: SimpleInstr =>
-        s"${s.shortName} ${op(s.src)}, ${op(s.dst)}"
+        s"${s.op.shortName} ${op(s.src)}, ${op(s.dst)}"
     }
   }
 
@@ -39,12 +39,20 @@ case class Gas(arch: MachineSpec) {
     s".LB_${label.i}"
   }
 
-  def op(o: Op): String = {
+  def opWithComma(o: Option[Operand]): String = {
+    o.map("," + op(_)).getOrElse("")
+  }
+
+  def scale(o: Option[Scale]): String = {
+    o.map("," + _.asInt.toString).getOrElse("")
+  }
+
+  def op(o: Operand): String = {
     o match {
       case r: PReg =>
         arch.showReg(r)
       case m: Mem =>
-        s"${m.disp}(${op(m.base)}, ${op(m.index)}, ${m.scale.asInt})"
+        s"${m.disp}(${op(m.base)}${opWithComma(m.index)}${scale(m.scale)})"
       case i: Imm =>
         s"$$${i.v}"
       case label: BlockLabel =>

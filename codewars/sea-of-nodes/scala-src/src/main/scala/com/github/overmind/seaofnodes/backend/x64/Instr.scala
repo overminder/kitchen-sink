@@ -1,16 +1,20 @@
 package com.github.overmind.seaofnodes.backend.x64
 
-import com.github.overmind.seaofnodes.backend.{Op, Reg}
+import com.github.overmind.seaofnodes.backend.{Operand, Reg}
 
-case class Mem(base: Reg, index: Reg, scale: Scale, disp: Int) extends Op
+case class Mem(base: Reg, index: Option[Reg], scale: Option[Scale], disp: Int) extends Operand
 
 object Mem {
   def addReg(lhs: Reg, rhs: Reg): Mem = {
-    Mem(lhs, rhs, Scale1, 0)
+    Mem(lhs, Some(rhs), Some(Scale1), 0)
+  }
+
+  def constIx(base: Reg, index: Int): Mem = {
+    Mem(base, None, None, index)
   }
 }
 
-case class Imm(v: Int) extends Op
+case class Imm(v: Int) extends Operand
 
 sealed trait Scale {
   def asInt: Int = {
@@ -27,7 +31,7 @@ case object Scale2 extends Scale
 case object Scale4 extends Scale
 case object Scale8 extends Scale
 
-sealed trait Label extends Op
+sealed trait Label extends Operand
 case class BlockLabel(i: Int) extends Label
 case class SymbolLabel(s: String) extends Label
 
@@ -40,16 +44,37 @@ object BlockStart {
 }
 
 sealed trait MidInstr extends Instr
-sealed trait SimpleInstr extends Instr {
+
+sealed trait SimpleOp {
   def shortName = getClass.getSimpleName.toLowerCase
-  def dst: Reg
-  def src: Op
 }
-case class Add(dst: Reg, src: Op) extends MidInstr with SimpleInstr
-case class Lea(dst: Reg, src: Mem) extends MidInstr with SimpleInstr
-case class Mov(dst: Reg, src: Op) extends MidInstr with SimpleInstr
-case class Sub(dst: Reg, src: Op) extends MidInstr with SimpleInstr
-case class Cmp(dst: Reg, src: Op) extends MidInstr with SimpleInstr
+object SimpleOp {
+  case object Add extends SimpleOp
+  case object Lea extends SimpleOp
+  case object Mov extends SimpleOp
+  case object Sub extends SimpleOp
+  case object Cmp extends SimpleOp
+}
+
+case class SimpleInstr(op: SimpleOp, dst: Operand, src: Operand) extends MidInstr
+
+object Instr {
+  import SimpleOp._
+
+  def mov(dst: Mem, src: Reg) = SimpleInstr(Mov, dst, src)
+  def mov(dst: Reg, src: Operand) = SimpleInstr(Mov, dst, src)
+
+  def add(dst: Reg, src: Operand) = SimpleInstr(Add, dst, src)
+  def add(dst: Mem, src: Reg) = SimpleInstr(Add, dst, src)
+
+  def sub(dst: Mem, src: Reg) = SimpleInstr(Sub, dst, src)
+  def sub(dst: Reg, src: Operand) = SimpleInstr(Sub, dst, src)
+
+  def lea(dst: Reg, src: Mem) = SimpleInstr(Lea, dst, src)
+
+  def cmp(dst: Mem, src: Reg) = SimpleInstr(Cmp, dst, src)
+  def cmp(dst: Reg, src: Operand) = SimpleInstr(Cmp, dst, src)
+}
 
 sealed trait Cond
 object Cond {

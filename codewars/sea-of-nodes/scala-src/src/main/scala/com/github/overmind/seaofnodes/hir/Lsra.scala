@@ -15,9 +15,28 @@ object Lsra {
                       ranges: mutable.SortedSet[RangePair], usePositions: mutable.SortedSet[UsePosition],
                       children: ArrayBuffer[Interval], parent: Option[Interval]) extends Ordered[Interval] {
 
+    var reg: Option[PReg] = None
+    var spillSlot: Option[Int] = None
+    var spillInstr: Option[SpillNode] = None
+
+    def spillRestoreInstrs = {
+      val res = ArrayBuffer.empty[(Int, RegAllocNode)]
+      definedBy match {
+        case r: RestoreNode =>
+          res += (firstRange.from -> r)
+        case _ =>
+          ()
+      }
+      spillInstr.foreach(s => {
+        res += (lastRange.to -> s)
+      })
+      res
+    }
+
     def toplevel = parent.getOrElse(this)
 
     def firstRange = ranges.head
+    def lastRange = ranges.last
 
     def firstRangeThatContains(pos: Int): Option[RangePair] = {
       ranges.find(_.contains(pos))
@@ -72,7 +91,14 @@ object Lsra {
       ranges += r0.copy(from = newFrom)
     }
 
-    def spiltBetween(from: Int, to: Int): Interval = {
+    def spillAt(pos: Int, spillInstr: SpillNode, restoreInstr: RestoreNode): Interval = {
+      val prevUse = prevUseBefore(pos).get.ix
+      val nextUse = nextUseAfter(pos).get.ix
+      this.spillInstr = Some(spillInstr)
+      spiltBetween(prevUse + 1, nextUse - 1, restoreInstr)
+    }
+
+    def spiltBetween(from: Int, to: Int, restoreInstr: RestoreNode): Interval = {
       val spill = ranges.find(_.adjoins(from)).get
       val restore = ranges.find(_.adjoins(to)).get
       assert(spill eq restore)
@@ -89,8 +115,8 @@ object Lsra {
       usePositions --= rhsPoses
 
       // Link tree
-      val child = Interval(definedBy, rhsRanges, usePositions, ArrayBuffer.empty, Some(toplevel))
-      children += child
+      val child = Interval(restoreInstr, rhsRanges, usePositions, ArrayBuffer.empty, Some(toplevel))
+      toplevel.children += child
       child
     }
 
@@ -317,15 +343,24 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
 
   var unhandled: mutable.SortedSet[Interval] = _
   val active = Graph.emptyIdentityMap[PReg, Interval]
-  val inactive = Graph.emptyIdentityMap[Interval, PReg]
-  val handled = Graph.emptyIdentityMap[Interval, PReg]
-  val spillInstrs = ArrayBuffer.empty[(Int /* instr ix */, PReg, /* spill slot */ Int)]
+  val inactive = Graph.emptyIdentitySet[Interval]
+  val handled = Graph.emptyIdentitySet[Interval]
   var nextSpillSlot = 1
 
   def log(s: String) = {
     if (verbose) {
       println(s)
     }
+  }
+
+  def spillRestorePair(i: Interval): (SpillNode, RestoreNode) = {
+    val v = i.definedBy
+    val slot = i.toplevel.spillSlot.getOrElse({
+      val ix = nextSpillSlot
+      nextSpillSlot += 1
+      ix
+    })
+    (SpillNode(slot, v), RestoreNode(slot))
   }
 
   def pRegs = arch.gpRegs
@@ -343,27 +378,31 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
 
   def printLiveness(): Unit = {
     println("Lsra.liveInterval:")
-    intervals.toSeq.sortBy(_._1.id).foreach({ case (vreg, ranges) =>
-      val moar = handled.get(ranges).map(r => s" ;; ${arch.showReg(r)}").getOrElse("")
-      println(s"  v${vreg.id}: $ranges$moar")
-    })
+    def go(itv: Interval): Unit = {
+      val vreg = itv.definedBy
+      val moar = itv.reg.map(r => s" ;; ${arch.showReg(r)}").getOrElse("")
+      println(s"  v${vreg.id}: $itv$moar")
+      itv.spillRestoreInstrs.foreach({
+        case (ix, v: SpillNode) =>
+          println(s"  * $ix: Spill v${arch.showReg(itv.reg.get)} -> Stack[${v.ix}]")
+        case (ix, v: RestoreNode) =>
+          println(s"  * $ix: Restore v${arch.showReg(itv.reg.get)} <- Stack[${v.ix}]")
+      })
+    }
+    intervals.toSeq.sortBy(_._1.id).foreach({ case (_, itv) => go(itv) })
   }
 
   override def pregFor(v: ValueNode): PReg = {
-    handled(intervals(v))
+    // log(s"pregFor($v) -> ${intervals(v)}")
+    intervals(v).reg.get
+  }
+
+  override def spillRestoreInstrs: Seq[(Int, RegAllocNode)] = {
+    intervals.values.flatMap(_.spillRestoreInstrs).to
   }
 
   def splitBefore(interval: Interval, regFreeUntil: Int) = {
     sys.error("Not implemented")
-  }
-
-  def spillAt(parent: Interval, reg: PReg, pos: Int): Interval = {
-    Interval.empty(parent.definedBy)
-    val prevUse = parent.prevUseBefore(pos).get.ix
-    val nextUse = parent.nextUseAfter(pos).get.ix
-    spillInstrs += ((prevUse + 1, reg, nextSpillSlot))
-    nextSpillSlot += 1
-    parent.spiltBetween(prevUse + 1, nextUse - 1)
   }
 
   def tryAllocateFreeReg(current: Interval): Option[PReg] = {
@@ -376,8 +415,8 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
 
     inactive.foreach(ina => {
       // Inactive intervals might intersect with the current allocation.
-      ina._1.firstIntersection(current).foreach(sect => {
-        freeUntilPos += (ina._2 -> sect.from)
+      ina.firstIntersection(current).foreach(sect => {
+        freeUntilPos += (ina.reg.get -> sect.from)
       })
     })
 
@@ -391,11 +430,13 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
       // Failed.
       None
     } else if (current.endsBefore(regFreeUntil)) {
+      current.reg = Some(reg)
       // Available for the entire interval.
       Some(reg)
     } else {
       splitBefore(current, regFreeUntil)
       // Available for the first part.
+      current.reg = Some(reg)
       Some(reg)
     }
   }
@@ -408,13 +449,13 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
       nextUsePos += (act._1 -> act._2.nextUseAfter(currentFrom).get.ix)
     })
 
-    inactive.filter(_._1.intersects(current)).foreach(ina => {
-      val newPos = ina._1.nextUseAfter(currentFrom).get
-      val pos = nextUsePos.get(ina._2) match {
+    inactive.filter(_.intersects(current)).foreach(ina => {
+      val newPos = ina.nextUseAfter(currentFrom).get
+      val pos = nextUsePos.get(ina.reg.get) match {
         case Some(oldPos) => newPos.ix.min(oldPos)
         case None => newPos.ix
       }
-      nextUsePos += (ina._2 -> pos)
+      nextUsePos += (ina.reg.get -> pos)
     })
 
     // The farthest use will be chosen as the victim.
@@ -429,18 +470,19 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
       val victim = active.remove(reg).get
       val spillPos = currentFirstUse
       log(s"SpillAt($spillPos): victim = $victim")
-      val laterPart = spillAt(victim, reg, spillPos.ix)
+      val (spillInstr, restoreInstr) = spillRestorePair(victim)
+      val laterPart = victim.spillAt(spillPos.ix, spillInstr, restoreInstr)
       log(s"Spilling: become $victim + $laterPart")
-      handled += (victim -> reg)
+      handled += victim
       unhandled += laterPart
+      intervals += (laterPart.definedBy -> laterPart)
+      current.reg = Some(reg)
       reg
     }
   }
 
   def lsraInternal(): Unit = {
     unhandled = intervals.values.to
-
-    // var nextSpillSlot = 1
 
     while (unhandled.nonEmpty) {
       val current = unhandled.head
@@ -454,24 +496,24 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
         if (act._2.endsBefore(position)) {
           log(s"Lsra: Done handling active $act")
           active -= act._1
-          handled += act.swap
+          handled += act._2
         } else if (!act._2.covers(position)) {
           log(s"Lsra: Hole on $act")
           active -= act._1
-          inactive += act.swap
+          inactive += act._2
         }
       })
 
       // Promote or demote inactive intervals.
       inactive.toSeq.foreach(ina => {
-        if (ina._1.endsBefore(position)) {
+        if (ina.endsBefore(position)) {
           log(s"Lsra: Done handling inactive $ina")
-          inactive -= ina._1
+          inactive -= ina
           handled += ina
-        } else if (ina._1.covers(position)) {
+        } else if (ina.covers(position)) {
           log(s"Lsra: Hole ends on $ina")
-          inactive -= ina._1
-          active += ina.swap
+          inactive -= ina
+          active += (ina.reg.get -> ina)
         }
       })
 
@@ -489,7 +531,7 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
 
     // All are handled. We might not have the chance to move some of the intervals to handled in the above loop
     // so we clear them here.
-    active.foreach(handled += _.swap)
+    active.foreach(handled += _._2)
     active.clear()
     inactive.foreach(handled += _)
     inactive.clear()
