@@ -84,6 +84,8 @@ object Main {
     println("GAS:")
     println(gas)
 
+    writeFile("asm/last.s", s".globl last\nlast:\n$gas\n")
+
     // println("Before interp")
     // interpGraph(g, funcArgs)
   }

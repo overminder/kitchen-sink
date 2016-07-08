@@ -46,7 +46,7 @@ object BlockStart {
 sealed trait MidInstr extends Instr
 
 sealed trait SimpleOp {
-  def shortName = getClass.getSimpleName.toLowerCase
+  def shortName = getClass.getSimpleName.replace("$", "").toLowerCase
 }
 object SimpleOp {
   case object Add extends SimpleOp

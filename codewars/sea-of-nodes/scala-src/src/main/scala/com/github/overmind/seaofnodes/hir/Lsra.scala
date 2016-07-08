@@ -9,7 +9,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 object Lsra {
-  type IntervalMap = mutable.Map[ValueNode, Interval]
+  type IntervalMap = mutable.Map[Int, Interval]
 
   case class Interval(definedBy: ValueNode,
                       ranges: mutable.SortedSet[RangePair], usePositions: mutable.SortedSet[UsePosition],
@@ -76,7 +76,11 @@ object Lsra {
     }
 
     def addUsePosition(ix: Int): Unit = {
-      addUsePosition(UsePosition(ix))
+      addUsePosition(UsePosition(ix, None))
+    }
+
+    def addUsePosition(ix: Int, usedBy: Node): Unit = {
+      addUsePosition(UsePosition(ix, Some(usedBy)))
     }
 
     def add(from: Int, to: Int): Unit = {
@@ -106,16 +110,20 @@ object Lsra {
       // Split ranges
       val rhsRanges = ranges.iteratorFrom(spill).to[mutable.SortedSet]
       ranges --= rhsRanges
-      ranges ++= RangePair.mightBeEmpty(spill.from, from)
+      RangePair.mightBeEmpty(spill.from, from).foreach(_.mergeAll(ranges))
       rhsRanges -= spill
-      rhsRanges ++= RangePair.mightBeEmpty(to, spill.to)
+      RangePair.mightBeEmpty(to, spill.to).foreach(_.mergeAll(rhsRanges))
 
       // Split usePoses
-      val rhsPoses = usePositions.iteratorFrom(UsePosition(from)).to[mutable.SortedSet]
+      val rhsPoses = usePositions.iteratorFrom(UsePosition(to)).to[mutable.SortedSet]
       usePositions --= rhsPoses
+      rhsPoses += UsePosition(to)
+
+      // Replace uses in the new interval.
+      rhsPoses.foreach(_.usedBy.foreach(_.replaceMatchingInputWith(definedBy, restoreInstr)))
 
       // Link tree
-      val child = Interval(restoreInstr, rhsRanges, usePositions, ArrayBuffer.empty, Some(toplevel))
+      val child = Interval(restoreInstr, rhsRanges, rhsPoses, ArrayBuffer.empty, Some(toplevel))
       toplevel.children += child
       child
     }
@@ -127,6 +135,13 @@ object Lsra {
 
     override def compare(that: Interval): Int = {
       firstRange.compare(that.firstRange)
+    }
+
+    override def equals(that: Any): Boolean = {
+      that match {
+        case u: Interval => compare(u) == 0
+        case _ => false
+      }
     }
   }
 
@@ -213,13 +228,19 @@ object Lsra {
     }
   }
 
-  case class UsePosition(ix: Int, mustBeInReg: Boolean = true) extends Ordered[UsePosition] {
+  case class UsePosition(ix: Int, usedBy: Option[Node] = None, mustBeInReg: Boolean = true) extends Ordered[UsePosition] {
+    override def equals(that: Any): Boolean = {
+      that match {
+        case u: UsePosition => compare(u) == 0
+        case _ => false
+      }
+    }
     override def compare(that: UsePosition): Int = {
       ix.compare(that.ix)
     }
   }
 
-  def buildLiveness(g: TGraph, log: String => Unit) = {
+  def buildLiveness(g: TGraph, log: String => Unit): IntervalMap = {
     val preorder = ArrayBuffer.empty[TBlock]
     g.dfsIdom(preorder += _)
     val rpre = preorder.reverse
@@ -231,9 +252,9 @@ object Lsra {
     }
 
     // VReg -> LiveRange
-    val intervals = Graph.emptyIdentityMap[ValueNode, Interval]
+    val intervals = mutable.Map.empty[Int, Interval]
     def ensureInterval(v: ValueNode) = {
-      intervals.getOrElseUpdate(v, Interval.empty(v))
+      intervals.getOrElseUpdate(v.id, Interval.empty(v))
     }
 
     rpre.foreach(b => {
@@ -266,7 +287,7 @@ object Lsra {
         outputs(instr).foreach(o => {
           log(s"$instr.output: $o, setFrom($ix)")
           // Def: kill the live range here.
-          intervals(o).setFrom(ix)
+          intervals(o.id).setFrom(ix)
           live -= o
         })
         instr.valueInputs.foreach(i => {
@@ -304,20 +325,23 @@ object Lsra {
     g.dfsIdom(b => {
       b.numberedInstrs.foreach({ case (ix, instr) =>
         outputs(instr).foreach(o => {
-          intervals(o).addUsePosition(ix)
+          // o is defined by instr at ix.
+          intervals(o.id).addUsePosition(ix)
         })
         instr.valueInputs.foreach(i => {
-          intervals(i).addUsePosition(ix)
+          // instr uses i at ix.
+          intervals(i.id).addUsePosition(ix, instr)
         })
       })
       val (bFrom, _) = b.range
       b.valuePhis.foreach(phi => {
-        intervals(phi).addUsePosition(bFrom)
+        intervals(phi.id).addUsePosition(bFrom)
         // Phi inputs are used in the coming from block.
         phi.composedInputs.zip(phi.anchor.comingFrom).foreach({ case (v, end) =>
           val comingFrom = g.blocks(end.belongsToBlock)
           val (_, comingFromLast) = comingFrom.range
-          intervals(v).addUsePosition(comingFromLast)
+          // v is used by phi at comingFromLast.
+          intervals(v.id).addUsePosition(comingFromLast, phi)
         })
       })
     })
@@ -342,9 +366,9 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
   var intervals: IntervalMap = _
 
   var unhandled: mutable.SortedSet[Interval] = _
-  val active = Graph.emptyIdentityMap[PReg, Interval]
-  val inactive = Graph.emptyIdentitySet[Interval]
-  val handled = Graph.emptyIdentitySet[Interval]
+  val active = mutable.Map.empty[PReg, Interval]
+  val inactive = mutable.SortedSet.empty[Interval]
+  val handled = mutable.SortedSet.empty[Interval]
   var nextSpillSlot = 1
 
   def log(s: String) = {
@@ -389,12 +413,12 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
           println(s"  * $ix: Restore v${arch.showReg(itv.reg.get)} <- Stack[${v.ix}]")
       })
     }
-    intervals.toSeq.sortBy(_._1.id).foreach({ case (_, itv) => go(itv) })
+    intervals.toSeq.sortBy(_._1).foreach({ case (_, itv) => go(itv) })
   }
 
   override def pregFor(v: ValueNode): PReg = {
     // log(s"pregFor($v) -> ${intervals(v)}")
-    intervals(v).reg.get
+    intervals(v.id).reg.get
   }
 
   override def spillRestoreInstrs: Seq[(Int, RegAllocNode)] = {
@@ -462,7 +486,9 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
     val (reg, usePos) = nextUsePos.maxBy(_._2)
     val currentFirstUse = current.usePositions.head
 
-    if (currentFirstUse.ix > usePos) {
+    if (currentFirstUse.ix == usePos) {
+      sys.error(s"Really out of register on $current - last usePos is $usePos on $reg")
+    } else if (currentFirstUse.ix > usePos) {
       // Current's first use is even farther - spill this instead.
       sys.error("Spill current: not implemented yet")
     } else {
@@ -475,7 +501,7 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
       log(s"Spilling: become $victim + $laterPart")
       handled += victim
       unhandled += laterPart
-      intervals += (laterPart.definedBy -> laterPart)
+      intervals += (laterPart.definedBy.id -> laterPart)
       current.reg = Some(reg)
       reg
     }

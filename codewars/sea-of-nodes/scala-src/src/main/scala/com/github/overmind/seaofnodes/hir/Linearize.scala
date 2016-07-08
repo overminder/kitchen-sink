@@ -124,11 +124,19 @@ object Linearize {
     def range = (instrIxStart, instrIxEnd)
 
     def instrs: Seq[Node] = first +: mids :+ last
-    def mergedInstrs(from: collection.Map[Int, Node]): Seq[Node] = {
+    def mergedInstrs(from: collection.Map[Int, Seq[Node]]): Seq[Node] = {
       val (bStart, bEnd) = range
       val orig = Map(numberedInstrs: _*)
       (bStart to bEnd).flatMap(ix => {
-        orig.get(ix).iterator ++ from.get(ix)
+        val origAtHere = orig.get(ix).iterator
+        val fromAtHere = from.getOrElse(ix, Seq.empty)
+        // Make sure we don't have ordering issues.
+        if (origAtHere.nonEmpty) {
+          assert(fromAtHere.isEmpty)
+        } else if (fromAtHere.nonEmpty) {
+          assert(origAtHere.isEmpty)
+        }
+        origAtHere ++ fromAtHere
       })
     }
     def numberedInstrs: Seq[(Int, Node)] = {

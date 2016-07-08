@@ -11,7 +11,7 @@ case object X64Arch extends MachineSpec {
   val regNames = "rax rcx rbx rdx rdi rsi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15".split(' ')
   val allRegs: IndexedSeq[PReg] = regNames.indices.map(PReg(_))
   val allGpRegs: IndexedSeq[PReg] = ((0 to 5) ++ (8 +: (10 to 15))).map(PReg(_)).take(5)
-  override val gpRegs = allGpRegs.take(10)
+  override val gpRegs = allGpRegs.take(3)
   override val scratch = PReg(10)
 
   override def showReg(r: PReg): String = {
@@ -30,10 +30,20 @@ case class ISel(rp: RegProvider) {
   import Instr._
 
   val arch = X64Arch
-  val spillStores = {
+  val spillStores: collection.Map[Int, Seq[RegAllocNode]] = {
     val kvs = rp.spillRestoreInstrs
-    val m = Map(kvs: _*)
-    assert(kvs.length == m.size, s"${kvs.length} != ${m.size}")
+    // Arrange instrs such that spills happen before restores.
+    val m = kvs.foldLeft(mutable.Map.empty[Int, Vector[RegAllocNode]]) { case (m, (ix, node)) =>
+      var ns = m.getOrElseUpdate(ix, Vector.empty[RegAllocNode])
+      // So as to put spill nodes before the restore node.
+      ns = node match {
+        case s: SpillNode =>
+          s +: ns
+        case r: RestoreNode =>
+          ns :+ r
+      }
+      m += (ix -> ns)
+    }
     m
   }
 
