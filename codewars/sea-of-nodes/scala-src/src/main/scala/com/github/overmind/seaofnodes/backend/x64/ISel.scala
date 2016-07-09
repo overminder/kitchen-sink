@@ -10,8 +10,8 @@ import scala.collection.mutable.ArrayBuffer
 case object X64Arch extends MachineSpec {
   val regNames = "rax rcx rbx rdx rdi rsi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15".split(' ')
   val allRegs: IndexedSeq[PReg] = regNames.indices.map(PReg(_))
-  val allGpRegs: IndexedSeq[PReg] = ((0 to 5) ++ (8 +: (10 to 15))).map(PReg(_)).take(5)
-  override val gpRegs = allGpRegs.take(3)
+  val allGpRegs: IndexedSeq[PReg] = ((0 to 5) ++ (8 +: (10 to 15))).map(PReg(_))
+  override val gpRegs = allGpRegs.take(10)
   override val scratch = PReg(10)
 
   override def showReg(r: PReg): String = {
@@ -22,6 +22,61 @@ case object X64Arch extends MachineSpec {
     val r = allRegs(7)
     assert(showReg(r) == "%rsp")
     r
+  }
+}
+
+object ISel {
+  def orderWindmill[A](srcDsts: Seq[(PReg, PReg)], scratch: PReg,
+                       movSrcDst: (PReg, PReg) => A, xchg: (PReg, PReg) => A): Seq[A] = {
+    // Basically a toposort followed by a SCC elimination.
+    val moves = new mutable.HashMap[PReg, mutable.Set[PReg]] with mutable.MultiMap[PReg, PReg]
+    srcDsts.foreach((moves.addBinding _).tupled)
+    val out = ArrayBuffer.empty[A]
+
+    def sccChain(start: PReg): Seq[(PReg, PReg)] = {
+      var iter = start
+      val chain = ArrayBuffer.empty[(PReg, PReg)]
+      do {
+        val dsts = moves(iter)
+        assert(dsts.size == 1)
+        val dst = dsts.head
+        chain += (iter -> dst)
+        moves -= iter
+        iter = dst
+      } while (iter != start)
+      chain
+    }
+
+    while (moves.nonEmpty) {
+      // Blades are non-strongly-connected vertices.
+      val blades = moves.flatMap({ case (src, dsts) =>
+        Stream.continually(src).zip(dsts.filterNot(moves.contains))
+      })
+      if (blades.nonEmpty) {
+        out ++= blades.map(movSrcDst.tupled)
+        blades.foreach((moves.removeBinding _).tupled)
+      } else {
+        // Axles (SCC) residue. NOTE: we might have multiple SCCs!
+        val (fstSrc, fstDsts) = moves.head
+        assert(fstDsts.size == 1)
+        val fstDst = fstDsts.head
+        val chain = sccChain(fstSrc)
+        chain.length match {
+          case 1 =>
+            ()  // Self-move.
+          case 2 =>
+            // Use xchg. On Haswell, xchg reg, reg is not faster than three moves - we're just
+            // trying to save some spaces.
+            out += xchg.tupled(chain.last)
+          case _ =>
+            // Use mov.
+            out += movSrcDst(fstSrc, scratch)
+            out ++= chain.tail.reverse.map(movSrcDst.tupled)
+            out += movSrcDst(scratch, fstDst)
+        }
+      }
+    }
+    out
   }
 }
 
@@ -78,9 +133,10 @@ case class ISel(rp: RegProvider) {
             })
             // Parallel move.
             // Swap to convert src->dst to dst<-src
-            val orderedDstSrcs = orderWindmill(srcDsts, arch.scratch).map(_.swap)
+            def movSrcDst(src: PReg, dst: PReg) = mov(dst, src)
+            val orderedDstSrcs = ISel.orderWindmill(srcDsts, arch.scratch, movSrcDst _, xchg _)
             // Reverse again since we emit in the reverse order.
-            orderedDstSrcs.reverse.map({ case (dst, src) => mov(dst, src) })
+            orderedDstSrcs.reverse
           case _ =>
             Seq()
         }
@@ -95,44 +151,6 @@ case class ISel(rp: RegProvider) {
   }
 
   // See http://gallium.inria.fr/~xleroy/publi/parallel-move.pdf.
-  def orderWindmill(srcDsts: Seq[(PReg, PReg)], scratch: PReg): Seq[(PReg, PReg)] = {
-    // Basically a toposort followed by a SCC elimination.
-    val moves = mutable.Map(srcDsts: _*)
-    val out = ArrayBuffer.empty[(PReg, PReg)]
-
-    def sccChain(start: PReg): Seq[(PReg, PReg)] = {
-      var iter = start
-      val chain = ArrayBuffer.empty[(PReg, PReg)]
-      do {
-        val dst = moves(iter)
-        chain += (iter -> dst)
-        moves -= iter
-        iter = dst
-      } while (iter != start)
-      chain
-    }
-
-    while (moves.nonEmpty) {
-      // Blades are non-strongly-connected vertices.
-      val blades = moves.filter({ case (src, dst) =>
-        !moves.contains(dst)
-      })
-      if (blades.nonEmpty) {
-        out ++= blades
-        moves --= blades.keys
-      } else {
-        // Axles (SCC) residue. NOTE: we might have multiple SCCs!
-        val (fstSrc, fstDst) = moves.head
-        val chain = sccChain(fstSrc)
-        if (chain.length != 1) {
-          out += (fstSrc -> scratch)
-          out ++= chain.tail.reverse
-          out += (scratch -> fstDst)
-        }
-      }
-    }
-    out
-  }
 
   // In the correct order.
   def emitNode(v: ValueNode): Seq[Instr] = {

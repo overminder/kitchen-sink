@@ -54,6 +54,7 @@ object SimpleOp {
   case object Mov extends SimpleOp
   case object Sub extends SimpleOp
   case object Cmp extends SimpleOp
+  case object Xchg extends SimpleOp
 }
 
 case class SimpleInstr(op: SimpleOp, dst: Operand, src: Operand) extends MidInstr
@@ -74,6 +75,8 @@ object Instr {
 
   def cmp(dst: Mem, src: Reg) = SimpleInstr(Cmp, dst, src)
   def cmp(dst: Reg, src: Operand) = SimpleInstr(Cmp, dst, src)
+
+  def xchg(dst: Reg, src: Reg) = SimpleInstr(Xchg, dst, src)
 }
 
 sealed trait Cond

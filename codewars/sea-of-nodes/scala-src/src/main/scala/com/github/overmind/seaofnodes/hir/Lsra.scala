@@ -15,6 +15,12 @@ object Lsra {
                       ranges: mutable.SortedSet[RangePair], usePositions: mutable.SortedSet[UsePosition],
                       children: ArrayBuffer[Interval], parent: Option[Interval]) extends Ordered[Interval] {
 
+    val id = {
+      val x = Interval.nextId
+      Interval.nextId += 1
+      x
+    }
+
     var reg: Option[PReg] = None
     var spillSlot: Option[Int] = None
     var spillInstr: Option[SpillNode] = None
@@ -134,7 +140,7 @@ object Lsra {
     }
 
     override def compare(that: Interval): Int = {
-      firstRange.compare(that.firstRange)
+      Ordering.Tuple2[RangePair, Int].compare((firstRange, id), (that.firstRange, that.id))
     }
 
     override def equals(that: Any): Boolean = {
@@ -146,6 +152,8 @@ object Lsra {
   }
 
   object Interval {
+    var nextId = 1
+
     def empty(v: ValueNode) = Interval(definedBy = v,
       ranges = mutable.SortedSet.empty[RangePair],
       usePositions = mutable.SortedSet.empty[UsePosition],
@@ -335,8 +343,9 @@ object Lsra {
       })
       val (bFrom, _) = b.range
       b.valuePhis.foreach(phi => {
-        intervals(phi.id).addUsePosition(bFrom)
         // Phi inputs are used in the coming from block.
+        intervals(phi.id).addUsePosition(bFrom)
+
         phi.composedInputs.zip(phi.anchor.comingFrom).foreach({ case (v, end) =>
           val comingFrom = g.blocks(end.belongsToBlock)
           val (_, comingFromLast) = comingFrom.range
@@ -437,6 +446,7 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
       freeUntilPos += (act._1 -> 0)
     })
 
+    // TODO: Only do this if current.isChild is true. (Wimmer 2010)
     inactive.foreach(ina => {
       // Inactive intervals might intersect with the current allocation.
       ina.firstIntersection(current).foreach(sect => {
@@ -470,9 +480,11 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
     val currentFrom = current.firstRange.from
 
     active.foreach(act => {
-      nextUsePos += (act._1 -> act._2.nextUseAfter(currentFrom).get.ix)
+      // log(s"${act._2} vs $currentFrom")
+      nextUsePos += (act._1 -> act._2.nextUseAfter(currentFrom).getOrElse(act._2.usePositions.head).ix)
     })
 
+    // TODO: Also guard against current.isChild.
     inactive.filter(_.intersects(current)).foreach(ina => {
       val newPos = ina.nextUseAfter(currentFrom).get
       val pos = nextUsePos.get(ina.reg.get) match {
