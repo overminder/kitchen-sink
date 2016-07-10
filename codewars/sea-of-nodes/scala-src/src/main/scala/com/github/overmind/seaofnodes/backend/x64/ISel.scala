@@ -11,7 +11,7 @@ case object X64Arch extends MachineSpec {
   val regNames = "rax rcx rbx rdx rdi rsi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15".split(' ')
   val allRegs: IndexedSeq[PReg] = regNames.indices.map(PReg(_))
   val allGpRegs: IndexedSeq[PReg] = ((0 to 5) ++ (8 +: (10 to 15))).map(PReg(_))
-  override val gpRegs = allGpRegs.take(10)
+  override val gpRegs = allGpRegs.take(3)
   override val scratch = PReg(10)
 
   override def showReg(r: PReg): String = {
@@ -118,6 +118,10 @@ case class ISel(rp: RegProvider) {
         Seq()
       case (n: BaseBeginNode) :: rest =>
         BlockStart.of(n.id) +: emitNodes(rest)
+      case (n: IfNode) :: (spill: SpillNode) :: (lt @ LessThanNode(v1, v2)) :: rest if n.value.eq(lt) =>
+        // Since mov doesn't affect the FLAGS register.
+        // XXX This is getting messy...
+        Seq(Jcc(Cond.GE, b(n.t), b(n.f))) ++ emitNode(spill) ++ Seq(cmp(r(v1), r(v2))) ++ emitNodes(rest)
       case (n: IfNode) :: (lt @ LessThanNode(v1, v2)) :: rest if n.value.eq(lt) =>
         Seq(Jcc(Cond.GE, b(n.t), b(n.f)), cmp(r(v1), r(v2))) ++ emitNodes(rest)
       case (n: IfNode) :: TrueNode :: rest if n.value.eq(TrueNode) =>

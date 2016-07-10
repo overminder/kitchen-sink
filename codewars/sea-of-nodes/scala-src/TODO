@@ -1,0 +1,27 @@
+# SCCP
+
+- Implement it.
+
+# LSRA
+
+- Implement rest of the algorithm:
+
+  * Finish unimplemented spilling functions.
+
+  * Add register hint.
+
+    Crucial, as xchg is very slow.
+
+  * Fix PhiNode resolution pass.
+
+    Currently we assume all the phi inputs are in the registers. This is
+    not always true - for example, a vreg spilled before a loop and restored in
+    the loop body might not be in the restored-to register at the loop end.
+
+- Add rematerialization.
+
+  * GCM hoist many constants to the first block and they occupy too many
+    registers!
+
+  * "Global code motion with spilling"?
+

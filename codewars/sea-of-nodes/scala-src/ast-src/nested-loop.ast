@@ -7,12 +7,12 @@
     while y < n do {
       z = 0
       while z < n do {
+        s = s + z
         z = z + 1
-        s = s + 1
       }
-      y = y + 1
+      y = y + 2
     }
-    x = x + 1
+    x = x + 3
   }
   ret s
 }

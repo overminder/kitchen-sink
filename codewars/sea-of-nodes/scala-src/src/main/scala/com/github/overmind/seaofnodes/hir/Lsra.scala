@@ -298,7 +298,7 @@ object Lsra {
           intervals(o.id).setFrom(ix)
           live -= o
         })
-        instr.valueInputs.foreach(i => {
+        inputs(instr).foreach(i => {
           // Use: gen a live range.
           ensureInterval(i).add(bFrom, ix)
           live += i
@@ -336,7 +336,7 @@ object Lsra {
           // o is defined by instr at ix.
           intervals(o.id).addUsePosition(ix)
         })
-        instr.valueInputs.foreach(i => {
+        inputs(instr).foreach(i => {
           // instr uses i at ix.
           intervals(i.id).addUsePosition(ix, instr)
         })
@@ -358,6 +358,13 @@ object Lsra {
 
   def outputs(n0: Node): Seq[ValueNode] = {
     n0 match {
+      case n: BinaryLogicNode =>
+        // XXX: This is a hacky way to model x86's cmp instruction.
+        // We have two real choices here:
+        // - Do instruction selection before regalloc and fuse cmp-if nodes.
+        //   * This is still platform dependent.
+        // - Model the output of logic nodes using another register set.
+        Seq()
       case n: ValueNode =>
         Seq(n)
       case exit: BaseBlockExitNode =>
@@ -366,6 +373,15 @@ object Lsra {
         Seq()
       case _ =>
         sys.error(s"Unknown node: $n0")
+    }
+  }
+
+  def inputs(n0: Node): Seq[ValueNode] = {
+    n0 match {
+      case n: IfNode if n.value.isInstanceOf[BinaryLogicNode] =>
+        Seq()
+      case _ =>
+        n0.valueInputs
     }
   }
 }
@@ -400,6 +416,9 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
 
   def run() = {
     buildLiveness()
+    if (verbose) {
+      printLiveness()
+    }
     lsraInternal()
   }
 
@@ -480,7 +499,10 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
     val currentFrom = current.firstRange.from
 
     active.foreach(act => {
-      // log(s"${act._2} vs $currentFrom")
+      log(s"${act._2} vs $currentFrom")
+
+      // XXX: act._2.nextUseAfter(currentFrom) might be None, for example when act is a variable defined
+      // before a loop and used (but not redefined) in that loop.
       nextUsePos += (act._1 -> act._2.nextUseAfter(currentFrom).getOrElse(act._2.usePositions.head).ix)
     })
 
