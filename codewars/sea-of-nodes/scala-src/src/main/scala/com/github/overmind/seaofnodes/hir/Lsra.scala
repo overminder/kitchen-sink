@@ -12,7 +12,7 @@ object Lsra {
   type IntervalMap = mutable.Map[Int, Interval]
 
   case class Interval(definedBy: ValueNode,
-                      ranges: mutable.SortedSet[RangePair], usePositions: mutable.SortedSet[UsePosition],
+                      ranges: mutable.SortedSet[RangePair], _usePositions: mutable.SortedSet[UsePosition],
                       children: ArrayBuffer[Interval], parent: Option[Interval]) extends Ordered[Interval] {
 
     val id = {
@@ -57,6 +57,10 @@ object Lsra {
       range.endsBefore(pos)
     }
 
+    def firstRegUse: Option[UsePosition] = {
+      usePositions.find(_.mustBeInReg)
+    }
+
     def nextUseAfter(pos: Int): Option[UsePosition] = {
       usePositions.iteratorFrom(UsePosition(pos + 1)).toStream.headOption
     }
@@ -78,15 +82,27 @@ object Lsra {
     }
 
     def addUsePosition(pos: UsePosition): Unit = {
-      usePositions += pos
+      _usePositions += pos
+    }
+
+    def usePositions = {
+      val ps = _usePositions.clone()
+      ranges.foreach(r => {
+        val p = UsePosition(r.to, mustBeInReg = false)
+        if (!ps.contains(p)) {
+          // Live at loop back-edge: Add a pseudo use position.
+          ps += p
+        }
+      })
+      ps
     }
 
     def addUsePosition(ix: Int): Unit = {
       addUsePosition(UsePosition(ix, None))
     }
 
-    def addUsePosition(ix: Int, usedBy: Node): Unit = {
-      addUsePosition(UsePosition(ix, Some(usedBy)))
+    def addUsePosition(ix: Int, usedBy: Option[Node], mustBeInReg: Boolean = true): Unit = {
+      addUsePosition(UsePosition(ix, usedBy, mustBeInReg = mustBeInReg))
     }
 
     def add(from: Int, to: Int): Unit = {
@@ -156,7 +172,7 @@ object Lsra {
 
     def empty(v: ValueNode) = Interval(definedBy = v,
       ranges = mutable.SortedSet.empty[RangePair],
-      usePositions = mutable.SortedSet.empty[UsePosition],
+      _usePositions = mutable.SortedSet.empty[UsePosition],
       children = ArrayBuffer.empty, parent = None)
   }
 
@@ -338,19 +354,19 @@ object Lsra {
         })
         inputs(instr).foreach(i => {
           // instr uses i at ix.
-          intervals(i.id).addUsePosition(ix, instr)
+          intervals(i.id).addUsePosition(ix, Some(instr))
         })
       })
       val (bFrom, _) = b.range
       b.valuePhis.foreach(phi => {
-        // Phi inputs are used in the coming from block.
-        intervals(phi.id).addUsePosition(bFrom)
+        // Phi is defined at the block start.
+        intervals(phi.id).addUsePosition(bFrom, None, mustBeInReg = false)
 
         phi.composedInputs.zip(phi.anchor.comingFrom).foreach({ case (v, end) =>
           val comingFrom = g.blocks(end.belongsToBlock)
           val (_, comingFromLast) = comingFrom.range
           // v is used by phi at comingFromLast.
-          intervals(v.id).addUsePosition(comingFromLast, phi)
+          intervals(v.id).addUsePosition(comingFromLast, Some(phi), mustBeInReg = false)
         })
       })
     })
@@ -503,7 +519,7 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
 
       // XXX: act._2.nextUseAfter(currentFrom) might be None, for example when act is a variable defined
       // before a loop and used (but not redefined) in that loop.
-      nextUsePos += (act._1 -> act._2.nextUseAfter(currentFrom).getOrElse(act._2.usePositions.head).ix)
+      nextUsePos += (act._1 -> act._2.nextUseAfter(currentFrom).get.ix) //OrElse(act._2.usePositions.head).ix)
     })
 
     // TODO: Also guard against current.isChild.
@@ -518,26 +534,30 @@ case class Lsra(g: TGraph, arch: MachineSpec, verbose: Boolean = false) extends 
 
     // The farthest use will be chosen as the victim.
     val (reg, usePos) = nextUsePos.maxBy(_._2)
-    val currentFirstUse = current.usePositions.head
-
-    if (currentFirstUse.ix == usePos) {
-      sys.error(s"Really out of register on $current - last usePos is $usePos on $reg")
-    } else if (currentFirstUse.ix > usePos) {
-      // Current's first use is even farther - spill this instead.
-      sys.error("Spill current: not implemented yet")
-    } else {
-      // Spill `reg`
-      val victim = active.remove(reg).get
-      val spillPos = currentFirstUse
-      log(s"SpillAt($spillPos): victim = $victim")
-      val (spillInstr, restoreInstr) = spillRestorePair(victim)
-      val laterPart = victim.spillAt(spillPos.ix, spillInstr, restoreInstr)
-      log(s"Spilling: become $victim + $laterPart")
-      handled += victim
-      unhandled += laterPart
-      intervals += (laterPart.definedBy.id -> laterPart)
-      current.reg = Some(reg)
-      reg
+    current.firstRegUse match {
+      case None =>
+        // Current's first use is even farther - spill this instead.
+        sys.error("Spill current: not implemented yet")
+      case Some(currentFirstRegUse) =>
+        if (currentFirstRegUse.ix == usePos) {
+          sys.error(s"Really out of register on $current - last usePos is $usePos on $reg")
+        } else if (currentFirstRegUse.ix > usePos) {
+          // Current's first use is even farther - spill this instead.
+          sys.error("Spill current: not implemented yet")
+        } else {
+          // Spill `reg`
+          val victim = active.remove(reg).get
+          val spillPos = currentFirstRegUse
+          log(s"SpillAt($spillPos): victim = $victim")
+          val (spillInstr, restoreInstr) = spillRestorePair(victim)
+          val laterPart = victim.spillAt(spillPos.ix, spillInstr, restoreInstr)
+          log(s"Spilling: become $victim + $laterPart")
+          handled += victim
+          unhandled += laterPart
+          intervals += (laterPart.definedBy.id -> laterPart)
+          current.reg = Some(reg)
+          reg
+        }
     }
   }
 
