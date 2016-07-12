@@ -33,6 +33,7 @@
 ### SSA: Reg Alloc
 
 - http://compilers.cs.ucla.edu/fernando/publications/drafts/survey.pdf
+- Embedded JIT: https://arxiv.org/pdf/0710.3642.pdf
 
 ### Trace Compilation
 
