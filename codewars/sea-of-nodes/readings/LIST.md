@@ -35,6 +35,7 @@
 - http://compilers.cs.ucla.edu/fernando/publications/drafts/survey.pdf
 - Embedded JIT: https://arxiv.org/pdf/0710.3642.pdf
 - http://compilers.cs.ucla.edu/fernando/publications/drafts/ssaElimination.pdf
+- http://web.cs.ucla.edu/~palsberg/paper/PereiraPalsberg08.pdf
 
 ### Trace Compilation
 
