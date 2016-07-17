@@ -34,8 +34,8 @@
 
 - http://compilers.cs.ucla.edu/fernando/publications/drafts/survey.pdf
 - Embedded JIT: https://arxiv.org/pdf/0710.3642.pdf
-- http://compilers.cs.ucla.edu/fernando/publications/drafts/ssaElimination.pdf
-- http://web.cs.ucla.edu/~palsberg/paper/PereiraPalsberg08.pdf
+- Mem-to-mem free SSA elimination: http://compilers.cs.ucla.edu/fernando/publications/drafts/ssaElimination.pdf
+- Puzzle Solving: http://web.cs.ucla.edu/~palsberg/paper/PereiraPalsberg08.pdf
 - Combinatorial: http://arxiv.org/pdf/1409.7628v1.pdf
 
 ### Trace Compilation
