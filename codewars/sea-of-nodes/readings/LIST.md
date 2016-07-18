@@ -32,10 +32,14 @@
 
 ### SSA: Reg Alloc
 
-- http://compilers.cs.ucla.edu/fernando/publications/drafts/survey.pdf
-- Embedded JIT: https://arxiv.org/pdf/0710.3642.pdf
+- Theory: http://www.rw.cdl.uni-saarland.de/~grund/papers/cc06-ra_ssa.pdf
+- Survey: http://compilers.cs.ucla.edu/fernando/publications/drafts/survey.pdf
 - Mem-to-mem free SSA elimination: http://compilers.cs.ucla.edu/fernando/publications/drafts/ssaElimination.pdf
 - Puzzle Solving: http://web.cs.ucla.edu/~palsberg/paper/PereiraPalsberg08.pdf
+- Embedded JIT: https://arxiv.org/pdf/0710.3642.pdf
+
+### Other Reg Alloc
+
 - Combinatorial: http://arxiv.org/pdf/1409.7628v1.pdf
 
 ### Trace Compilation
