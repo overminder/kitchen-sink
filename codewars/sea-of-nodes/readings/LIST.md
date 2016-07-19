@@ -34,6 +34,7 @@
 
 - Theory: http://www.rw.cdl.uni-saarland.de/~grund/papers/cc06-ra_ssa.pdf
 - Survey: http://compilers.cs.ucla.edu/fernando/publications/drafts/survey.pdf
+- CSSA / Global Min Algorithm: http://web.cs.ucla.edu/~palsberg/paper/cc09.pdf
 - Mem-to-mem free SSA elimination: http://compilers.cs.ucla.edu/fernando/publications/drafts/ssaElimination.pdf
 - Puzzle Solving: http://web.cs.ucla.edu/~palsberg/paper/PereiraPalsberg08.pdf
 - Embedded JIT: https://arxiv.org/pdf/0710.3642.pdf
@@ -41,6 +42,10 @@
 ### Other Reg Alloc
 
 - Combinatorial: http://arxiv.org/pdf/1409.7628v1.pdf
+- CPS: http://grothoff.org/christian/teaching/2007/3353/papers/cps.pdf
+  (Notice the similarity with the SSA-based allocator - they both do
+   spilling before (optimal) coloring. Though in Appel's stackless
+   compilation approach, spill slots are heap-allocated!)
 
 ### Trace Compilation
 
