@@ -1,3 +1,7 @@
+# Alias analysis
+
+- How to do that?
+
 # SCCP
 
 - Implement it.
@@ -24,4 +28,3 @@
     registers!
 
   * "Global code motion with spilling"?
-
