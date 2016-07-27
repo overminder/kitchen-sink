@@ -60,4 +60,3 @@
 - http://the.gregor.institute/t/5k/842/reading.html
 - http://c9x.me/compile/bib/
 - Extended Linear Scan: http://link.springer.com/chapter/10.1007/978-3-540-71229-9_10
-
