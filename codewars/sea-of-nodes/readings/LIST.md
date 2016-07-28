@@ -1,6 +1,7 @@
 ### Alias Analysis
 
 - http://www.cis.upenn.edu/~cis570/slides/lecture10.pdf
+- http://www.seas.harvard.edu/courses/cs252/2011sp/slides/Lec06-PointerAnalysis.pdf
 
 ### SSA: Dominator Construction
 
