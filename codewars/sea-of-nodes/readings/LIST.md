@@ -4,6 +4,7 @@
 - http://www.seas.harvard.edu/courses/cs252/2011sp/slides/Lec06-PointerAnalysis.pdf
 - Demand Driven, JVM: http://www.ics.uci.edu/~guoqingx/papers/yan-issta11.pdf
 - OOP: http://manu.sridharan.net/files/aliasAnalysisChapter.pdf
+- Compositional Escape Analysis, Java: http://people.csail.mit.edu/rinard/paper/oopsla99.pdf
 
 ### SSA: Dominator Construction
 
