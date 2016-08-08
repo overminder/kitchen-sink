@@ -42,6 +42,7 @@
 
 - Theory: http://www.rw.cdl.uni-saarland.de/~grund/papers/cc06-ra_ssa.pdf
 - Survey: http://compilers.cs.ucla.edu/fernando/publications/drafts/survey.pdf
+- LSRA on SSA: http://www.christianwimmer.at/Publications/Wimmer10a/Wimmer10a.pdf
 - CSSA / Global Min Algorithm: http://web.cs.ucla.edu/~palsberg/paper/cc09.pdf
 - Mem-to-mem free SSA elimination: http://compilers.cs.ucla.edu/fernando/publications/drafts/ssaElimination.pdf
 - Puzzle Solving: http://web.cs.ucla.edu/~palsberg/paper/PereiraPalsberg08.pdf
