@@ -59,6 +59,7 @@ pLet = do
 instance Show v => Show (LC v) where
   show = show . pprLC 0
 
+-- Note the conditional parenthesis wrapping: this is a nice technique..
 pprLC :: Show v => Int -> LC v -> Doc
 pprLC p = \case
   Var v -> text $ show v
