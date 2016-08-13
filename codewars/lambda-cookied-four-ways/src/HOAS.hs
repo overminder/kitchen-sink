@@ -1,6 +1,7 @@
 module HOAS where
 
 import qualified Data.Map as M
+import Data.Maybe (fromMaybe)
 import IdInt
 import Lambda
 
@@ -12,7 +13,7 @@ data HOAS
 nf :: LC IdInt -> LC IdInt
 nf = toLC . nfh . fromLC
 
-nfh :: HOAS
+nfh :: HOAS -> HOAS
 nfh = \case
   e@(HVar _) -> e
   HLam b -> HLam (nfh . b)
@@ -30,4 +31,18 @@ whnf = \case
       HLam b -> whnf (b a)
       f' -> HApp f' a
 
+fromLC :: LC IdInt -> HOAS
+fromLC = from M.empty
+  where
+    from m = \case
+      Var v -> fromMaybe (HVar v) (M.lookup v m)
+      Lam v e -> HLam $ \x -> from (M.insert v x m) e
+      App f a -> HApp (from m f) (from m a)
 
+toLC :: HOAS -> LC IdInt
+toLC = to firstBoundId
+  where
+    to n = \case
+      HVar v -> Var v
+      HLam b -> Lam n (to (succ n) (b (HVar n)))
+      HApp f a -> App (to n f) (to n a)
