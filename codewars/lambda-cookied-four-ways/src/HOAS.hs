@@ -10,6 +10,8 @@ data HOAS
   | HLam (HOAS -> HOAS)
   | HApp HOAS HOAS
 
+-- How to define a show instance for this?
+
 nf :: LC IdInt -> LC IdInt
 nf = toLC . nfh . fromLC
 
