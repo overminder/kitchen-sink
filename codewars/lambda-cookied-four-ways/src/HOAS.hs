@@ -11,6 +11,7 @@ data HOAS
   | HApp HOAS HOAS
 
 -- How to define a show instance for this?
+-- We might just use (show . toLC) ...
 
 nf :: LC IdInt -> LC IdInt
 nf = toLC . nfh . fromLC
