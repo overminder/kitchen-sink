@@ -12,8 +12,6 @@ data HOAS
 
 -- How to define a show instance for this?
 -- We might just use (show . toLC) ...
--- See https://www.schoolofhaskell.com/user/edwardk/bound
--- And https://www.schoolofhaskell.com/user/edwardk/phoas
 
 nf :: LC IdInt -> LC IdInt
 nf = toLC . nfh . fromLC
