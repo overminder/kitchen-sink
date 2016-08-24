@@ -8,7 +8,7 @@
 
   local kSecondsToStale = 5
 
-  -- | Haven't found another way to communicate when the stack count
+  -- | Haven't found another way to communicate with the stack count
   -- function...
   local gStore = omWeakAuraGlobalStore or {}
   omWeakAuraGlobalStore = gStore
@@ -62,7 +62,7 @@
       return false
     end
 
-    local _, eventType, _, sourceGUID, _, _, _, destGUID = ...
+    local _, eventType, _, _, _, _, _, destGUID = ...
     if destGUID ~= playerGUID then
       return false
     end
