@@ -10,6 +10,7 @@
 
   -- | Haven't found another way to communicate with the stack count
   -- function...
+  -- TODO: use aura_env
   local gStore = omWeakAuraGlobalStore or {}
   omWeakAuraGlobalStore = gStore
 
@@ -48,6 +49,7 @@
   end
 
   -- Mostly from FrenzyRegen (https://mods.curse.com/addons/wow/frenzyregen)
+  -- We could also take a look at https://mods.curse.com/addons/wow/blood-shield-tracker.
   local interestedEventTypes = {
     SWING_DAMAGE = handleSwingDamage,
     SPELL_DAMAGE = handleSpellDamage,

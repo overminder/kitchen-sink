@@ -60,6 +60,7 @@ local function create()
       return xs
     end,
 
+    -- | This is surely slower than for loops.
     foldr = function(self, combine, init)
       for ix = self.rightIx, self.nextLeftIx - 1 do
         init = combine(self.storage[ix], init)

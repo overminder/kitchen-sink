@@ -1,1 +1,6 @@
 *.gen
+
+# The original WA2 radar widget by pottm - I'm just reading it for ideas...
+wrought-chaos.lua
+
+res
