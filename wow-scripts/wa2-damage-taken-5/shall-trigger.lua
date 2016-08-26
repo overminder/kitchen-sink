@@ -8,11 +8,9 @@
 
   local kSecondsToStale = 5
 
-  -- | Haven't found another way to communicate with the stack count
-  -- function...
-  -- TODO: use aura_env
-  local gStore = omWeakAuraGlobalStore or {}
-  omWeakAuraGlobalStore = gStore
+  -- | aura_env seems to be the standard way to do
+  -- inter-textarea communication.
+  local gStore = aura_env
 
   local damages = queue.create()
 
