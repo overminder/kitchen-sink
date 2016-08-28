@@ -47,6 +47,7 @@
 - Mem-to-mem free SSA elimination: http://compilers.cs.ucla.edu/fernando/publications/drafts/ssaElimination.pdf
 - Puzzle Solving: http://web.cs.ucla.edu/~palsberg/paper/PereiraPalsberg08.pdf
 - Embedded JIT: https://arxiv.org/pdf/0710.3642.pdf
+- [Graal LinearScan](https://github.com/graalvm/graal-core/blob/master/graal/com.oracle.graal.lir/src/com/oracle/graal/lir/alloc/lsra/LinearScan.java)
 
 ### Other Reg Alloc
 
