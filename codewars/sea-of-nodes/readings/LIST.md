@@ -48,6 +48,7 @@
 - Puzzle Solving: http://web.cs.ucla.edu/~palsberg/paper/PereiraPalsberg08.pdf
 - Embedded JIT: https://arxiv.org/pdf/0710.3642.pdf
 - [Graal LinearScan](https://github.com/graalvm/graal-core/blob/master/graal/com.oracle.graal.lir/src/com/oracle/graal/lir/alloc/lsra/LinearScan.java)
+- LinearScan impl in Rust: https://github.com/indutny/linearscan.rs
 
 ### Other Reg Alloc
 
