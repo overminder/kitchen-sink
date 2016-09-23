@@ -7,3 +7,4 @@ isSingleton False = List Nat
 toSingleton : (x : Bool) -> isSingleton x
 toSingleton True = 0
 toSingleton False = Nil
+
