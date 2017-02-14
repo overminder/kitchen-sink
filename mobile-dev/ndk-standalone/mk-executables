@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+mkdir bin || echo 'bin/ already exists'
+
+for target in "i686-linux-android" "x86_64-linux-android" \
+  "arm-linux-androideabi" "aarch64-linux-android" ; do
+  for prog in "gcc" "g++" "gdb" "ar" "ranlib" "ld" \
+    "readelf" "strip" "nm" "objdump" "strings" "c++filt" "addr2line" ; do
+    ln -s ../ndk-executable-base bin/$target-$prog
+    chmod +x bin/$target-$prog
+  done
+done
+

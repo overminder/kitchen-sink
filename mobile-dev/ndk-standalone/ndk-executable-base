@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+HOST_ARCH=darwin-x86_64
+BASENAME=$(basename $0)
+
+case "$BASENAME" in 
+  i686-linux-android-*)
+    TARGET_ARCH=x86
+    TOOLCHAIN_NAME=x86
+    API_LEVEL=android-9
+    ;;
+  x86_64-linux-android-*)
+    TARGET_ARCH=x86_64
+    TOOLCHAIN_NAME=x86_64
+    API_LEVEL=android-21
+    ;;
+  arm-linux-androideabi-*)
+    TARGET_ARCH=arm
+    TOOLCHAIN_NAME=arm-linux-androideabi
+    API_LEVEL=android-9
+    ;;
+  aarch64-linux-android-*)
+    TARGET_ARCH=arm64
+    TOOLCHAIN_NAME=aarch64-linux-android
+    API_LEVEL=android-21
+    ;;
+  *)
+    echo "Unknown arch: $BASENAME"
+    exit
+    ;;
+esac
+
+# Only set sysroot for {gcc,g++}
+case "$BASENAME" in
+  *-gcc|*-g++)
+    EXTRA_SYSROOT=--sysroot=$ANDROID_NDK/platforms/$API_LEVEL/arch-$TARGET_ARCH
+    ;;
+esac
+
+$ANDROID_NDK/toolchains/$TOOLCHAIN_NAME-4.9/prebuilt/$HOST_ARCH/bin/$BASENAME \
+  $EXTRA_SYSROOT \
+  $@
+
