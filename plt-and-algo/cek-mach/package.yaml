@@ -1,0 +1,53 @@
+name:                cek-mach
+version:             0.1.0.0
+github:              "overminder/cek-mach"
+license:             BSD3
+author:              "Overmind JIANG"
+maintainer:          "p90eri@gmail.com"
+copyright:           "2018 Overmind JIANG"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/overminder/cek-mach#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- containers
+
+default-extensions:
+- LambdaCase
+
+library:
+  source-dirs: src
+
+executables:
+  cek-mach-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cek-mach
+
+tests:
+  cek-mach-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - cek-mach
+    - hspec
