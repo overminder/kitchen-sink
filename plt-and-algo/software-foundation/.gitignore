@@ -1,0 +1,7 @@
+# Idris BC
+*.ibc
+
+# Coq
+*.glob
+*.vo
+.*.aux
