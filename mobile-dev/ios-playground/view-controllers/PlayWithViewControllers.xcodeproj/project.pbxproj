@@ -7,12 +7,26 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1F94D03A3BFEA87805AAB915 /* MenuViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F94D9DAF528623F94DE6B21 /* MenuViewController.swift */; };
+		1F94D553F0C4A95A846A591E /* ConstraintLayouts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F94D37273904D104B9A5BE7 /* ConstraintLayouts.swift */; };
+		1F94D5AAC49975B29BE05AED /* FancyCollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F94D178D645E3E65459D19E /* FancyCollectionView.swift */; };
+		1F94D6A7D5A226E800002FE7 /* FancyTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F94DC58DC3F0C565CA6C62C /* FancyTableView.swift */; };
+		1F94D9F5506B231A0935B65D /* Misc.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F94DE68EC5A74B850FF123D /* Misc.swift */; };
+		1F94DB85FFFD0EEF50DA4C70 /* MutableTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F94D8C8164CB637A399E88B /* MutableTableView.swift */; };
+		1F94DBC765066FFAD2EDB93C /* Router.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F94D0FD92013B14FDCC272F /* Router.swift */; };
 		BF3BF59820F45F90003491E2 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF3BF59720F45F90003491E2 /* AppDelegate.swift */; };
 		BF3BF59A20F45F90003491E2 /* ViewControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF3BF59920F45F90003491E2 /* ViewControllers.swift */; };
 		BF3BF59F20F45F92003491E2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BF3BF59E20F45F92003491E2 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1F94D0FD92013B14FDCC272F /* Router.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Router.swift; sourceTree = "<group>"; };
+		1F94D178D645E3E65459D19E /* FancyCollectionView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FancyCollectionView.swift; sourceTree = "<group>"; };
+		1F94D37273904D104B9A5BE7 /* ConstraintLayouts.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ConstraintLayouts.swift; sourceTree = "<group>"; };
+		1F94D8C8164CB637A399E88B /* MutableTableView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MutableTableView.swift; sourceTree = "<group>"; };
+		1F94D9DAF528623F94DE6B21 /* MenuViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MenuViewController.swift; sourceTree = "<group>"; };
+		1F94DC58DC3F0C565CA6C62C /* FancyTableView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FancyTableView.swift; sourceTree = "<group>"; };
+		1F94DE68EC5A74B850FF123D /* Misc.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Misc.swift; sourceTree = "<group>"; };
 		BF3BF59420F45F90003491E2 /* PlayWithViewControllers.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PlayWithViewControllers.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF3BF59720F45F90003491E2 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		BF3BF59920F45F90003491E2 /* ViewControllers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewControllers.swift; sourceTree = "<group>"; };
@@ -54,6 +68,13 @@
 				BF3BF59920F45F90003491E2 /* ViewControllers.swift */,
 				BF3BF59E20F45F92003491E2 /* Assets.xcassets */,
 				BF3BF5A320F45F92003491E2 /* Info.plist */,
+				1F94D9DAF528623F94DE6B21 /* MenuViewController.swift */,
+				1F94D37273904D104B9A5BE7 /* ConstraintLayouts.swift */,
+				1F94DC58DC3F0C565CA6C62C /* FancyTableView.swift */,
+				1F94DE68EC5A74B850FF123D /* Misc.swift */,
+				1F94D0FD92013B14FDCC272F /* Router.swift */,
+				1F94D8C8164CB637A399E88B /* MutableTableView.swift */,
+				1F94D178D645E3E65459D19E /* FancyCollectionView.swift */,
 			);
 			path = PlayWithViewControllers;
 			sourceTree = "<group>";
@@ -129,6 +150,13 @@
 			files = (
 				BF3BF59A20F45F90003491E2 /* ViewControllers.swift in Sources */,
 				BF3BF59820F45F90003491E2 /* AppDelegate.swift in Sources */,
+				1F94D03A3BFEA87805AAB915 /* MenuViewController.swift in Sources */,
+				1F94D553F0C4A95A846A591E /* ConstraintLayouts.swift in Sources */,
+				1F94D6A7D5A226E800002FE7 /* FancyTableView.swift in Sources */,
+				1F94D9F5506B231A0935B65D /* Misc.swift in Sources */,
+				1F94DBC765066FFAD2EDB93C /* Router.swift in Sources */,
+				1F94DB85FFFD0EEF50DA4C70 /* MutableTableView.swift in Sources */,
+				1F94D5AAC49975B29BE05AED /* FancyCollectionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

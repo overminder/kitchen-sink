@@ -16,6 +16,7 @@ class ViewBag {
     var alertButton: UIButton?
     var vcButton: UIButton?
     var popButton: UIButton?
+    var addChildButton: UIButton?
     var nextButtonIx = 0
 
     init(delegate: ViewBagDelegate? = nil) {
@@ -29,8 +30,9 @@ class ViewBag {
     
     func populateViews() {
         alertButton = createButtonView(text: "Alert")
-        vcButton = createButtonView(text: "VC")
+        vcButton = createButtonView(text: "PresentVC")
         popButton = createButtonView(text: "Pop")
+        addChildButton = createButtonView(text: "AddChildVC")
         _ = createAnimatedBoxView()
         withVc {
             for v in views {
@@ -82,6 +84,14 @@ class ViewBag {
             withVc {
                 $0.dismiss(animated: true)
             }
+        } else if sender == addChildButton {
+            withVc {
+                let v = createAnimatedBoxView()
+                let vc = UIViewController()
+                vc.view.addSubview(v)
+                $0.addChildViewController(vc)
+                $0.view.addSubview(vc.view)
+            }
         }
     }
     
@@ -117,3 +127,6 @@ extension PlaygroundVC: ViewBagDelegate {
 }
 
 // MARK: TableVC
+
+// MARK: Nav?
+
