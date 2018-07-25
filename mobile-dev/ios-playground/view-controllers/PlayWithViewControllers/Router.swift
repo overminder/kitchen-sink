@@ -12,10 +12,12 @@ enum Route {
     case manualLayout
     case autoLayout
     case semiAutoLayout
+    case partiallyMutatingAutoLayout
     case fancyTable
     case autoLayoutManyBoxes
     case mutableTableView
     case tabLikeCollView
+    case stickyCollView
 }
 
 enum Action {
@@ -47,11 +49,17 @@ let menuActions: [DisplayableAction] = [
     ("AutoLayoutManyBoxes", {
         Action.push(.autoLayoutManyBoxes)
     }),
+    ("PartiallyMutatingAutoLayout", {
+        Action.push(.partiallyMutatingAutoLayout)
+    }),
     ("MutableTableView", {
         Action.push(.mutableTableView)
     }),
     ("TableLikeCollectionView", {
         Action.push(.tabLikeCollView)
+    }),
+    ("StickyCollectionView", {
+        Action.push(.stickyCollView)
     }),
     ("Playground", {
         Action.push(.playground)
@@ -98,6 +106,8 @@ struct Dispatcher {
             return ConstraintLayoutBag().autoLayoutVC()
         case .semiAutoLayout:
             return ConstraintLayoutBag().semiAutoLayoutVC()
+        case .partiallyMutatingAutoLayout:
+            return ConstraintLayoutBag().partialUpdatedVC()
         case .autoLayoutManyBoxes:
             return MoarConstraintLayouts().makeVC()
         case .fancyTable:
@@ -106,6 +116,8 @@ struct Dispatcher {
             return MutableTableViewController()
         case .tabLikeCollView:
             return TableLikeCollectionView()
+        case .stickyCollView:
+            return StickyVC()
         }
     }
 }

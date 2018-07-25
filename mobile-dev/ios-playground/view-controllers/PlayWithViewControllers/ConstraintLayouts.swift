@@ -6,8 +6,8 @@
 import UIKit
 
 struct ConstraintLayoutBag {
-    let blue = mkConstraintView()
-    let red = mkConstraintView()
+    var blue = mkConstraintView()
+    var red = mkConstraintView()
 
     init() {
         blue.backgroundColor = fancyBlue
@@ -33,9 +33,13 @@ struct ConstraintLayoutBag {
     }
 
     func applySemiAutoLayout(_ v: UIView) {
+        applySemiAutoLayout(v, blueHeight: 100)
+    }
+
+    func applySemiAutoLayout(_ v: UIView, blueHeight: CGFloat) {
         let margins = v.layoutMarginsGuide
         blue.topAnchor.constraint(equalTo: margins.topAnchor).isActive = true
-        blue.heightAnchor.constraint(equalToConstant: 100).isActive = true
+        blue.heightAnchor.constraint(equalToConstant: blueHeight).isActive = true
         // Either way it's doable. blue.bot = red.top - 10 or red.top = blue.bot + 10
         blue.bottomAnchor.constraint(equalTo: red.topAnchor, constant: -10).isActive = true
         blue.leadingAnchor.constraint(equalTo: margins.leadingAnchor).isActive = true
@@ -64,6 +68,27 @@ struct ConstraintLayoutBag {
 
     func semiAutoLayoutVC() -> UIViewController {
         return makeVC(applySemiAutoLayout)
+    }
+
+    func partialUpdatedVC() -> UIViewController {
+        return makeVC { v in
+            let myBlue = blue
+            applySemiAutoLayout(v, blueHeight: 100)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1, qos: .default) {
+                print(myBlue.constraints.debugDescription)
+                v.miscExtRemoveAllSubviews()
+                var b = ConstraintLayoutBag()
+                b.blue = myBlue
+                print("Initial count: \(myBlue.constraints.count)")
+                for c in myBlue.constraints {
+                    c.isActive = false
+                }
+                print("after removal count: \(myBlue.constraints.count)")
+                b.bindToParent(view: v)
+                b.applySemiAutoLayout(v, blueHeight: 200)
+                print("after reapply count: \(myBlue.constraints.count)")
+            }
+        }
     }
 
     func bindToParent(view: UIView) {

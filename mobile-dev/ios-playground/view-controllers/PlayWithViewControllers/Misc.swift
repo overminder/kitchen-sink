@@ -99,3 +99,35 @@ extension UIView {
         }
     }
 }
+
+struct SBox {
+    var id = 0
+
+    typealias IntGetter = () -> Int
+
+    mutating func nextId() -> Int {
+        id += 1
+        return id
+    }
+
+    /* Cant do
+    static func mkIntGetter(box: inout Box) -> IntGetter {
+        box.nextId
+    }
+    */
+
+    static func mkIntGetter(box: Box<SBox>) -> IntGetter {
+        return {
+            box.a.nextId()
+        }
+    }
+}
+
+class Box<A> {
+    var a: A
+
+    init(a: A) {
+        self.a = a
+    }
+}
+
