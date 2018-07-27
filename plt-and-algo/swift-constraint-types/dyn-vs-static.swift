@@ -1,7 +1,10 @@
 // Compiles on Apple Swift version 4.1.2 (swiftlang-902.0.54 clang-902.0.39.2)
 // Illustrates the difference between static and dynamic protocol types.
 
-class Foo {
+import Foundation
+
+@objc
+class Foo: NSObject {
     var foo: Int = 0
     var fooP2: Int = 0
 }
@@ -11,11 +14,16 @@ protocol FooP: class {
     var fooP2: Int { get }
 }
 
+typealias DynType = Foo & FooP
+
 class Bar: Foo, FooP {
     var fooP: Int = 0
 }
 
-typealias DynType = Foo & FooP
+// Can even use constraint as parent class.
+class Baz: DynType {
+    var fooP: Int = 1
+}
 
 func bothAsStaticType<A>(_ a: A) where A: Foo & FooP {
     // Note the & brings in the setter.
@@ -43,6 +51,7 @@ func bothAsDynType2(_ a: DynType) -> Int {
 
 var dynArray = [DynType]()
 dynArray.append(Bar())
+dynArray.append(Baz())
 
 class AnyDynType: Foo & FooP {
     let impl: DynType
@@ -75,5 +84,20 @@ for x in dynArray {
     protoAsDynType(x)
     _ = bothAsDynType(x)
     _ = bothAsDynType2(x)
+}
+
+// Can even be casted to.
+for x in dynArray {
+    let y: Foo = x
+    let z: FooP = x
+    if let x = y as? DynType {
+        print(bothAsDynType(x))
+    }
+    if let x = z as? DynType {
+        print(bothAsDynType(x))
+    }
+    let fooArray: [Foo] = dynArray
+    let foo: Foo = x
+    print(fooArray.index(of: foo))
 }
 
