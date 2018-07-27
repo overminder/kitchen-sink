@@ -25,11 +25,22 @@ struct LabelCollectionModelMutator {
 class MutableTableViewController: UITableViewController {
     private var coll: LabelCollectionModel = .sample
     private var modelMutator = LabelCollectionModelMutator()
+    let color: UIColor?
+
+    init(color: UIColor? = nil) {
+        self.color = color
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init(coder: NSCoder) {
+        fatalError()
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: reuseId)
+        tableView.backgroundColor = color
         refreshControl = UIRefreshControl()
         refreshControl?.addTarget(self, action: #selector(refresh), for: .valueChanged)
     }

@@ -18,6 +18,7 @@ enum Route {
     case mutableTableView
     case tabLikeCollView
     case stickyCollView
+    case nestedVC
 }
 
 enum Action {
@@ -60,6 +61,9 @@ let menuActions: [DisplayableAction] = [
     }),
     ("StickyCollectionView", {
         Action.push(.stickyCollView)
+    }),
+    ("NestedParentVC", {
+        Action.push(.nestedVC)
     }),
     ("Playground", {
         Action.push(.playground)
@@ -118,6 +122,8 @@ struct Dispatcher {
             return TableLikeCollectionView()
         case .stickyCollView:
             return StickyVC()
+        case .nestedVC:
+            return NestedParentVC()
         }
     }
 }

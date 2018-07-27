@@ -93,6 +93,12 @@ struct ConstraintSet {
 }
 
 extension UIView {
+    func miscExtRemoveAllConstraints() {
+        for c in Array(constraints) {
+            c.isActive = false
+        }
+    }
+
     func miscExtRemoveAllSubviews() {
         for v in subviews {
             v.removeFromSuperview()
