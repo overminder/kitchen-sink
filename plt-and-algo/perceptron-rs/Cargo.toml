@@ -1,0 +1,10 @@
+[package]
+name = "perceptron-rs"
+version = "0.1.0"
+authors = ["Overmind Jiang <p90eri@gmail.com>"]
+
+[dependencies]
+num = "*"
+rand = "*"
+ndarray = "*"
+ndarray-rand = "*"

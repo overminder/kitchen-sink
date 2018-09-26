@@ -1,0 +1,3 @@
+[submodule "plt-and-algo/perceptron-rs/neural-networks-and-deep-learning"]
+	path = plt-and-algo/perceptron-rs/neural-networks-and-deep-learning
+	url = https://github.com/mnielsen/neural-networks-and-deep-learning.git
