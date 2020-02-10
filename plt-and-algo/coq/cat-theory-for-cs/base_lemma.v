@@ -21,18 +21,23 @@ Qed.
 
 Definition iff_via_falso_bwd P Q := proj2 (iff_via_falso P Q).
 
-Theorem not_exist_is_forall_not A (P: Prop): not (exists (a: A), P) <-> forall (a: A), not P.
+Theorem not_exist_is_forall_not (A: Set) (P: A -> Prop):
+  not (exists (a: A), P a) -> forall (a: A), not (P a).
 Proof.
-  split.
-  - intros. unfold not in *. intros. apply H. exists a. apply H0.
-  - intros. unfold not in *. intros. destruct H0. apply (H x H0).
+  intros. unfold not in *. intros. apply H. exists a. apply H0.
 Qed.
 
-Definition not_exist_is_forall_not_fwd A (P: Prop) :=
-  proj1 (not_exist_is_forall_not A P).
-
-Definition not_exist_is_forall_not_bwd A (P: Prop) :=
-  proj2 (not_exist_is_forall_not A P).
+Theorem not_forall_is_exist_not (A: Set) (P: A -> Prop):
+  not (forall (a: A), P a) -> exists (a: A), not (P a).
+Proof.
+  intros. unfold not in *. destruct (excluded_middle (exists a, not (P a))).
+  - auto.
+  - assert (forall a: A, not (not (P a))).
+    apply not_exist_is_forall_not. exact H0.
+    exfalso. apply H. intros.
+    destruct (double_neg (P a)).
+    apply H2. apply (H1 a).
+Qed.
 
 Lemma not_ab_implies_a_notb (A B: Prop): not (A -> B) -> (A -> not B).
 Proof.
