@@ -1,33 +1,22 @@
-Require Import Coq.Logic.FunctionalExtensionality.
 Require Coq.Arith.EqNat.
 Require Coq.Structures.Equalities.
 
-Require Import base.
-Require Import base_lemma.
 Require Import ch1.
 
 Example page7: forall (S T V: Set) (f: T -> V) (Hne: not_empty_set S),
   Inj f <-> Inj (Hom_set_func S f).
 Proof.
   intros. split.
-  - intro Hf. unfold Inj. intros g h.
-    intros. unfold Hom_set_func in H. unfold compose in H.
-    apply functional_extensionality. intros.
-    (* Probably need something higher level here..
-       Yeah, eta_reduction makes this a lot simpler. *)
-    assert (Hred := eta_reduction H).
-    simpl in Hred.
-    (* inj_r is easier to use than inj *)
-    apply (inj_r f _ _ Hf).
-    apply Hred.
+  - intros Hf g h H. cbv in H. extensionality x.
+    pose (Heq := equal_f H). simpl in Heq.
+    eapply inj_r. apply Hf. apply Heq.
   - intros Hinj a1 a2 Heq. cbv in Hinj.
     (* The below construction of const func is crucial. *)
     set (Ha := Hinj (fun _ => a1) (fun _ => a2)).
     simpl in Ha. rewrite Heq in Ha.
-    assert (Haux : (fun _ : S => f a2) = (fun _ : S => f a2)).
-    reflexivity.
-    apply Ha in Haux.
-    apply (eta_expansion_const Hne). apply Haux.
+    pose (Hconst := Ha eq_refl).
+    eapply equal_const_f.
+    apply Hne. apply Hconst.
 Qed.
 
 (* Exercies *)
@@ -101,8 +90,8 @@ Proof.
       intros a1 a2 Heq.
       apply functional_extensionality. intros s.
       destruct (Hsurj s) as [w Hws].
-      assert (Heta := eta_reduction Heq w).
-      simpl in Heta. rewrite Hws in Heta. exact Heta.
+      eapply equal_f in Heq.
+      rewrite <- Hws. apply Heq.
   - apply iff_via_falso_bwd.
     unfold not. intros Hnsurj.
     cbv in Hnsurj.
@@ -127,7 +116,7 @@ Proof.
     apply neq_S. apply Hneqha.
     rewrite H. reflexivity.
     apply e in H.
-    pose (eta_reduction H x).
+    pose (equal_f H x).
     simpl in e0.
     assert (beq_S x x = true).
     destruct (eqdec_S x x) as [[eq_S _] [_ _]].
@@ -136,9 +125,43 @@ Proof.
     destruct (Hneqt e0).
 Qed.
 
-Definition Pair_func {X S T: Set} (f: X -> S) (g: X -> T) :=
+Definition pair_func {X S T: Set} (fg: (X -> S) * (X -> T)) :=
+  let (f, g) := fg in
   fun x => (f x, g x).
 
-Theorem ex_section_1_2_2a: forall (X S T: Set) (f: X -> S) (g: X -> T),
-  Bij (Pair_func f g).
-Abort.
+Theorem ex_section_1_2_2a: forall (X S T: Set),
+  Bij (@pair_func X S T).
+Proof.
+  intros. unfold Bij. split.
+  - intros a1 a2 H. unfold pair_func in H.
+    destruct a1 as [f1 g1].
+    destruct a2 as [f2 g2].
+    pose (Heq := func_ext_on_pair H).
+    inversion Heq.
+    subst.
+    reflexivity.
+  - intros b. exists ((fun x => fst (b x)), (fun x => (snd (b x)))). cbv.
+    extensionality x. destruct (b x). reflexivity.
+Qed.
+
+(* Not sure what ex1_2_2b means *)
+
+Definition phi {S T V: Set} (fg: (S -> V) * (T -> V)): S + T -> V :=
+  fun st =>
+    let (f, g) := fg in
+    match st with
+    | inl s => f s
+    | inr t => g t
+    end.
+
+Theorem ex_section_1_2_3a: forall (S T V: Set),
+  Bij (@phi S T V).
+Proof.
+  intros. unfold Bij. split.
+  - intros x1 x2 H. destruct x1 as [f1 g1]. destruct x2 as [f2 g2].
+    unfold phi in H. pose (Heq := func_ext_on_sum H).
+    inversion Heq. subst. reflexivity.
+  - intros fg. exists ((fun s => fg (inl s)), (fun t => fg (inr t))).
+    cbv. extensionality st. destruct st; reflexivity.
+Qed.
+

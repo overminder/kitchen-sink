@@ -1,4 +1,4 @@
-Require Import base_lemma.
+Require Export base_lemma.
 
 Definition Inj {A B} (f: A -> B) :=
   forall (a1 a2: A), f a1 = f a2 -> a1 = a2.
@@ -53,13 +53,9 @@ Qed.
 
 End Examples.
 
-Lemma eta_expansion_const: forall {A B} {x1 x2: B} (Hne: not_empty_set A),
-  (fun _: A => x1) = (fun _: A => x2) <-> x1 = x2.
+Lemma equal_const_f: forall {A B} {x1 x2: B} (Hne: not_empty_set A),
+  (fun _: A => x1) = (fun _: A => x2) -> x1 = x2.
 Proof.
-  intros. split.
-  - intros. destruct Hne as [a _].
-    apply (eta_reduction H a).
-  - intros.
-    rewrite H.
-    tauto.
+  intros. destruct Hne as [a _].
+  exact (equal_f H a).
 Qed.

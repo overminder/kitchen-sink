@@ -1,6 +1,6 @@
-Require Import Coq.Logic.FunctionalExtensionality.
+Require Export Coq.Logic.FunctionalExtensionality.
 
-Require Import base.
+Require Export base.
 
 Theorem double_neg (P: Prop): not (not P) <-> P.
 Proof.
@@ -45,29 +45,27 @@ Proof.
   unfold not in Hnab. apply Hnab. intros _. apply b.
 Qed.
 
-(* Eta expansions *)
+(* FunctionalExtensionality derived lemmas *)
 
-Lemma eta_expansion: forall {A B} (f g: A -> B),
-  (fun x1 => f x1) = (fun x2 => g x2) <-> f = g.
+Lemma func_ext_on_pair: forall {A B C} {f1 f2: A -> B} {g1 g2: A -> C},
+  (fun a => (f1 a, g1 a)) = (fun a => (f2 a, g2 a)) -> f1 = f2 /\ g1 = g2.
 Proof.
-  intros. split.
-  - intros. apply functional_extensionality.
-    intros.
-    apply (f_equal (fun (f: A -> B) => f x) H).
-  - intros.
-    rewrite H.
-    tauto.
+  intros. split; extensionality x; pose (Heq := equal_f H x);
+            inversion Heq; reflexivity.
 Qed.
 
-Lemma eta_expansion_r: forall {A B} {f g: A -> B},
-  (fun x1 => f x1) = (fun x2 => g x2) -> f = g.
+Lemma func_ext_on_sum: forall {A B C} {f1 f2: A -> C} {g1 g2: B -> C},
+    (fun x => match x with
+           | inl a => f1 a
+           | inr b => g1 b
+           end) =
+    (fun x => match x with
+           | inl a => f2 a
+           | inr b => g2 b
+           end) -> f1 = f2 /\ g1 = g2.
 Proof.
-  intros. destruct (eta_expansion f g).
-  auto.
-Qed.
-
-Lemma eta_reduction: forall {A B} {f g: A -> B},
-  f = g -> forall x, f x = g x.
-Proof.
-  intros. rewrite H. auto.
+  intros.
+  split; apply functional_extensionality; intros x.
+  - apply (equal_f H (inl x)).
+  - apply (equal_f H (inr x)).
 Qed.
