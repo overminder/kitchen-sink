@@ -80,6 +80,8 @@ Definition Hom_func_set {W S: Set} (h: W -> S) (T: Set) :=
 
 Definition Has_two_elems (S: Set) := exists s1 s2: S, s1 <> s2.
 
+(* This is so long because of the representation of
+   Has_two_elems and Has_eq_bool... *)
 Theorem ex_section_1_2_1:
   forall (T W S: Set), Has_two_elems T -> Has_eq_bool S ->
        forall h: W -> S, Surj h <-> Inj (Hom_func_set h T).
@@ -165,3 +167,8 @@ Proof.
     cbv. extensionality st. destruct st; reflexivity.
 Qed.
 
+(* Not sure what ex1_2_3b means *)
+
+(* ex1_2_4 requires power set, which means we need to use
+   a real mathmatics set to represent it (instead of using
+   Coq's builtin Set type) *)
