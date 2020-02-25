@@ -23,7 +23,11 @@ Kotlin source -> ASTNode(untyped AST)/PsiElement(typed wrapper/getter)
 DeclarationDescriptor seems to be a high-level IR with type analyzed.
 It contains both the expr tree and the types.
 
-- compiler.frontend.LazyTopDownAnalyzer (analyzeDeclarations etc) seems to be the psi analyzer. It returns an AnalysisResult which contains a ModuleDescriptor and a BindingContext.
+#### LazyTopDownAnalyzer
+
+compiler.frontend.LazyTopDownAnalyzer seems to be the psi analyzer. (Is there another analyzer that's not lazy?)
+
+analyzeDeclarations returns an AnalysisResult which contains a ModuleDescriptor and a BindingContext.
 
 ### core.descriptor -> FIR
 
@@ -59,6 +63,13 @@ DeclarationChecker.process
 (HUGE): go through files.annotations,
 class.{modifiers,idents,header(super+generic bounds)},
 {function,property,destructionDecl,typealias}.{modifiers,idents} ->
+
+### KtElement
+
+#### Example tree: script
+
+KtFile - KtScript - toplevel decls
+E.g., class/interface -> KtClass, fun name() -> KtNamedFunction, val -> KtProperty
 
 ### Descriptor
 
@@ -168,9 +179,9 @@ TypeIntersector (unify), DeferredType (I guess this is for when inference can't 
 ### Jargons
 
 - Psi (compiler.psi): typed AST
-- PsiStub (compiler.psi): interface part of a Psi
-- Fir (compiler.fir): intermediate level IR
-- Ir (compiler.ir): lower-level IR
-- Descriptor (core.descriptors): ?
+- PsiStub (compiler.psi): interface part of a Psi, see JetBrains' online doc
+- Descriptor (core.descriptors): high level IR
+- FIR (compiler.fir): intermediate level IR
+- IR (compiler.ir): low level IR
 - Tower (compiler.resolution/.calls): ?
 - Resolve (compiler.frontend, fir, core): kind of analysis?
