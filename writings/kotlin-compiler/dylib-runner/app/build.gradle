@@ -1,0 +1,12 @@
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':lib')
+}
+
+application {
+    // Define the main class for the application.
+    mainClassName = 'yux.ktcpg.AppKt'
+}

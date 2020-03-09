@@ -9,3 +9,9 @@ compiler](https://github.com/JetBrains/kotlin/tree/master/compiler).
 kotlin repo to run. These are useful because we can run arbitrary kotlin
 sources and set breakpoints on the compiler to learn about the compilation
 pipelines.
+
+### Faster Compiler Playground
+
+`dylib-runner/` uses the compiler as a library. This would makes compilation
+a lot faster but we lose code navigation inside the compiler (source jar
+would be useful?)

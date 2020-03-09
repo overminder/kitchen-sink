@@ -1,4 +1,4 @@
-### Tl;dr: Pipeline
+# Tl;dr: Pipeline
 
 Kotlin source ->
 KtElement (Psi) ->
@@ -176,9 +176,104 @@ Type inference? constraint system, subst, fresh tycon, tyvar etc
 
 TypeIntersector (unify), DeferredType (I guess this is for when inference can't proceed at some first, and will retry when it has more information. Not really fully bidirectional (H-M style) type inference, but an approximation)
 
-### Jargons
+### types.expressions
 
-- Psi (compiler.psi): typed AST
+Contains a bunch of KtElement visitors that does type recon/checking:
+- ExpressionTypingVisitorDispatcher
+- ControlStructureTypingVisitor
+- FunctionsTypingVisitor
+- BasicExpressionTypingVisitor (constants etc)
+  + This actually does a bit of parsing/validation work... e.g. understore on int literals.
+  + Also uses ConstantExpressionEvaluator to check for possible compile time constants (this indeed sounds like something a parser would do).
+    ^ Folds boolean && and ||
+    ^ Look up simple unary and binary func in OperationsMapGenerated
+
+# Analysis
+
+## compiler.frontend.LazyTopDownAnalyzer
+
+### TopDownAnalysisContext
+
+Stores the toplevel declarations (in typed maps) found during analysis.
+
+## BindingTrace
+
+Has a BindingContext. Is writable. Can record/inquiry KotlinType for a KtElement.
+Impls:
+- BindingTraceContext
+- ObservingBindingTrace
+
+## BindingContext
+
+Sounds like a read-only counterpart to the BindingTrace.
+
+## Smartcasting
+
+compiler.frontend/smartcasts.DataFlowInfo: bunch of maps to stores the data flow analysis result useful for smart casts.
+
+DataFlowValue: one instance of a value in a dataflow
+
+DataFlowValue.Kind: classify exprs into smart cast enabled, possible, or disabled ones. Quite intuitive.
+
+IdentifierInfo: represents both qualifier and ident name. what is this for?
+
+# Descriptors
+
+Looks that descriptors are something that's used throughout the whole compilation pipeline. They are more often used in frontend, but even in backend I can see some usage of them.
+
+## CallableD: VisD & NonRootD & Subst
+
+Receiver types (dispatch / extension), arg types, return types, type params;
+Parameter names, names may be unstable/synthesized (e.g. from JVM object code)
+Parameter values (what is ValueParameterDescriptor?)
+Cross ref to overridden methods
+UserDataKey<A>: stores typed user data
+
+## MemberD: VisD & NonRootD
+
+Has member modifiers: `expect` / `actual` / `external`.
+
+## CallableMemberD: CallableD & MemberD
+
+Kind: Decl/delegation/fakeOverride/synthesized (what's the last two?)
+Has a copy(owner, modality[final,sealed,open,abstract], visibility, kind, copyOverrides) method.
+
+## FunD: CallableMemberD
+
+initialSignatureD: the initial D before renaming (didn't find SimpleFunctionD.rename)
+hiddenToOvercomeSignatureClash: hack to handle corner case signature clash (said see nio.CharBuffer)
+hiddenEverywhereBesideSupercalls: undocumented, another hack
+Function modifiers: infix/inline/operator/suspend/tailrec
+
+## FunDImpl: NonRootDImpl & FunD
+
+Base impl for function modifiers. Setters set the local modifier (mostly happen during conversion from KtElement), while some getters (infix, operator) respect super class methods.
+Base impl for substitution (doSubstitute), and substituted value param. Worth reading.
+Base impl for initialize.
+Only here documents hiddenToOvercomeSignatureClash and hiddenEverywhereBesideSupercalls: former makes the function completely hidden (even in super-call), latter permits super-call and propagates to overriden methods
+
+## ConD: FunD
+
+containingD: ClassifierDWithTypeParams (what is this?)
+constructedClass: ClassD
+
+## ClassConD: ConD
+
+Just a bunch of return type specializations
+
+## ClassConDImpl: FunDImpl & ClassConD
+
+Default (<init>) or synthesized.
+Has a way to calculate dispatchReceiverParam. If inner, outer class instance; else null.
+
+# Backend
+
+compiler.backend/StackValue is something that I can definitely read. It has an 
+InstructionAdapter (a JVM bytecode emitter)
+
+# Jargons
+
+- Psi (compiler.psi): concrete syntax tree (aka parse tree). KtElement are psi nodes.
 - PsiStub (compiler.psi): interface part of a Psi, see JetBrains' online doc
 - Descriptor (core.descriptors): high level IR
 - FIR (compiler.fir): intermediate level IR
