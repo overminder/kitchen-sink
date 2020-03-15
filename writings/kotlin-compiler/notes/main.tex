@@ -3,6 +3,10 @@
 \usepackage[tt=false]{libertine}
 \usepackage{microtype}
 \usepackage{hyperref}
+\usepackage[intoc]{nomencl}
+\makenomenclature
+% \usepackage{indentfirst}
+
 
 \begin{document}
 \title{Kotlin Compiler Reading Notes}
@@ -14,6 +18,17 @@
 % End commands
 
 \tableofcontents
+
+\section{Methodology}
+It's often daunting to read through huge and complex codebase like \href{https://github.com/JetBrains/kotlin}{the Kotlin compiler}! Fortunately we have great tools at hand to deal with such complexity. In particular, IntelliJ Idea provides many priceless code navigation tools:
+\begin{itemize}
+    \item Type Hierarchy (under Navigate)
+    \item Structure (under View - Tool Windows)
+    \item Find Usage
+    \item Breakpoints
+\end{itemize}
+
+With these we'll be able to understand the compiler architecture and internals bit by bit...
 
 \section{Tl;dr: Pipeline}
 \begin{itemize}
@@ -71,7 +86,7 @@ FIR (compiler.fir) seems to be an intermediate yet still high-level IR.
 
 \subsection{FIR \textSafeTo IR}
 
-jIR (compiler.ir) seems to be an lower-level IR.
+IR (compiler.ir) seems to be an lower-level IR.
 
 \subsection{Example stacktrace for running a Kotlin script}
 
@@ -80,17 +95,17 @@ E.g. \texttt{kotlin -e <expr>}
 \begin{itemize}
     \item CLIDriver
     \begin{itemize}
-        \item compiler.cli K2JVMCompiler
+        \item compiler.cli / K2JVMCompiler
         \item plugins.scripting-compiler
-        \item compiler.cli.TopDownAnalyzerFacadeForJVM (analyzeFilesWithJavaIntegration)
+        \item compiler.cli / TopDownAnalyzerFacadeForJVM (analyzeFilesWithJavaIntegration)
     \end{itemize}
     \item Analyzer
     \begin{itemize}
-        \item compiler.frontend.LazyTopDownAnalyzer.analyzeDeclarations
-        \item (HUGE): go through all stmts
+        \item compiler.frontend / LazyTopDownAnalyzer.analyzeDeclarations
+        \item (HUGE) go through all stmts
         \item BodyResolver.resolveBodies
         \item DeclarationChecker.process
-        \item (HUGE): go through files, annotations, class's modifiers, idents, header (super+generic bounds); function, property, destructionDecl, typealias's modifiers and idents.
+        \item (HUGE) go through files, annotations, class's modifiers, idents, header (super+generic bounds); function, property, destructionDecl, typealias's modifiers and idents.
     \end{itemize}
 \end{itemize}
 
@@ -100,6 +115,7 @@ KtFile and KtScript for toplevel decls,
 KtClass for \texttt{class Foo}, KtNamedFunction for \texttt{fun foo()}, KtProperty for \texttt{val foo}.
 
 \section{DeclarationDescriptor}
+\label{sec:descriptor}
 
 See core.descriptors.DeclarationDescriptorVisitor for an overview.
 
@@ -129,20 +145,27 @@ Has a copy(owner, modality[final,sealed,open,abstract], visibility, kind, copyOv
 \subsubsection{FunD: CallableMemberD}
 
 initialSignatureD: the initial D before renaming (didn't find SimpleFunctionD.rename)
+
 hiddenToOvercomeSignatureClash: hack to handle corner case signature clash (said see nio.CharBuffer)
+
 hiddenEverywhereBesideSupercalls: undocumented, another hack
+
 Function modifiers: infix/inline/operator/suspend/tailrec
 
 \subsubsection{FunDImpl: NonRootDImpl \& FunD}
 
 Base impl for function modifiers. Setters set the local modifier (mostly happen during conversion from KtElement), while some getters (infix, operator) respect super class methods.
+
 Base impl for substitution (doSubstitute), and substituted value param. Worth reading.
+
 Base impl for initialize.
-Only here documents hiddenToOvercomeSignatureClash and hiddenEverywhereBesideSupercalls: former makes the function completely hidden (even in super-call), latter permits super-call and propagates to overriden methods
+
+Only here documents hiddenToOvercomeSignatureClash and hiddenEverywhere-BesideSupercalls: former makes the function completely hidden (even in super-call), latter permits super-call and propagates to overriden methods
 
 \subsubsection{ConD: FunD}
 
 containingD: ClassifierDWithTypeParams (what is this?)
+
 constructedClass: ClassD
 
 \subsubsection{ClassConD: ConD}
@@ -152,8 +175,28 @@ Just a bunch of return type specializations
 \subsubsection{ClassConDImpl: FunDImpl \& ClassConD}
 
 Default (\texttt{<init>}) or synthesized.
-Has a way to calculate dispatchReceiverParam. If inner, outer class instance; else null.
 
+Has a way to calculate dispatchReceiverParam. If inner, init's receiver is outer class instance (Whereas Java's outer class instance is passed as a param. Though in compiled code there's no difference, just at descriptor level they are different.); else null.
+
+\paragraph{CommonizedClassConD: ClassConDImpl}
+ClassConDImpl with source and originalD stripped.
+
+\paragraph{DefaultClassConD: ClassConDImpl}
+Read as (default constructor) of given class, not default implementation of (any class constructor). So this is just the no-param constructor of a class. Its visibility depends on the classD's visibility.
+
+\paragraph{DeserClassConD: ClassConDImpl \& DeserCallableMemberD}
+ProtoBuf based deserialized ClassConD. Holds a bunch of TypeTable, NameResolver, ContainerSource etc to help with further deserialization (so this is also in some sense lazy).
+
+\paragraph{JClassConD: ClassConDImpl \& JCallableMemberD}
+A Java imported class's constructor. Since this is from JVM object code, it provides property impl of hasStableParamNames / hasSynthesizedParamNames.
+
+enhance() implementation makes a copy with enhanced receiver param and value params.
+
+\paragraph{SamAdapterClass: ClassConDImpl \& SamAdapterD\textless JavaClassConD\textgreater}
+
+\subsection{DFactory}
+
+In core.descriptors / resolve.
 
 \section{Fir}
 
@@ -299,5 +342,9 @@ IdentifierInfo: represents both qualifier and ident name. what is this for?
     \item What is a core.descriptors.MemberScope?
     \item What's the diff between TypeCheckerContext and TypeSystemContext?
 \end{itemize}
+
+\input{nomenclature.tex}
+\newpage
+\printnomenclature
 
 \end{document}
