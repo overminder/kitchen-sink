@@ -1,0 +1,303 @@
+\documentclass{article}
+\usepackage{inconsolata}
+\usepackage[tt=false]{libertine}
+\usepackage{microtype}
+\usepackage{hyperref}
+
+\begin{document}
+\title{Kotlin Compiler Reading Notes}
+\author{Yuxiang Jiang \thanks{yxjiang@linkedin.com}}
+\maketitle
+
+% Commands
+\newcommand{\textSafeTo}{\texorpdfstring{$\to$}{to} }
+% End commands
+
+\tableofcontents
+
+\section{Tl;dr: Pipeline}
+\begin{itemize}
+    \item Kotlin source
+    \item KtElement (Psi)
+    \item core.descriptor (ClassicTypeSystemContext)
+    \item FirElement (nodes) / FirBasedSymbol (infotable?) (ConeTypeContext)
+    \item IrElement (nodes) / IrSymbol (infotable?) (IrTypeSystemContext)
+\end{itemize}
+
+\subsection{Source \textSafeTo KtElement}
+
+\begin{itemize}
+    \item See class KtVisitor for an overview of many Kotlin PsiElements
+    \item compiler.psi defines KtElement and \href{https://www.jetbrains.org/intellij/sdk/docs/basics/indexing_and_psi_stubs/stub_indexes.html}{Stubs}, also provides parser
+    \begin{itemize}
+        \item Stubs represents the interface parts of a kt compilation unit
+        (.h, .mli, .hi etc).
+        \item There's also a LighterASTNNode (KotlinLightParser) -- what is it? (Flyweight pattern is like hash consing)
+        \item Some KtElements are related to types: e.g. KtTypeReference (some of them are not KtElements but stubs!)
+    \end{itemize}
+    \item compiler.psi.KtPsiFactory is the entrypoint for creating KtFile (a PsiElement) from source text.
+\end{itemize}
+
+\subsection{KtElement \textSafeTo DeclarationDescriptor}
+
+DeclarationDescriptor seems to be a high-level IR with type analyzed. It contains both the expr tree and the types.
+
+\subsubsection{LazyTopDownAnalyzer}
+
+compiler.frontend.LazyTopDownAnalyzer seems to be the psi analyzer. (Is there another analyzer that's not lazy?)
+
+analyzeDeclarations returns an AnalysisResult which contains a ModuleDescriptor and a BindingContext.
+
+\subsection{DeclarationDescriptor \textSafeTo FIR}
+
+FIR (compiler.fir) seems to be an intermediate yet still high-level IR.
+
+\begin{itemize}
+    \item See generated class FirVisitor for an overview of many of the Fir exprs
+    \item compiler.frontend (not sure which step it is in, but it at least does symbol resolution, type checking, (Psi \textSafeTo CFG?)
+    \begin{itemize}
+        \item See key classes: AnalysisResult, BindingContext, BindingTrace (records the collected binding / type substs?)
+    \end{itemize}
+    \item compiler.resolution: tower/ReceiverValue etc
+    \item compiler.fir: cones (types and symbols used in Fir?), fir2ir (lowering to Ir), psi2fir (lowering Psi to Fir), resolve, jvm, tree (Fir definitions and impl for psi2fir)
+    \begin{itemize}
+        \item cones: StandardClassIds contains a bunch of core Kt (read: not JVM) type Ids. They have a JVM-like fqname.
+
+        SyntheticCallableId contains when/try/nullcheck synthetic call exprs
+
+        \item tree.gen contains all Fir expressions (see tree.tree-generator's readme for how they are generated), as well as extra info (FirTypeRef). And even on Fir level, the generic types are not yet erased (FirTypeProjectionWithVariance)
+    \end{itemize}
+\end{itemize}
+
+\subsection{FIR \textSafeTo IR}
+
+jIR (compiler.ir) seems to be an lower-level IR.
+
+\subsection{Example stacktrace for running a Kotlin script}
+
+E.g. \texttt{kotlin -e <expr>}
+
+\begin{itemize}
+    \item CLIDriver
+    \begin{itemize}
+        \item compiler.cli K2JVMCompiler
+        \item plugins.scripting-compiler
+        \item compiler.cli.TopDownAnalyzerFacadeForJVM (analyzeFilesWithJavaIntegration)
+    \end{itemize}
+    \item Analyzer
+    \begin{itemize}
+        \item compiler.frontend.LazyTopDownAnalyzer.analyzeDeclarations
+        \item (HUGE): go through all stmts
+        \item BodyResolver.resolveBodies
+        \item DeclarationChecker.process
+        \item (HUGE): go through files, annotations, class's modifiers, idents, header (super+generic bounds); function, property, destructionDecl, typealias's modifiers and idents.
+    \end{itemize}
+\end{itemize}
+
+\section{KtElement}
+
+KtFile and KtScript for toplevel decls,
+KtClass for \texttt{class Foo}, KtNamedFunction for \texttt{fun foo()}, KtProperty for \texttt{val foo}.
+
+\section{DeclarationDescriptor}
+
+See core.descriptors.DeclarationDescriptorVisitor for an overview.
+
+DeclarationDescriptorVisitor sounds like an type-instantiated/abstracted wrapper of an element. Also has a bunch of annotations (AnnotationDescriptor) and a name. And is also a tree node (has parent: getContainingDecl)
+
+\subsection{Survey of Class Hierarchy}
+
+Looks that descriptors are something that's used throughout the whole compilation pipeline. They are more often used in frontend, but even in backend I can see some usage of them.
+
+\subsubsection{CallableD: VisD \& NonRootD \& Subst}
+
+Receiver types (dispatch / extension), arg types, return types, type params;
+Parameter names, names may be unstable/synthesized (e.g. from JVM object code)
+Parameter values (what is ValueParameterDescriptor?)
+Cross ref to overridden methods
+UserDataKey<A>: stores typed user data
+
+\subsubsection{MemberD: VisD \& NonRootD}
+
+Has member modifiers: `expect` / `actual` / `external`.
+
+\subsubsection{CallableMemberD: CallableD \& MemberD}
+
+Kind: decl / delegation / fakeOverride / synthesized (what's the last two?)
+Has a copy(owner, modality[final,sealed,open,abstract], visibility, kind, copyOverrides) method.
+
+\subsubsection{FunD: CallableMemberD}
+
+initialSignatureD: the initial D before renaming (didn't find SimpleFunctionD.rename)
+hiddenToOvercomeSignatureClash: hack to handle corner case signature clash (said see nio.CharBuffer)
+hiddenEverywhereBesideSupercalls: undocumented, another hack
+Function modifiers: infix/inline/operator/suspend/tailrec
+
+\subsubsection{FunDImpl: NonRootDImpl \& FunD}
+
+Base impl for function modifiers. Setters set the local modifier (mostly happen during conversion from KtElement), while some getters (infix, operator) respect super class methods.
+Base impl for substitution (doSubstitute), and substituted value param. Worth reading.
+Base impl for initialize.
+Only here documents hiddenToOvercomeSignatureClash and hiddenEverywhereBesideSupercalls: former makes the function completely hidden (even in super-call), latter permits super-call and propagates to overriden methods
+
+\subsubsection{ConD: FunD}
+
+containingD: ClassifierDWithTypeParams (what is this?)
+constructedClass: ClassD
+
+\subsubsection{ClassConD: ConD}
+
+Just a bunch of return type specializations
+
+\subsubsection{ClassConDImpl: FunDImpl \& ClassConD}
+
+Default (\texttt{<init>}) or synthesized.
+Has a way to calculate dispatchReceiverParam. If inner, outer class instance; else null.
+
+
+\section{Fir}
+
+compiler.fir.resolve: ResolutionStage sounds like something pipeline-related
+
+\section{Ir}
+
+compiler.ir.tree: IR (called IrSymbol) definitions. See IrSymbolVisitor for an overview. Looks that they have descriptors attached.
+
+\section{Type System}
+
+\subsection{core.type-system}
+
+type system core (equality, bounds checking etc). However this is more of an interface module -- the actual impls are in core.descriptors, fir and ir modules.
+
+\subsection{TypeSystemTypeFactoryContext}
+
+Contains a bunch of common type factories:
+
+\begin{itemize}
+    \item flexibleType has lower/upper bounds
+    \item simpleType has tycon, tyargs, nullablep
+    \item tyarg has ty and variance
+    \item star has tyarg (why?)
+    \item there's also an error type used in diagnosis
+\end{itemize}
+
+\subsection{TypeCheckerProviderContext}
+
+\begin{itemize}
+    \item modular axioms (errorType unifiable with all types etc)
+    \item what is a stub type? (Probably PsiStub related?)
+\end{itemize}
+
+\subsection{TypeSystemCommonSuperTypesContext}
+
+Used to check if two type has common super types, and lowest-common ancestor utils.
+
+typeDepth is a safe overestimation of the depth (from `Any`).
+
+Seems to also be used in Fir.
+
+\subsection{TypeSystemInferenceExtensionContext}
+
+Inference related.
+
+\subsubsection{Questions}
+\begin{itemize}
+    \item What is a isCapturedTypeConstructor?
+    \item What is a singleBestRepresentative?
+    \item What is a noInferAnnotation?
+    \item What is mayBeTypeVariable?
+    \item What is a defaultType?
+    \item Read impl of isUnit vs isUnitTypeConstructor
+    \item Read impl of createCapturedType
+    \item Read impl of createStubType
+    \item Read impl createEmptySubstitutor, typeSubstitutorByTypeConstructor, safeSubstitute
+\end{itemize}
+
+\subsection{TypeSystemContext}
+
+Defines many marker types (guess it's used for disjoint classes). Also lots of getters on various marker types -- Makes the code less intuitive...
+
+\begin{itemize}
+    \item fastCorrespondingSupertypes has no actual impl? (No, it's just that intellij's search functionality fail to find overridden extension methods)
+    \item isCommonFinalClassConstructor is implemented in three (Psi, Fir, Ir) stage's TypeSystemContext:
+    \begin{itemize}
+        \item ClassicTypeSystemContext: get ClassDescriptor from TypeConstructor's declarationDescriptor, then check it's final but not (enum or annotation). So the method really checks that the tycon is "final" but is not a uncommon (enum/annotation) class.
+        \item ConeTypeContext: Does almost the same thing, but also return true if is anonymous object (final by design). Works on FirBasedSymbol (some sort of class infotable?). Check that this is a FirRegularClassSymbol, whose FirRegularClass is final but not uncommon.
+        \item IrTypeSystemContext: Check this is a IrClassSymbol whose owner is final and not uncommon.
+
+        So basically ClassDescriptor, FirRegularClass and IrClassSymbol.owner are the same thing across three stages.
+
+        Sounds that reading the common implemented methods of these three TySysCtx impl classes would be super helpful to understand the stages.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Type System for Fir}
+
+Read ConeTypeContext
+
+\subsection{Type System for Ir}
+
+Read IrTypeSystemContext
+
+\subsection{compiler.resolution/.inference}
+
+Type inference? constraint system, subst, fresh tycon, tyvar etc
+
+\subsection{compiler.frontend/.types}
+
+TypeIntersector (unify), DeferredType (I guess this is for when inference can't proceed at some first, and will retry when it has more information. Not really fully bidirectional (H-M style) type inference, but an approximation)
+
+\subsection{types.expressions}
+
+Contains a bunch of KtElement visitors that does type recon/checking:
+\begin{itemize}
+\item ExpressionTypingVisitorDispatcher
+\item ControlStructureTypingVisitor
+\item FunctionsTypingVisitor
+\item BasicExpressionTypingVisitor (constants etc)
+\begin{itemize}
+  \item This actually does a bit of parsing/validation work... e.g. understore on int literals.
+  \item Also uses ConstantExpressionEvaluator to check for possible compile time constants (this indeed sounds like something a parser would do).
+  
+  Folds boolean \texttt{\&\&} and \texttt{||}
+
+  Look up simple unary and binary func in OperationsMapGenerated
+\end{itemize}
+\end{itemize}
+
+\section{Analysis}
+
+\subsection{compiler.frontend.LazyTopDownAnalyzer}
+
+\subsubsection{TopDownAnalysisContext}
+
+Stores the toplevel declarations (in typed maps) found during analysis.
+
+\subsection{BindingTrace}
+
+Has a BindingContext. Is writable. Can record/inquiry KotlinType for a KtElement.
+Impls: BindingTraceContext and ObservingBindingTrace
+
+\subsection{BindingContext}
+
+Sounds like a read-only counterpart to the BindingTrace.
+
+\subsection{Smartcasting}
+
+compiler.frontend smartcasts.DataFlowInfo: bunch of maps to stores the data flow analysis result useful for smart casts.
+
+DataFlowValue: one instance of a value in a dataflow
+
+DataFlowValue.Kind: classify exprs into smart cast enabled, possible, or disabled ones. Quite intuitive.
+
+IdentifierInfo: represents both qualifier and ident name. what is this for?
+
+\section{Unsolved Questions}
+
+\begin{itemize}
+    \item What is a LazyTypeParameterDescriptor?
+    \item What is a core.descriptors.MemberScope?
+    \item What's the diff between TypeCheckerContext and TypeSystemContext?
+\end{itemize}
+
+\end{document}
