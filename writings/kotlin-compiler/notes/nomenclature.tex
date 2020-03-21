@@ -1,28 +1,43 @@
+% Language general abbrevs
+
 \nomenclature{Fun}{Function}
 
 \nomenclature{Con}{
-Constructor. Can be either a type constructor like $\forall$ \texttt{a, List<a>}, or a value / class constructor like \texttt{<init>}}
+Constructor. Can be either a type constructor, or a value / class constructor like \texttt{<init>}}
 
-\nomenclature{Vis}{
-Visibility, as in public / private / internal etc.}
+\nomenclature{TyCon}{\href{https://en.wikipedia.org/wiki/Type_constructor}{Type constructor}. Basically a type-level function that takes zero or more types, and returns another type. E.g. List is a tycon: $\forall$ \texttt{a, List<a>}}
 
 \nomenclature{Subst}{
 Substitution, usually in the context of type checking / reconstruction / unification algorithms. See \href{https://en.wikipedia.org/wiki/Unification_(computer_science)}{Wikipedia: Unification} and \href{https://ncatlab.org/nlab/show/substitution}{nLab: Substitution}.}
 
-\nomenclature{D}{
-DeclarationDescriptor or just Descriptor. See the \hyperref[sec:descriptor]{DeclarationDescriptor section}}
+\nomenclature{Impl}{Implementation}
+
+\nomenclature{Param}{Parameter}
+
+\nomenclature{Var}{Variable}
+
+% JetBrains specific abbrevs
+
+\nomenclature{PSI}{JetBrain's universal parse tree API. See \href{https://www.jetbrains.org/intellij/sdk/docs/basics/architectural_overview/psi.html}{its doc here}.}
+
+\nomenclature{Stub}{In the context of PSI, this is the interface part of a PSI tree. It's initially calculated from PSI trees and then cached for efficient retrival. See \href{https://www.jetbrains.org/intellij/sdk/docs/basics/indexing_and_psi_stubs/stub_indexes.html}{JetBrain's doc}.}
+
+% Kt specific abbrevs
 
 \nomenclature{J}{Java}
 
-\nomenclature{Impl}{Implementation}
+\nomenclature{Vis}{
+Visibility, as in public / private / internal etc.}
 
-\nomenclature{FIR}{Intermediate level IR, below KtElement and above IR. See package compiler.fir.}
-\nomenclature{IR}{Low level IR. See package compiler.ir.}
+\nomenclature{D}{
+DeclarationDescriptor or just Descriptor. See the \hyperref[sec:descriptor]{DeclarationDescriptor section}}
+
+\nomenclature{FIR}{Intermediate level IR, below KtElement and above IR. See \ref{sec:fir}.}
+
+\nomenclature{IR}{Can either be a general term (Intermediate Representation), or specifically Kotlin compiler's new experimental lowlevel IR (see \ref{sec:ir}).}
 
 \nomenclature{Commonization}{Seems to be a klib process to strip source and original information from descriptors. For example see CommonizedClassConD. Maybe this is to reduce storage size for these Ds in klibs?}
 
 \nomenclature{Deser}{Deserialization. See core.deserialization -- The compiler is able to serialize / deserialize descriptors. And it seems to be done lazily -- Many deserialized descriptors still hold TypeTable / NameResolver / VersionRequirementTable to help with further deserialization.}
 
-\nomenclature{PSI}{JetBrain's universal parse tree API. See \href{https://www.jetbrains.org/intellij/sdk/docs/basics/architectural_overview/psi.html}{its doc here}.}
-
-\nomenclature{Stub}{In the context of PSI, this is the interface part of a PSI tree. It's initially calculated from PSI trees and then cached for efficient retrival. See \href{https://www.jetbrains.org/intellij/sdk/docs/basics/indexing_and_psi_stubs/stub_indexes.html}{JetBrain's doc}.}
+\nomenclature{Bridge}{Kotlin's way (i.e. doesn't require Java 8) of representing default implementation for interfaces in generate code. See compiler.backend-common / impl.kt's code doc.}

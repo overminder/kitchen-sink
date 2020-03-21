@@ -7,7 +7,6 @@
 \makenomenclature
 % \usepackage{indentfirst}
 
-
 \begin{document}
 \title{Kotlin Compiler Reading Notes}
 \author{Yuxiang Jiang \thanks{yxjiang@linkedin.com}}
@@ -86,7 +85,9 @@ FIR (compiler.fir) seems to be an intermediate yet still high-level IR.
 
 \subsection{FIR \textSafeTo IR}
 
-IR (compiler.ir) seems to be an lower-level IR.
+IR (compiler.ir) seems to be an lower-level IR. This is an experimental IR that's intended to be used across all Kotlin backends. Also see \href{https://medium.com/@bnorm/exploring-kotlin-ir-bed8df167c23}{this writeup}.
+
+A sample IR lowering pass can be found \href{https://github.com/JetBrains/kotlin/blob/936e53d/compiler/ir/backend.common/src/org/jetbrains/kotlin/backend/common/lower/TailrecLowering.kt}{here}. Looks that the compiler API provides a convenient IrBuilder, and a visitor style IrTransformer.
 
 \subsection{Example stacktrace for running a Kotlin script}
 
@@ -128,27 +129,50 @@ Looks that descriptors are something that's used throughout the whole compilatio
 \subsubsection{CallableD: VisD \& NonRootD \& Subst}
 
 Receiver types (dispatch / extension), arg types, return types, type params;
+
 Parameter names, names may be unstable/synthesized (e.g. from JVM object code)
-Parameter values (what is ValueParameterDescriptor?)
+
+Parameter values (See \ref{sec:ValueParamD})
+
 Cross ref to overridden methods
-UserDataKey<A>: stores typed user data
+
+UserDataKey$<$A$>$: stores typed user data
 
 \subsubsection{MemberD: VisD \& NonRootD}
 
-Has member modifiers: `expect` / `actual` / `external`.
+Has member modifiers: expect / actual / external. And modality: final /sealed / open / abstract.
 
 \subsubsection{CallableMemberD: CallableD \& MemberD}
 
 Kind: decl / delegation / fakeOverride / synthesized (what's the last two?)
-Has a copy(owner, modality[final,sealed,open,abstract], visibility, kind, copyOverrides) method.
+
+\subsubsection{ValueD: CallableD}
+
+Has a KotlinType.
+
+\subsubsection{VarD: ValueD}
+
+Has isVar (wat), isLateinit, isConst, and an optional compileTimeInitializer.
+
+\subsubsection{ParamD: ValueD}
+Represents a parameter that can be supplied to a callableD.
+
+\paragraph{ReceiverParamD: ParamD}
+Has a ReceiverValue.
+
+\paragraph{ValueParamD: ParamD \& VarD}
+\label{sec:ValueParamD}
+Has a index, hasDefaultValue, varargElementType, isCrossinline / Noinline (why on param?)
+
+\subsubsection{VarDWithAccessors}
+
+Has optional getter / setter typed VarAccessorD.
 
 \subsubsection{FunD: CallableMemberD}
 
 initialSignatureD: the initial D before renaming (didn't find SimpleFunctionD.rename)
 
-hiddenToOvercomeSignatureClash: hack to handle corner case signature clash (said see nio.CharBuffer)
-
-hiddenEverywhereBesideSupercalls: undocumented, another hack
+hiddenToOvercomeSignatureClash: hack to handle corner case signature clash (said see nio.CharBuffer); also hiddenEverywhereBesideSupercalls: see \ref{sec:FunDImpl-hidden}.
 
 Function modifiers: infix/inline/operator/suspend/tailrec
 
@@ -160,6 +184,7 @@ Base impl for substitution (doSubstitute), and substituted value param. Worth re
 
 Base impl for initialize.
 
+\label{sec:FunDImpl-hidden}
 Only here documents hiddenToOvercomeSignatureClash and hiddenEverywhere-BesideSupercalls: former makes the function completely hidden (even in super-call), latter permits super-call and propagates to overriden methods
 
 \subsubsection{ConD: FunD}
@@ -192,21 +217,36 @@ A Java imported class's constructor. Since this is from JVM object code, it prov
 
 enhance() implementation makes a copy with enhanced receiver param and value params.
 
-\paragraph{SamAdapterClass: ClassConDImpl \& SamAdapterD\textless JavaClassConD\textgreater}
+\paragraph{SamAdapterClass: ClassConDImpl \& SamAdapterD$<$JavaClassConD$>$}
+A synthetic ClassConD that wraps another ClassConD.
 
 \subsection{DFactory}
 
 In core.descriptors / resolve.
 
-\section{Fir}
+\section{FIR}
+\label{sec:fir}
 
 compiler.fir.resolve: ResolutionStage sounds like something pipeline-related
 
-\section{Ir}
+\section{IR}
+\label{sec:ir}
 
-compiler.ir.tree: IR (called IrSymbol) definitions. See IrSymbolVisitor for an overview. Looks that they have descriptors attached.
+IR (compiler.ir) seems to be an lower-level IR. This is an experimental IR that's intended to be used across all Kotlin backends. Also see \href{https://medium.com/@bnorm/exploring-kotlin-ir-bed8df167c23}{this writeup}.
+
+A sample IR lowering pass can be found \href{https://github.com/JetBrains/kotlin/blob/936e53d/compiler/ir/backend.common/src/org/jetbrains/kotlin/backend/common/lower/TailrecLowering.kt}{here}. Looks that the compiler API provides a convenient IrBuilder, and a visitor style IrTransformer.
+
+\subsection{compiler.ir.tree}
+
+IrSymbol definitions. See IrSymbolVisitor for an overview. Looks that they have descriptors attached.
 
 \section{Type System}
+
+\subsection{Types}
+
+Kotlin compiler uses \href{https://en.wikipedia.org/wiki/Marker_interface_pattern}{Marker Interface pattern} extensively in type definitions. See TypeSystemContext.kt (KotlinTypeMarker, TypeArgumentMarket etc).
+
+KotlinType is the base class for all types in Kotlin. It has a tycon, list of tyargs, nullability (so nullability is built-in to any type -- can this be problematic?). It also has a MemberScope (see \ref{sec:reso}) and a refine(KotlinTypeRefiner) method.
 
 \subsection{core.type-system}
 
@@ -258,8 +298,6 @@ Inference related.
 
 \subsection{TypeSystemContext}
 
-Defines many marker types (guess it's used for disjoint classes). Also lots of getters on various marker types -- Makes the code less intuitive...
-
 \begin{itemize}
     \item fastCorrespondingSupertypes has no actual impl? (No, it's just that intellij's search functionality fail to find overridden extension methods)
     \item isCommonFinalClassConstructor is implemented in three (Psi, Fir, Ir) stage's TypeSystemContext:
@@ -308,7 +346,24 @@ Contains a bunch of KtElement visitors that does type recon/checking:
 \end{itemize}
 \end{itemize}
 
+\section{Resolution}
+\label{sec:reso}
+
+Package: compiler.resolution
+
+\subsection{Scopes}
+
+core.descriptor / ResolutionScope: contains information about what identifier it contributes to a given lookup location. Identifiers have separate namespaces: variable, function, and classifier (type).
+
+compiler.resolution / LexicalScope is a ResolutionScope that has a parent, a ownerD, a LexicalScopeKind (what kind of syntactical structure created this scope?)
+
+\subsection{Tower}
+
+i.e. ImplicitScopeTower. Some sort of multi-level scopes? Can't understand this part.
+
 \section{Analysis}
+
+Package: compiler.frontend
 
 \subsection{compiler.frontend.LazyTopDownAnalyzer}
 
@@ -334,6 +389,27 @@ DataFlowValue: one instance of a value in a dataflow
 DataFlowValue.Kind: classify exprs into smart cast enabled, possible, or disabled ones. Quite intuitive.
 
 IdentifierInfo: represents both qualifier and ident name. what is this for?
+
+\section{Codegen}
+Mostly in package compiler.backend.
+
+\subsection{ExpressionCodeGen}
+Generates JVM bytecode directly from KtElement. This is a KtVisitor$<$StackValue$^2$$>$. Has an InstructionAdapter (JVM bytecode emitter).
+
+\subsection{StackValue}
+Sounds like a helper class to represent operands on the JVM stack. Has a couple subclasses.
+
+\subsection{ClassBodyCodeGen}
+Generate class body from a KtPureClassOrObject with a ClassDescriptor. Also does bridge generation.
+
+\subsection{FunctionCodeGen}
+Generate class body from a KtPureClassOrObject with a ClassDescriptor. Also does bridge generation.
+
+\subsection{JS Codegen}
+
+e.g. js.js.translator / PropertyTranslator. Looks that it directly translates descriptor + Psi (KtElement) into JS statement / expressions.
+
+Also see FunctionBodyTranslator -- takes a FunD and a KtElement (KtDeclWithBody).
 
 \section{Unsolved Questions}
 

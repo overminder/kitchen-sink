@@ -1,0 +1,3 @@
+--- 192.168.1.71 ping statistics ---
+47 packets transmitted, 43 packets received, 8.5% packet loss
+round-trip min/avg/max/stddev = 5.609/105.199/648.774/112.718 ms
