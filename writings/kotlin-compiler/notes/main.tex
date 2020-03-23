@@ -5,6 +5,11 @@
 \usepackage{hyperref}
 \usepackage[intoc]{nomencl}
 \makenomenclature
+
+% Graph
+\usepackage{dot2texi}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows}
 % \usepackage{indentfirst}
 
 \begin{document}
@@ -29,6 +34,19 @@ It's often daunting to read through huge and complex codebase like \href{https:/
 
 With these we'll be able to understand the compiler architecture and internals bit by bit...
 
+\begin{dot2tex}[dot,scale=0.3]
+\input{arch-diagram.dot}
+\end{dot2tex}
+
+\subsection{Building From Source}
+Once you have the repo checked out, run \texttt{./gradlew dist} to build everything. This can take 10-20 minutes. Then you will be able to run tests, compiler.cli.cli-runner (i.e. the script runner), and compiler.preloader (i.e. the CLI compiler loader).
+
+\subsection{Tracing Compiler Execution}
+
+It's often useful to use the debugger to understand how the compiler pipeline works. This requires the ability to run custom code and to attach a debugger to the compiler process. One trick that I used was to add a local file to the cli-runner package (or compiler.preloader). This allows me to run or debug arbitrary code there while being able to link the code with the compiler. And since these these packages don't actually have source dependency on the whole compiler (only link to the dist jar), rebuilding is quite fast.
+
+Another way is to link your code with a prebuilt compiler (e.g. add dependency \texttt{"org.jetbrains.kotlin:kotlin-compiler:1.3.70"}). I can't seem to fetch its sourceJar though...
+
 \section{Tl;dr: Pipeline}
 \begin{itemize}
     \item Kotlin source
@@ -37,6 +55,27 @@ With these we'll be able to understand the compiler architecture and internals b
     \item FirElement (nodes) / FirBasedSymbol (infotable?) (ConeTypeContext)
     \item IrElement (nodes) / IrSymbol (infotable?) (IrTypeSystemContext)
 \end{itemize}
+
+% Make this a graph
+
+\subsection{Pipeline for \texttt{kotlin} Script Runner}
+Note that the runner uses coroutine in its eval methods and therefore can be hard to trace.
+
+Runner: AbstractScriptEvaluationExtension \textSafeTo ScriptJvmCompilerImpls
+Parse: jvmCompilationUtil.getScriptKtFile: text-based Kt source \textSafeTo KtFile (Psi-based KtElement)
+Analysis: TopDownAnalyzerFacadeForJVM \textSafeTo LazyTopDownAnalyzer
+Codegen (Psi-based): KotlinCodegenFacade \textSafeTo DefaultCodegenFactory \textSafeTo THINGCodegen (e.g. Package / Member / Script / ImplementationBody / ClassBody)
+Eval: AbstractScriptEvaluationExtension \textSafeTo BasicJvmScriptEvaluator
+
+\subsection{Pipeline for \texttt{kotlinc} Compiler}
+
+ Runner: compiler.preloader / Preloader \textSafeTo compiler.cli / K2JVMCompiler \textSafeTo KotlinToJVMBytecodeCompiler (checks IR flag)
+Parse: Not sure
+Analysis: KotlinToJVMBytecodeCompiler.analyze \textSafeTo TopDownAnalyzerFacadeForJVM
+Codegen (Psi-based): KotlinToJVMBytecodeCompiler.generate \textSafeTo KotlinCodegenFacade
+Lowering (Ir-based): analysis is the same; but ktjvmbcc.generate is different? Uses JvmIrCodeGenFactory with a PhaseConfig. I.e., .generate \textSafeTo JvmIrCodeGenFactory \textSafeTo JvmBackendFacade \textSafeTo JvmLower \textSafeTo CompilerPhase.invokeToplevel(PhaseConfig, JvmBackendContext, IrModuleFragment) \textSafeTo a bunch of abstraction layers around lowering phases \textSafeTo SomeLoweringPass.lower
+Codegen (Ir-based): JvmBackendFacade \textSafeTo ClassCodeGen (IrFile.declarations should only contain IrClass after lowering)
+Write: KotlinToJVMBytecodeCompiler.writeOutputs
 
 \subsection{Source \textSafeTo KtElement}
 
@@ -64,6 +103,8 @@ analyzeDeclarations returns an AnalysisResult which contains a ModuleDescriptor 
 
 \subsection{DeclarationDescriptor \textSafeTo FIR}
 
+XXX: Not sure if this step is required or even exists.
+
 FIR (compiler.fir) seems to be an intermediate yet still high-level IR.
 
 \begin{itemize}
@@ -85,9 +126,7 @@ FIR (compiler.fir) seems to be an intermediate yet still high-level IR.
 
 \subsection{FIR \textSafeTo IR}
 
-IR (compiler.ir) seems to be an lower-level IR. This is an experimental IR that's intended to be used across all Kotlin backends. Also see \href{https://medium.com/@bnorm/exploring-kotlin-ir-bed8df167c23}{this writeup}.
-
-A sample IR lowering pass can be found \href{https://github.com/JetBrains/kotlin/blob/936e53d/compiler/ir/backend.common/src/org/jetbrains/kotlin/backend/common/lower/TailrecLowering.kt}{here}. Looks that the compiler API provides a convenient IrBuilder, and a visitor style IrTransformer.
+XXX: Not sure if this step is required.
 
 \subsection{Example stacktrace for running a Kotlin script}
 
@@ -227,6 +266,8 @@ In core.descriptors / resolve.
 \section{FIR}
 \label{sec:fir}
 
+Front-end IR (not sure what this means), enabled by CommonConfigurationKeys .USE\_FIR (This also implies using IR. But use-ir doesn't imply using FIR).
+
 compiler.fir.resolve: ResolutionStage sounds like something pipeline-related
 
 \section{IR}
@@ -236,9 +277,20 @@ IR (compiler.ir) seems to be an lower-level IR. This is an experimental IR that'
 
 A sample IR lowering pass can be found \href{https://github.com/JetBrains/kotlin/blob/936e53d/compiler/ir/backend.common/src/org/jetbrains/kotlin/backend/common/lower/TailrecLowering.kt}{here}. Looks that the compiler API provides a convenient IrBuilder, and a visitor style IrTransformer.
 
-\subsection{compiler.ir.tree}
+\subsection{Playing with IR}
+This is enabled by passing \texttt{-Xuse-ir} as a CLI option to the compiler. IR backend currently doesn't support the script runner -- KotlinToJVMBytecodeCompiler will ignore use-ir on kts files; Also ScriptCodegen calls KotlinTypeMapper.mapType which is not intended to be called with IR backend.
 
+\subsection{compiler.ir.tree}
 IrSymbol definitions. See IrSymbolVisitor for an overview. Looks that they have descriptors attached.
+
+\subsection{Phases}
+compiler.ir.backend.common defines CompilerPhase that's chainable. See PhaseBuilders.kt and JvmLower.kt.
+
+\subsection{IrSymbol vs IrElement}
+IrElement seems to be the implementation part while IrSymbol is more about the declaration part. E.g. IrClassImpl vs IrClassSymbolImpl. The former contain the concrete class members (init, methods) while the latter contains ClassD.
+
+IrSymbol can be bound or not (what does this mean?), has a owner (an IrElement), an IdSignature (what's this?), and visibility (isPublicApi).
+
 
 \section{Type System}
 
@@ -246,7 +298,7 @@ IrSymbol definitions. See IrSymbolVisitor for an overview. Looks that they have 
 
 Kotlin compiler uses \href{https://en.wikipedia.org/wiki/Marker_interface_pattern}{Marker Interface pattern} extensively in type definitions. See TypeSystemContext.kt (KotlinTypeMarker, TypeArgumentMarket etc).
 
-KotlinType is the base class for all types in Kotlin. It has a tycon, list of tyargs, nullability (so nullability is built-in to any type -- can this be problematic?). It also has a MemberScope (see \ref{sec:reso}) and a refine(KotlinTypeRefiner) method.
+KotlinType is the base class for all types in Kotlin. It has a tycon, list of tyargs, nullability (so nullability is built-in to any type -- can this be problematic?). It also has a MemberScope ("what are the members in this type-based namespace?", see \ref{sec:reso}) and a refine(KotlinTypeRefiner) method.
 
 \subsection{core.type-system}
 
@@ -391,25 +443,42 @@ DataFlowValue.Kind: classify exprs into smart cast enabled, possible, or disable
 IdentifierInfo: represents both qualifier and ident name. what is this for?
 
 \section{Codegen}
-Mostly in package compiler.backend.
 
-\subsection{ExpressionCodeGen}
+There are currently two codegen systems and both target JS, JVM, etc. They differ in the choice of IR.
+
+\begin{itemize}
+    \item The existing production codegen uses KtElement (Psi node) as the IR. JVM codegen lives in compiler.backend / codegen (e.g. ClassBodyCodeGen); JS codegen lives in js.js.translator (e.g. PropertyTranslator).
+    \item The other "experimental" codegen uses compiler.ir as the IR. All targets specific code lives in compiler.ir.backend.TARGET.
+\end{itemize}
+
+\subsection{Psi-based Codegen}
+
+\subsubsection{JVM}
+
+\paragraph{ExpressionCodeGen}
 Generates JVM bytecode directly from KtElement. This is a KtVisitor$<$StackValue$^2$$>$. Has an InstructionAdapter (JVM bytecode emitter).
 
-\subsection{StackValue}
+\paragraph{StackValue}
 Sounds like a helper class to represent operands on the JVM stack. Has a couple subclasses.
 
-\subsection{ClassBodyCodeGen}
+\paragraph{ClassBodyCodeGen}
 Generate class body from a KtPureClassOrObject with a ClassDescriptor. Also does bridge generation.
 
-\subsection{FunctionCodeGen}
+\paragraph{FunctionCodeGen}
 Generate class body from a KtPureClassOrObject with a ClassDescriptor. Also does bridge generation.
 
-\subsection{JS Codegen}
+\subsubsection{JS}
 
-e.g. js.js.translator / PropertyTranslator. Looks that it directly translates descriptor + Psi (KtElement) into JS statement / expressions.
+e.S. js.js.translator / PropertyTranslator. Looks that it directly translates descriptor + Psi (KtElement) into JS statement / expressions.
 
 Also see FunctionBodyTranslator -- takes a FunD and a KtElement (KtDeclWithBody).
+
+\subsection{IR-based Codegen}
+
+\subsubsection{JVM}
+
+\paragraph{ClassCodegen}
+Takes an IrClass and generates into a JvmBackendContext.
 
 \section{Unsolved Questions}
 

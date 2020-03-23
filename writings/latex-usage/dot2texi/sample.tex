@@ -5,10 +5,34 @@
 
 \begin{document}
 
-\begin{dot2tex}[neato,mathmode]
+% The layout program is important!
+\begin{dot2tex}[dot,mathmode]
 digraph G {
-	node [shape="circle"];
-	a_1 -> a_2 -> a_3 -> a_4 -> a_1;
+
+	subgraph cluster_0 {
+		style=filled;
+		color=lightgrey;
+		node [style=filled,color=white];
+		a0 -> a1 -> a2 -> a3;
+		label = "process 1";
+	}
+
+	subgraph cluster_1 {
+		node [style=filled];
+		b0 -> b1 -> b2 -> b3;
+		label = "process 2";
+		color=blue
+	}
+	start -> a0;
+	start -> b0;
+	a1 -> b3;
+	b2 -> a3;
+	a3 -> a0;
+	a3 -> end666;
+	b3 -> end666;
+
+	start [shape=Mdiamond];
+	end [shape=Msquare];
 }
 \end{dot2tex}
 

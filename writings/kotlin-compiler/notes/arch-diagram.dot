@@ -1,0 +1,72 @@
+digraph G {
+    subgraph cluster_scr {
+        label = "Script Runner";
+
+        SEvalExt [label="AbstractScriptEvaluationExtension"];
+        SJvmCI [label="ScriptJvmCompilerImpls"];
+        SEvalJvm [label=BasicJvmScriptEvaluator];
+
+        subgraph cluster_par {
+            label = "Parsing";
+
+            SPar [label="jvmCompilationUtil.getScriptKtFile"];
+        }
+    }
+    subgraph cluster_cc {
+        label = "CLI Compiler"
+
+        CPrel [label="compiler.preload / Preloader"]
+        K2JC [label="compiler.cli / K2JVMCompiler"]
+        K2JBCC [label=KotlinToJVMBytecodeCompiler]
+    }
+    subgraph cluster_ana {
+        label = "Analysis";
+
+        TDAnaF [label=TopDownAnalyzerFacadeForJVM];
+        LTDA [label=LazyTopDownAnalyzer];
+    }
+    subgraph cluster_cg_psi {
+        label = "Codegen (Psi-based)";
+
+        KtCgF [label=KotlinCodegenFacade];
+        DefCgF [label=DefaultCodegenFactory];
+        AnyCg [label="SomeCodegen (e.g. ClassBodyCodegen)"];
+    }
+
+
+    subgraph cluster_cg_ir {
+        label = "Codegen (IR-based)";
+
+        subgraph cluster_lower {
+            label = "Lowering";
+
+            JLower [label=JvmLower];
+            AnyLowerP [label="SomeLoweringPass (e.g. ForLoopsLowering)"];
+        }
+
+        JIrCgF [label=JvmIrCodeGenFactory]
+        JBF [label=JvmBackendFacade]
+        AnyIrCg [label="SomeCodeGen (e.g. ClassCodeGen)"];
+    }
+
+    /* Script: parsing */
+    SEvalExt -> SPar;
+    /* Script: driver */
+    SEvalExt -> SJvmCI -> TDAnaF;
+    /* Script: codegen */
+    SJvmCI -> KtCgF;
+    /* Script: eval */
+    SEvalExt -> SEvalJvm;
+
+    /* Analysis */
+    TDAnaF -> LTDA;
+
+    /* CLI compiler */
+    CPrel -> K2JC -> K2JBCC -> TDAnaF;
+
+    /* Psi-based codegen */
+    K2JBCC -> KtCgF -> DefCgF -> AnyCg;
+
+    /* IR-based codegen */
+    K2JBCC -> JIrCgF -> JBF -> JLower -> AnyLowerP -> AnyIrCg;
+}
