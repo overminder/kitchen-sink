@@ -20,7 +20,7 @@ digraph G {
         K2JBCC [label=KotlinToJVMBytecodeCompiler]
     }
     subgraph cluster_ana {
-        label = "Analysis";
+        label = "Analysis: Resolution / Type Checking";
 
         TDAnaF [label=TopDownAnalyzerFacadeForJVM];
         LTDA [label=LazyTopDownAnalyzer];
@@ -33,12 +33,18 @@ digraph G {
         AnyCg [label="SomeCodegen (e.g. ClassBodyCodegen)"];
     }
 
-
     subgraph cluster_cg_ir {
         label = "Codegen (IR-based)";
 
+        subgraph cluster_cg_psi2ir {
+            label = "Psi to IR";
+
+            Psi2Ir [label=Psi2IrTranslator];
+            Psi2IrG [label="ThingGenerator (e.g. StatementGenerator)"];
+        }
+
         subgraph cluster_lower {
-            label = "Lowering";
+            label = "IR Lowering";
 
             JLower [label=JvmLower];
             AnyLowerP [label="SomeLoweringPass (e.g. ForLoopsLowering)"];
@@ -69,4 +75,5 @@ digraph G {
 
     /* IR-based codegen */
     K2JBCC -> JIrCgF -> JBF -> JLower -> AnyLowerP -> AnyIrCg;
+    JBF -> Psi2Ir -> Psi2IrG;
 }

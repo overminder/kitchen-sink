@@ -22,6 +22,7 @@
 % End commands
 
 \tableofcontents
+\clearpage
 
 \section{Methodology}
 It's often daunting to read through huge and complex codebase like \href{https://github.com/JetBrains/kotlin}{the Kotlin compiler}! Fortunately we have great tools at hand to deal with such complexity. In particular, IntelliJ Idea provides many priceless code navigation tools:
@@ -34,10 +35,6 @@ It's often daunting to read through huge and complex codebase like \href{https:/
 
 With these we'll be able to understand the compiler architecture and internals bit by bit...
 
-\begin{dot2tex}[dot,scale=0.3]
-\input{arch-diagram.dot}
-\end{dot2tex}
-
 \subsection{Building From Source}
 Once you have the repo checked out, run \texttt{./gradlew dist} to build everything. This can take 10-20 minutes. Then you will be able to run tests, compiler.cli.cli-runner (i.e. the script runner), and compiler.preloader (i.e. the CLI compiler loader).
 
@@ -48,39 +45,29 @@ It's often useful to use the debugger to understand how the compiler pipeline wo
 Another way is to link your code with a prebuilt compiler (e.g. add dependency \texttt{"org.jetbrains.kotlin:kotlin-compiler:1.3.70"}). I can't seem to fetch its sourceJar though...
 
 \section{Tl;dr: Pipeline}
+
+The are couple key types in the compiler pipeline:
+
 \begin{itemize}
-    \item Kotlin source
-    \item KtElement (Psi)
-    \item core.descriptor (ClassicTypeSystemContext)
-    \item FirElement (nodes) / FirBasedSymbol (infotable?) (ConeTypeContext)
-    \item IrElement (nodes) / IrSymbol (infotable?) (IrTypeSystemContext)
+    \item KtElement (Psi): concrete syntax tree, backed by JetBrain's Psi system for wonderful IDE integration.
+    \item core.descriptor, BindingContext, and friends: results of various frontend analysis: type checking, method binding, etc.
+    \item FIR (FirElement etc): ``Frontend IR", seems to be a new IR that's converible from Psi.
+    \item IR (IrSymbol, IrDeclaration): Experimental backend IR.
 \end{itemize}
 
-% Make this a graph
+Here's a call graph for the script evaluator and the CLI compiler:
+\begin{dot2tex}[dot,scale=0.3]
+\input{arch-diagram.dot}
+\end{dot2tex}
 
-\subsection{Pipeline for \texttt{kotlin} Script Runner}
-Note that the runner uses coroutine in its eval methods and therefore can be hard to trace.
+\section{KtElement (Psi)}
 
-Runner: AbstractScriptEvaluationExtension \textSafeTo ScriptJvmCompilerImpls
-Parse: jvmCompilationUtil.getScriptKtFile: text-based Kt source \textSafeTo KtFile (Psi-based KtElement)
-Analysis: TopDownAnalyzerFacadeForJVM \textSafeTo LazyTopDownAnalyzer
-Codegen (Psi-based): KotlinCodegenFacade \textSafeTo DefaultCodegenFactory \textSafeTo THINGCodegen (e.g. Package / Member / Script / ImplementationBody / ClassBody)
-Eval: AbstractScriptEvaluationExtension \textSafeTo BasicJvmScriptEvaluator
-
-\subsection{Pipeline for \texttt{kotlinc} Compiler}
-
- Runner: compiler.preloader / Preloader \textSafeTo compiler.cli / K2JVMCompiler \textSafeTo KotlinToJVMBytecodeCompiler (checks IR flag)
-Parse: Not sure
-Analysis: KotlinToJVMBytecodeCompiler.analyze \textSafeTo TopDownAnalyzerFacadeForJVM
-Codegen (Psi-based): KotlinToJVMBytecodeCompiler.generate \textSafeTo KotlinCodegenFacade
-Lowering (Ir-based): analysis is the same; but ktjvmbcc.generate is different? Uses JvmIrCodeGenFactory with a PhaseConfig. I.e., .generate \textSafeTo JvmIrCodeGenFactory \textSafeTo JvmBackendFacade \textSafeTo JvmLower \textSafeTo CompilerPhase.invokeToplevel(PhaseConfig, JvmBackendContext, IrModuleFragment) \textSafeTo a bunch of abstraction layers around lowering phases \textSafeTo SomeLoweringPass.lower
-Codegen (Ir-based): JvmBackendFacade \textSafeTo ClassCodeGen (IrFile.declarations should only contain IrClass after lowering)
-Write: KotlinToJVMBytecodeCompiler.writeOutputs
-
-\subsection{Source \textSafeTo KtElement}
+This is the concrete syntax tree of Kotlin.
 
 \begin{itemize}
     \item See class KtVisitor for an overview of many Kotlin PsiElements
+    \item KtFile and KtScript for toplevel containers
+    \item KtClass for \texttt{class Foo}, KtNamedFunction for \texttt{fun foo()}, KtProperty for \texttt{val foo}.
     \item compiler.psi defines KtElement and \href{https://www.jetbrains.org/intellij/sdk/docs/basics/indexing_and_psi_stubs/stub_indexes.html}{Stubs}, also provides parser
     \begin{itemize}
         \item Stubs represents the interface parts of a kt compilation unit
@@ -90,69 +77,6 @@ Write: KotlinToJVMBytecodeCompiler.writeOutputs
     \end{itemize}
     \item compiler.psi.KtPsiFactory is the entrypoint for creating KtFile (a PsiElement) from source text.
 \end{itemize}
-
-\subsection{KtElement \textSafeTo DeclarationDescriptor}
-
-DeclarationDescriptor seems to be a high-level IR with type analyzed. It contains both the expr tree and the types.
-
-\subsubsection{LazyTopDownAnalyzer}
-
-compiler.frontend.LazyTopDownAnalyzer seems to be the psi analyzer. (Is there another analyzer that's not lazy?)
-
-analyzeDeclarations returns an AnalysisResult which contains a ModuleDescriptor and a BindingContext.
-
-\subsection{DeclarationDescriptor \textSafeTo FIR}
-
-XXX: Not sure if this step is required or even exists.
-
-FIR (compiler.fir) seems to be an intermediate yet still high-level IR.
-
-\begin{itemize}
-    \item See generated class FirVisitor for an overview of many of the Fir exprs
-    \item compiler.frontend (not sure which step it is in, but it at least does symbol resolution, type checking, (Psi \textSafeTo CFG?)
-    \begin{itemize}
-        \item See key classes: AnalysisResult, BindingContext, BindingTrace (records the collected binding / type substs?)
-    \end{itemize}
-    \item compiler.resolution: tower/ReceiverValue etc
-    \item compiler.fir: cones (types and symbols used in Fir?), fir2ir (lowering to Ir), psi2fir (lowering Psi to Fir), resolve, jvm, tree (Fir definitions and impl for psi2fir)
-    \begin{itemize}
-        \item cones: StandardClassIds contains a bunch of core Kt (read: not JVM) type Ids. They have a JVM-like fqname.
-
-        SyntheticCallableId contains when/try/nullcheck synthetic call exprs
-
-        \item tree.gen contains all Fir expressions (see tree.tree-generator's readme for how they are generated), as well as extra info (FirTypeRef). And even on Fir level, the generic types are not yet erased (FirTypeProjectionWithVariance)
-    \end{itemize}
-\end{itemize}
-
-\subsection{FIR \textSafeTo IR}
-
-XXX: Not sure if this step is required.
-
-\subsection{Example stacktrace for running a Kotlin script}
-
-E.g. \texttt{kotlin -e <expr>}
-
-\begin{itemize}
-    \item CLIDriver
-    \begin{itemize}
-        \item compiler.cli / K2JVMCompiler
-        \item plugins.scripting-compiler
-        \item compiler.cli / TopDownAnalyzerFacadeForJVM (analyzeFilesWithJavaIntegration)
-    \end{itemize}
-    \item Analyzer
-    \begin{itemize}
-        \item compiler.frontend / LazyTopDownAnalyzer.analyzeDeclarations
-        \item (HUGE) go through all stmts
-        \item BodyResolver.resolveBodies
-        \item DeclarationChecker.process
-        \item (HUGE) go through files, annotations, class's modifiers, idents, header (super+generic bounds); function, property, destructionDecl, typealias's modifiers and idents.
-    \end{itemize}
-\end{itemize}
-
-\section{KtElement}
-
-KtFile and KtScript for toplevel decls,
-KtClass for \texttt{class Foo}, KtNamedFunction for \texttt{fun foo()}, KtProperty for \texttt{val foo}.
 
 \section{DeclarationDescriptor}
 \label{sec:descriptor}
@@ -173,7 +97,7 @@ Parameter names, names may be unstable/synthesized (e.g. from JVM object code)
 
 Parameter values (See \ref{sec:ValueParamD})
 
-Cross ref to overridden methods
+Cross ref to overridden methods.
 
 UserDataKey$<$A$>$: stores typed user data
 
@@ -266,9 +190,28 @@ In core.descriptors / resolve.
 \section{FIR}
 \label{sec:fir}
 
-Front-end IR (not sure what this means), enabled by CommonConfigurationKeys .USE\_FIR (This also implies using IR. But use-ir doesn't imply using FIR).
+Front-end IR (not sure what this means), enabled by \texttt{-Xuse-fir} (This also implies using IR. But use-ir doesn't imply using FIR). The flag doc says it's in very early stage of development though.
 
 compiler.fir.resolve: ResolutionStage sounds like something pipeline-related
+
+\subsection{Some observations}
+
+\begin{itemize}
+    \item See generated class FirVisitor for an overview of many of the Fir exprs
+    \item compiler.frontend (not sure which step it is in, but it at least does symbol resolution, type checking, (Psi \textSafeTo CFG?)
+    \begin{itemize}
+        \item See key classes: AnalysisResult, BindingContext, BindingTrace (records the collected binding / type substs?)
+    \end{itemize}
+    \item compiler.resolution: tower/ReceiverValue etc
+    \item compiler.fir: cones (types and symbols used in Fir?), fir2ir (lowering to Ir), psi2fir (lowering Psi to Fir), resolve, jvm, tree (Fir definitions and impl for psi2fir)
+    \begin{itemize}
+        \item cones: StandardClassIds contains a bunch of core Kt (read: not JVM) type Ids. They have a JVM-like fqname.
+
+        SyntheticCallableId contains when/try/nullcheck synthetic call exprs
+
+        \item tree.gen contains all Fir expressions (see tree.tree-generator's readme for how they are generated), as well as extra info (FirTypeRef). And even on Fir level, the generic types are not yet erased (FirTypeProjectionWithVariance)
+    \end{itemize}
+\end{itemize}
 
 \section{IR}
 \label{sec:ir}
@@ -291,6 +234,17 @@ IrElement seems to be the implementation part while IrSymbol is more about the d
 
 IrSymbol can be bound or not (what does this mean?), has a owner (an IrElement), an IdSignature (what's this?), and visibility (isPublicApi).
 
+\subsection{Psi \textSafeTo IR}
+
+compiler.ir.ir.psi2ir contains Psi2IrTranslator, which sounds like the entrypoint for this convertion.
+
+The translator contains an IdSignatureComposer, which composes IdSignature from DeclarationDescriptor, and ClassD for enums.
+
+package generator contains ThingGenerator that generates IrThing from KtThing. Generated IR will remember the KtElement's source position range (startOffset and endOffset).
+
+\subsubsection{DeclarationGenerator}
+
+Generates toplevel IrDecl from KtDecl. ``Toplevel" is a very minimal set of KtDecl: KtNamedFunc, KtProperty, KtClassOrObj, KtTypeAlias, and KtScript. The resulting IrDecl contains both the declaration and the body implementation.
 
 \section{Type System}
 
@@ -298,7 +252,7 @@ IrSymbol can be bound or not (what does this mean?), has a owner (an IrElement),
 
 Kotlin compiler uses \href{https://en.wikipedia.org/wiki/Marker_interface_pattern}{Marker Interface pattern} extensively in type definitions. See TypeSystemContext.kt (KotlinTypeMarker, TypeArgumentMarket etc).
 
-KotlinType is the base class for all types in Kotlin. It has a tycon, list of tyargs, nullability (so nullability is built-in to any type -- can this be problematic?). It also has a MemberScope ("what are the members in this type-based namespace?", see \ref{sec:reso}) and a refine(KotlinTypeRefiner) method.
+KotlinType is the base class for all types in Kotlin. It has a tycon, list of tyargs, nullability (so nullability is built-in to any type -- can this be problematic?). It also has a MemberScope (``what are the members in this type-based namespace?", see \ref{sec:reso}) and a refine(KotlinTypeRefiner) method.
 
 \subsection{core.type-system}
 
@@ -354,7 +308,7 @@ Inference related.
     \item fastCorrespondingSupertypes has no actual impl? (No, it's just that intellij's search functionality fail to find overridden extension methods)
     \item isCommonFinalClassConstructor is implemented in three (Psi, Fir, Ir) stage's TypeSystemContext:
     \begin{itemize}
-        \item ClassicTypeSystemContext: get ClassDescriptor from TypeConstructor's declarationDescriptor, then check it's final but not (enum or annotation). So the method really checks that the tycon is "final" but is not a uncommon (enum/annotation) class.
+        \item ClassicTypeSystemContext: get ClassDescriptor from TypeConstructor's declarationDescriptor, then check it's final but not (enum or annotation). So the method really checks that the tycon is ``final" but is not a uncommon (enum/annotation) class.
         \item ConeTypeContext: Does almost the same thing, but also return true if is anonymous object (final by design). Works on FirBasedSymbol (some sort of class infotable?). Check that this is a FirRegularClassSymbol, whose FirRegularClass is final but not uncommon.
         \item IrTypeSystemContext: Check this is a IrClassSymbol whose owner is final and not uncommon.
 
@@ -419,6 +373,18 @@ Package: compiler.frontend
 
 \subsection{compiler.frontend.LazyTopDownAnalyzer}
 
+compiler.frontend.LazyTopDownAnalyzer seems to be the psi analyzer. (Is there another analyzer that's not lazy?)
+
+\paragraph{analyzeDeclarations}
+
+analyzeDeclarations returns an AnalysisResult which contains a ModuleDescriptor and a BindingContext.
+
+It goes through all stmts, calls:
+\begin{itemize}
+    \item BodyResolver.resolveBodies
+    \item DeclarationChecker.process, which goes through files, annotations, class's modifiers, idents, header (super+generic bounds); function, property, destructionDecl, typealias's modifiers and idents.
+\end{itemize}
+
 \subsubsection{TopDownAnalysisContext}
 
 Stores the toplevel declarations (in typed maps) found during analysis.
@@ -431,6 +397,12 @@ Impls: BindingTraceContext and ObservingBindingTrace
 \subsection{BindingContext}
 
 Sounds like a read-only counterpart to the BindingTrace.
+
+\subsection{DeclarationChecker}
+
+Check a KtDecl against a DeclarationDescriptor within a DeclarationCheckerContext. Has lots of subtypes. Reports errors to context's BindingTrace. Some checkers are just linters that enforce certain code style. Others are necessarily to ensure soundness.
+
+PlatformConfiguratiorBase contains a bunch of linter-like checkers.
 
 \subsection{Smartcasting}
 
@@ -448,7 +420,7 @@ There are currently two codegen systems and both target JS, JVM, etc. They diffe
 
 \begin{itemize}
     \item The existing production codegen uses KtElement (Psi node) as the IR. JVM codegen lives in compiler.backend / codegen (e.g. ClassBodyCodeGen); JS codegen lives in js.js.translator (e.g. PropertyTranslator).
-    \item The other "experimental" codegen uses compiler.ir as the IR. All targets specific code lives in compiler.ir.backend.TARGET.
+    \item The other ``experimental" codegen uses compiler.ir as the IR. All targets specific code lives in compiler.ir.backend.TARGET.
 \end{itemize}
 
 \subsection{Psi-based Codegen}
@@ -480,13 +452,37 @@ Also see FunctionBodyTranslator -- takes a FunD and a KtElement (KtDeclWithBody)
 \paragraph{ClassCodegen}
 Takes an IrClass and generates into a JvmBackendContext.
 
-\section{Unsolved Questions}
+\section{Scratch}
+
+\subsection{Questions}
 
 \begin{itemize}
     \item What is a LazyTypeParameterDescriptor?
     \item What is a core.descriptors.MemberScope?
     \item What's the diff between TypeCheckerContext and TypeSystemContext?
 \end{itemize}
+
+\subsection{Stack traces}
+
+\subsubsection{Pipeline for \texttt{kotlin} Script Runner}
+Note that the runner uses coroutine in its eval methods and therefore can be hard to trace.
+
+Runner: AbstractScriptEvaluationExtension \textSafeTo ScriptJvmCompilerImpls
+Parse: jvmCompilationUtil.getScriptKtFile: text-based Kt source \textSafeTo KtFile (Psi-based KtElement)
+Analysis: TopDownAnalyzerFacadeForJVM \textSafeTo LazyTopDownAnalyzer
+Codegen (Psi-based): KotlinCodegenFacade \textSafeTo DefaultCodegenFactory \textSafeTo THINGCodegen (e.g. Package / Member / Script / ImplementationBody / ClassBody)
+Eval: AbstractScriptEvaluationExtension \textSafeTo BasicJvmScriptEvaluator
+
+\subsubsection{Pipeline for \texttt{kotlinc} Compiler}
+
+ Runner: compiler.preloader / Preloader \textSafeTo compiler.cli / K2JVMCompiler \textSafeTo KotlinToJVMBytecodeCompiler (checks IR flag)
+Parse: Not sure
+Analysis: KotlinToJVMBytecodeCompiler.analyze \textSafeTo TopDownAnalyzerFacadeForJVM
+Codegen (Psi-based): KotlinToJVMBytecodeCompiler.generate \textSafeTo KotlinCodegenFacade
+Lowering (Ir-based): analysis is the same; but ktjvmbcc.generate is different? Uses JvmIrCodeGenFactory with a PhaseConfig. I.e., .generate \textSafeTo JvmIrCodeGenFactory \textSafeTo JvmBackendFacade \textSafeTo JvmLower \textSafeTo CompilerPhase.invokeToplevel(PhaseConfig, JvmBackendContext, IrModuleFragment) \textSafeTo a bunch of abstraction layers around lowering phases \textSafeTo SomeLoweringPass.lower
+Codegen (Ir-based): JvmBackendFacade \textSafeTo ClassCodeGen (IrFile.declarations should only contain IrClass after lowering)
+Write: KotlinToJVMBytecodeCompiler.writeOutputs
+
 
 \input{nomenclature.tex}
 \newpage
