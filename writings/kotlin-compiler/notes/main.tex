@@ -1,6 +1,9 @@
 \documentclass{article}
 \usepackage{inconsolata}
+\usepackage[T1]{fontenc}
+% ^ Somehow is able to fix libertine's bold font
 \usepackage[tt=false]{libertine}
+% \usepackage[libertine, cmintegrals]{newtxmath}
 \usepackage{microtype}
 \usepackage{hyperref}
 \usepackage[intoc]{nomencl}
@@ -244,7 +247,7 @@ package generator contains ThingGenerator that generates IrThing from KtThing. G
 
 \subsubsection{DeclarationGenerator}
 
-Generates toplevel IrDecl from KtDecl. ``Toplevel" is a very minimal set of KtDecl: KtNamedFunc, KtProperty, KtClassOrObj, KtTypeAlias, and KtScript. The resulting IrDecl contains both the declaration and the body implementation.
+Generates toplevel IrDecl from KtDecl. ``Toplevel" is a very minimal set of KtDecl: KtNamedFunc, KtProperty, KtClassOrObject, KtTypeAlias, and KtScript. The resulting IrDecl contains both the declaration and the body implementation.
 
 \section{Type System}
 
@@ -318,6 +321,12 @@ Inference related.
     \end{itemize}
 \end{itemize}
 
+\subsection{Playing with Types}
+
+DescriptorRenderer.SHORT\_NAMES\_IN\_TYPES.renderType could be used to render KotlinType.
+
+KotlinTypeChecker.DEFAULT could be used for simple type checking (equality, subtype relationship etc)
+
 \subsection{Type System for Fir}
 
 Read ConeTypeContext
@@ -369,11 +378,15 @@ i.e. ImplicitScopeTower. Some sort of multi-level scopes? Can't understand this 
 
 \section{Analysis}
 
-Package: compiler.frontend
+Package: compiler.frontend. There are various analysis done in the frontend: Psi to DeclarationDescriptor, control flow graph (package cfg), type checking, method resolution (package resolve)...
+
+This is a very complicated process -- later stages depend on the result of the early stages. Information are passed either directly, or in the form of a shared mutable context (BindingTraceContext, TopDownAnalysisContext etc).
+
+It would be extremely useful to understand the input and the output of each analysis stage! Unfortunately due to that the pipelines share results via mutable data, we won't know this by simply looking at their return types. Instead we have to read the implementation of each stage to see what they use.
 
 \subsection{compiler.frontend.LazyTopDownAnalyzer}
 
-compiler.frontend.LazyTopDownAnalyzer seems to be the psi analyzer. (Is there another analyzer that's not lazy?)
+compiler.frontend.LazyTopDownAnalyzer contains the whole analysis pipeline: it ultimately converts Psi into DeclarationDescriptor. (Is there another analyzer that's not lazy?)
 
 \paragraph{analyzeDeclarations}
 
@@ -381,28 +394,69 @@ analyzeDeclarations returns an AnalysisResult which contains a ModuleDescriptor 
 
 It goes through all stmts, calls:
 \begin{itemize}
-    \item BodyResolver.resolveBodies
-    \item DeclarationChecker.process, which goes through files, annotations, class's modifiers, idents, header (super+generic bounds); function, property, destructionDecl, typealias's modifiers and idents.
+    \item A bunch of resolvers: BodyResolver.resolveBodies, LazyDeclarationResolver etc.
+    \item DeclarationsChecker.process, which goes through files, annotations, class's modifiers, idents, header (super+generic bounds); function, property, destructionDecl, typealias's modifiers and idents.
 \end{itemize}
 
-\subsubsection{TopDownAnalysisContext}
+\subsubsection{BodiesResolveContext}
 
-Stores the toplevel declarations (in typed maps) found during analysis.
+Stores the toplevel declarations (in typed maps) found during analysis. Concrete implementation: TopDownAnalysisContext, created in LazyTopDownAnalyzer.
+
+\subsubsection{ThingResolver}
+E.g. LazyDeclarationResolver. They have a .trace that is a LockProtectedTrace (under LockBasedLazyResolverStorageManager). The real trace is NoScopeRecordCliBindingTrace (i.e. doesn't records scope information).
 
 \subsection{BindingTrace}
-
 Has a BindingContext. Is writable. Can record/inquiry KotlinType for a KtElement.
 Impls: BindingTraceContext and ObservingBindingTrace
 
-\subsection{BindingContext}
+\subsubsection{BindingContext}
 
 Sounds like a read-only counterpart to the BindingTrace.
+
+\subsubsection{BindingTraceContext}
+Concrete implementation of BindingTrace. Has a map: SlicedMapImpl.
+
+\paragraph{SlicedMapImpl} This is a two-level map: .map maps a key (e.g. a KtElement) to a holder: KeyFMap. The holder takes a slice.key (usually the key is the slice itself) and return the value (e.g. a DeclarationDescriptor).
+
+\paragraph{KeyFMap} An abstract immutable map. But it's not backed by any purely functional data structures... (See impl: OneElementFMap, ArrayBackedFMap etc)
+
+\paragraph{Slice}
+A Slice$<$K, V$>$ is an identifier for a mapping from K to V. Such mapping often represents the analysis results (e.g. what's the DeclarationDescriptor of this KtElement?). See BindingContext.java for a list of all the common slices.
+
+\subsection{KotlinCodeAnalyzer}
+See concrete impl ResolveSession.
 
 \subsection{DeclarationChecker}
 
 Check a KtDecl against a DeclarationDescriptor within a DeclarationCheckerContext. Has lots of subtypes. Reports errors to context's BindingTrace. Some checkers are just linters that enforce certain code style. Others are necessarily to ensure soundness.
 
 PlatformConfiguratiorBase contains a bunch of linter-like checkers.
+
+\subsection{Control Flow Analysis}
+
+package: cfg. Looks like traditional control flow analysis (not PDG). Nodes are represented by class Instruction -- it has def-use chain (class PseudoValue), prev/succ edges, and is implemented by lots of concrete instructions. See InstructionVisitor for a list of concrete instrs.
+
+\paragraph{PseudoCode} Looks like basic block but maybe not. Groups the instructions. Can be nested.
+
+\paragraph{ControlFlowAnalyzer}
+
+Entrypoint of control flow analysis. Its .process method checks BodiesResolveContext's files, classes, function, and properties.
+
+\paragraph{ControlFlowProcessor}
+
+Converts a KtElement (with the its BindingTrace) to a PseudoCode.
+
+\paragraph{ControlFlowBuilder}
+
+Concrete impl: ControlFlowInstructionsGenerator. Used by ControlFlowProcessor, knows how to generate individual instructions (i.e. How to map a KtParameter to a VariableDeclInstruction?). Also holds the context of the current graph.
+
+\paragraph{ControlFlowInformationProvider}
+
+Does real work (e.g. checkDeclaration) to analyze the control flow. E.g. checkFunction will make sure a function with a non-unit return type always returns something. Records a few flow related things: MUST\_BE\_LATEINIT etc.
+
+\subsubsection{Survey of CFG Instructions}
+
+\paragraph{Subroutine\{Enter,Exit,Sink\}Instruction} Well known nodes for function start and end. Sounds that Exit is for returns / exceptions, and Sink is the unique end of the graph?
 
 \subsection{Smartcasting}
 
@@ -483,6 +537,18 @@ Lowering (Ir-based): analysis is the same; but ktjvmbcc.generate is different? U
 Codegen (Ir-based): JvmBackendFacade \textSafeTo ClassCodeGen (IrFile.declarations should only contain IrClass after lowering)
 Write: KotlinToJVMBytecodeCompiler.writeOutputs
 
+\subsubsection{Pipeline for Analysis}
+
+LazyTopDownAnalyzer.analyzeDeclarations \textSafeTo lots of resolvers and checkers.
+BodyResolver.resolveBodies: resolve behavior decl bodies (what is a behavior decl?), build CFG, check declarations, run extension checkers.
+
+CFG depends on DeclarationDescriptors built from a previous step (See ControlFlowInformationProvider). Also seems to depend on method calls being resolved (See CFP (generateArrayAssignment) -- at least for INDEXED\_LVALUE\_SET).
+
+\begin{itemize}
+    \item INDEXED\_LVALUE\_\{GET,SET\} (e.g. \texttt{arr[ix] = val}): recorded in BasicExpressionTypingVisitor (resolveArrayAccessSpecialMethod). This is interesting -- It suggests that expression type checking and resolution are done in the same place.
+\end{itemize}
+
+There's a CFG to Dot graph printer: CFGraphToDotFilePrinter. It sounds useful to visualize the CFG, but it's in tests-common.
 
 \input{nomenclature.tex}
 \newpage
