@@ -292,6 +292,26 @@ Seems to also be used in Fir.
 
 Inference related.
 
+\subsection{Type Checking During Analysis}
+
+\subsubsection{ExpressionTypingServices} Seems to be the entrypoint, which creates an ExpressionTypingContext and calls ExpressionTypingVisitorDispatcher.getTypeInfo.
+
+\subsubsection{ExpressionTypingVisitorDispatcher} A delegating KtVisitor with context ExpressionTypingContext and returns KotlinTypeInfo.
+
+Delegates its visiter methods to a bunch of sub-visitors: functions, control structures, patterns, basic expressions, and annotations/declarations etc.
+
+Handles DeferredType by retrying type checking after the statement visitor returns.
+
+\subsubsection{ExpressionTypingVisitorForStatements} An ExpressionTypingVisitor for statements (XXX how can statements have types?).
+
+\paragraph{.visitBinaryExpression}
+Handles eq, add-eq, and other binary ops.
+
+Take visitAssignment for example. So first it creates a new ResolutionContext with overridden expected type, scope, and context dependency.
+
+Then it check lhs: Lhs can have annotation, which it resolves. Lhs can also be arrayAccess, which it handles in another way (BasicExpressionTypingVisitor-resolveArrayAccessSetMethod then checkLValue).
+
+
 \subsubsection{Questions}
 \begin{itemize}
     \item What is a isCapturedTypeConstructor?
@@ -364,7 +384,13 @@ Contains a bunch of KtElement visitors that does type recon/checking:
 \section{Resolution}
 \label{sec:reso}
 
-Package: compiler.resolution
+Package: compiler.frontend and compiler.resolution (specific types)
+
+\subsection{ResolutionContext}
+
+Kotlin compiler does data flow analysis in a top-down fashion. This class is used to pass data flow analysis results from AST parent to its children.
+
+Known concrete subtypes: ExpressionTypingContext, CallCandidateResolutionContext, CallResolutionContext.
 
 \subsection{Scopes}
 
@@ -383,6 +409,10 @@ Package: compiler.frontend. There are various analysis done in the frontend: Psi
 This is a very complicated process -- later stages depend on the result of the early stages. Information are passed either directly, or in the form of a shared mutable context (BindingTraceContext, TopDownAnalysisContext etc).
 
 It would be extremely useful to understand the input and the output of each analysis stage! Unfortunately due to that the pipelines share results via mutable data, we won't know this by simply looking at their return types. Instead we have to read the implementation of each stage to see what they use.
+
+\subsection{compiler.cli.TopDownAnalyzerFacadeForJVM}
+
+Creates a DI container for all the components used throughout the analysis process, then call into LazyTopDownAnalyzer.
 
 \subsection{compiler.frontend.LazyTopDownAnalyzer}
 
@@ -541,6 +571,8 @@ Write: KotlinToJVMBytecodeCompiler.writeOutputs
 
 LazyTopDownAnalyzer.analyzeDeclarations \textSafeTo lots of resolvers and checkers.
 BodyResolver.resolveBodies: resolve behavior decl bodies (what is a behavior decl?), build CFG, check declarations, run extension checkers.
+
+Looks that at least BodyResolver.resolveBehaviorDeclarationBodies does type checking. E.g. resolveFunctionBodies checks expression types in function bodies, using ExpressionTypingServices.
 
 CFG depends on DeclarationDescriptors built from a previous step (See ControlFlowInformationProvider). Also seems to depend on method calls being resolved (See CFP (generateArrayAssignment) -- at least for INDEXED\_LVALUE\_SET).
 
