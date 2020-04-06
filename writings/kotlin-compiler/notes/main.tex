@@ -536,6 +536,40 @@ Also see FunctionBodyTranslator -- takes a FunD and a KtElement (KtDeclWithBody)
 \paragraph{ClassCodegen}
 Takes an IrClass and generates into a JvmBackendContext.
 
+\section{Compiler Plugin}
+
+\subsection{Case study: All Open}
+
+The \href{https://kotlinlang.org/docs/reference/compiler-plugins.html}{all-open plugin} marks all classes annotated with some annotations to have the open modality. The implementation of the plugin lives in the Kotlin compiler repo and is easy to understand.
+
+The plugin has a couple components: core (Kt compiler plugin), gradle plugin, and IDE plugin.
+
+\subsubsection{plugins.allopen.allopen-cli}
+
+Core implementation: the actual plugin (called extension), plugin registrar, and cli option processor.
+
+\paragraph{AbstractAllOpenDeclarationAttributeAltererExtension} Implements DeclarationAttributeAltererExtension which has a refineDeclarationModality method that overrides the modality of some declarations.
+
+\paragraph{AllOpenCommandLineProcessor} Read CLI options and store them as typed configuration keys. The options will be consumed by the registrar.
+
+\paragraph{AllOpenComponentRegistrar} Registers the extension as a Kotlin compiler plugin. Also see resource/META-INF/services for service discovery.
+
+\subsection{Plugin API}
+
+The plugin API is currently under changes -- Some of the extensions that deal with type checking and call resolution are marked as unsable (e.g. InternalNonStableExtensionPoints) but jetpack-compose uses these.
+
+Plugins are integrated to the compiler all over around the pipeline: some are used in frontend, some are used in backend.
+
+\paragraph{ProjectExtensionDescriptor} Knows how exactly to register an extension, and how to find one. Each extension has an instance of this to register itself.
+
+\paragraph{DeclarationAttributeAltererExtension} A frontend extension. Is used in ModifiersChecker to override modalities.
+
+\paragraph{ExpressionCodegenExtension}
+A backend extension. The noarg plugin uses this. 
+
+\paragraph{AnalysisHandlerExtension}
+A Java frontend extension. Maybe it can help with overriding types?
+
 \section{Scratch}
 
 \subsection{Questions}

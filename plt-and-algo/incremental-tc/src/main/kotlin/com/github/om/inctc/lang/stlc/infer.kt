@@ -4,6 +4,7 @@ class ResolutionContext(modules: List<Module>) {
     val moduleMap: Map<ModuleName, Module>
     val moduleDecls: Map<FqName, Decl>
     val defUses: Lazy<Map<FqName, Set<FqName>>>
+    val moduleDefUses: Lazy<Map<ModuleName,  Set<ModuleName>>>
 
     init {
         moduleMap = modules.map { it.name to it }.toMap()
@@ -15,6 +16,17 @@ class ResolutionContext(modules: List<Module>) {
         defUses = lazy {
             gatherDeclarationDependencies(moduleMap)
         }
+        moduleDefUses = lazy {
+            val res = mutableMapOf<ModuleName, MutableSet<ModuleName>>()
+            for (du in defUses.value) {
+                res.compute(du.key.moduleName) { k, v ->
+                    (v ?: mutableSetOf()).apply {
+                        addAll(du.value.map { it.moduleName })
+                    }
+                }
+            }
+            res
+        }
     }
 
     fun findUndefinedUses(): Sequence<Pair<FqName, Set<FqName>>> {
@@ -22,6 +34,42 @@ class ResolutionContext(modules: List<Module>) {
             !moduleDecls.containsKey(it.key)
         }.map { it.toPair() }
     }
+
+    /*
+    fun findModuleCycles(): ModuleName? {
+        val g = moduleDefUses.value
+        val moduleNames = g.keys
+        val visited = mutableSetOf<ModuleName>()
+        val notYet = moduleNames.toMutableSet()
+
+        fun go(m: ModuleName): ModuleName? {
+            val nonSelfUses = requireNotNull(g[m]).filter {
+                it != m
+            }
+            for (u in nonSelfUses) {
+                if (visited.contains(u)) {
+                    return u
+                } else {
+                    visited += u
+                    go()
+                }
+            }
+        }
+
+        while (notYet.isNotEmpty()) {
+            val m = notYet.first()
+            notYet.remove(m)
+            visited += m
+
+            for (u in nonSelfUses) {
+                if (visited.contains(u)) {
+                    return u
+                }
+            }
+        }
+    }
+
+     */
 }
 
 class TypeContext {
@@ -141,7 +189,9 @@ fun TypeContext.subst(t: Type): Type = when (t) {
             t
         } else {
             // XXX Do we need this? Can we remove indirections on all substitutions?
-            subst(t2)
+            val finalTy = subst(t2)
+            substitutions += t to finalTy
+            finalTy
         }
     }
     else -> t
