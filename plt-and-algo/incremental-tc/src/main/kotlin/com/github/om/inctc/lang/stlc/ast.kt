@@ -13,16 +13,18 @@ data class If(val cond: Exp, val then: Exp, val else_: Exp): Exp()
 data class App(val func: Exp, val arg: Exp): Exp()
 data class BOp(val op: BRator, val left: Exp, val right: Exp): Exp()
 
-enum class BRator {
-    LT,
-    PLUS,
-    MINUS,
+enum class BRator(val token: String) {
+    LT("<"),
+    PLUS("+"),
+    MINUS("-"),
 }
 
-sealed class Decl
+sealed class Decl {
+    abstract val ident: Ident
+}
 // Could possibly support reexport (pub use) as well.
-data class Import(val moduleName: ModuleName, val ident: Ident): Decl()
-data class Define(val ident: Ident, val visibility: Visibility, val body: Exp): Decl()
+data class Import(val moduleName: ModuleName, override val ident: Ident): Decl()
+data class Define(override val ident: Ident, val visibility: Visibility, val body: Exp): Decl()
 
 data class Module(val name: ModuleName, val decls: List<Decl>)
 
@@ -112,11 +114,9 @@ object StlcParser {
 
     private fun mkApp(f: Exp, args: List<Exp>) = args.fold(f, ::App)
 
-    private val tokenMap: Map<CharSequence, BRator> = mapOf(
-            "<" to BRator.LT,
-            "-" to BRator.MINUS,
-            "+" to BRator.PLUS
-    )
+    private val tokenMap: Map<CharSequence, BRator> = BRator.values().map {
+        it.token to it
+    }.toMap()
 
     val bexp: Parser<Exp> = p.makeLazy {
         val left = appOrAtom

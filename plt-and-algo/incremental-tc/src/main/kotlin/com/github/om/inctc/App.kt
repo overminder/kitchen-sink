@@ -3,13 +3,50 @@
  */
 package com.github.om.inctc
 
-class App {
-    val greeting: String
-        get() {
-            return "Hello world."
+import com.github.om.inctc.bench.StlcGenerator
+import com.github.om.inctc.bench.Timer
+import com.github.om.inctc.lang.stlc.*
+
+/**
+ * Some notes: 5k decls per file cause the parser to stack overflow.
+ * 2k decls per file, 5 files -- parsing needs 1.5-2.3s (after JIT warms up: .9s) and tc 1.2s LOL
+ */
+
+fun bench(files: List<Pair<ModuleName, String>>, printStat: Boolean = false) {
+    val tm = Timer()
+    val parsedAgain = tm.timed("parse") {
+        files.map {
+            requireNotNull(StlcParser.file(it.first).run(it.second))
         }
+    }
+    val rCtx = tm.timed("rCtx") { ResolutionContext(parsedAgain) }
+    tm.timed("findUndef") { rCtx.findUndefinedUses().firstOrNull() }
+    val tCtx = TypeContext()
+    tm.timed("tc") { tCtx.populateAndInferModules(rCtx) }
+    if (printStat) {
+        tm.printStat()
+    }
 }
 
-fun main(args: Array<String>) {
-    println(App().greeting)
+fun main() {
+    val tm = Timer()
+    val modules = tm.timed("poet") {
+        val g = StlcGenerator(5, 10000)
+        val totalSteps = tm.timed("run") { g.run() }
+        println("Total steps: $totalSteps")
+        tm.timed("build") { g.build() }
+    }
+    println("N modules: ${modules.size}")
+    val files = tm.timed("ppr") {
+        modules.map {
+            it.name to PprState.ppr(it)
+        }
+    }
+
+    repeat(10) {
+        println("$it run")
+        bench(files)
+    }
+
+    bench(files, true)
 }
