@@ -186,6 +186,10 @@ enhance() implementation makes a copy with enhanced receiver param and value par
 \paragraph{SamAdapterClass: ClassConDImpl \& SamAdapterD$<$JavaClassConD$>$}
 A synthetic ClassConD that wraps another ClassConD.
 
+\subsection{ClassD}
+
+\paragraph{LazyJavaClassD} Represents a JavaClass (Can be from Jar, or from source).
+
 \subsection{DFactory}
 
 In core.descriptors / resolve.
@@ -591,7 +595,7 @@ Analysis: TopDownAnalyzerFacadeForJVM \textSafeTo LazyTopDownAnalyzer
 Codegen (Psi-based): KotlinCodegenFacade \textSafeTo DefaultCodegenFactory \textSafeTo THINGCodegen (e.g. Package / Member / Script / ImplementationBody / ClassBody)
 Eval: AbstractScriptEvaluationExtension \textSafeTo BasicJvmScriptEvaluator
 
-\subsubsection{Pipeline for \texttt{kotlinc} Compiler}
+\subsubsection{Pipeline for \texttt{kotlinc} Compiler on Kt files}
 
  Runner: compiler.preloader / Preloader \textSafeTo compiler.cli / K2JVMCompiler \textSafeTo KotlinToJVMBytecodeCompiler (checks IR flag)
 Parse: Not sure
@@ -600,6 +604,21 @@ Codegen (Psi-based): KotlinToJVMBytecodeCompiler.generate \textSafeTo KotlinCode
 Lowering (Ir-based): analysis is the same; but ktjvmbcc.generate is different? Uses JvmIrCodeGenFactory with a PhaseConfig. I.e., .generate \textSafeTo JvmIrCodeGenFactory \textSafeTo JvmBackendFacade \textSafeTo JvmLower \textSafeTo CompilerPhase.invokeToplevel(PhaseConfig, JvmBackendContext, IrModuleFragment) \textSafeTo a bunch of abstraction layers around lowering phases \textSafeTo SomeLoweringPass.lower
 Codegen (Ir-based): JvmBackendFacade \textSafeTo ClassCodeGen (IrFile.declarations should only contain IrClass after lowering)
 Write: KotlinToJVMBytecodeCompiler.writeOutputs
+
+\subsubsection{Pipeline for \texttt{kotlinc} Compiler on Kt file calling compiled Java code}
+
+Java code resolution happens at various places.
+
+\paragraph{Type checking / call resolution}
+By instantiating a Java class \texttt{val foo = JClass()}, Kotlin type checker will try to infer the result type of such call. To do that, it will consult CallResolver (resolveFunctionCall) to resolve the call first. This calls PSICallResolver (runResolutionAndInference), which goes through a chain of ResolutionScope (getContributedClassifer) calls (ScopeTower / TowerResolver / ChainedMemberScope / JvmPackageScope / LazyJavaPackageScope), which finally instantiates a LazyJavaClassD from the Jar.
+
+\paragraph{Java class loading}
+
+compiler.frontend.java contains some compiled Java class parsing functionalities.
+
+BinaryJavaClass loads Jar files. It reads class members (fields etc) and then read their annotations.
+
+BinaryClassSignatureParser parses types (type parameters, use-site variances etc).
 
 \subsubsection{Pipeline for Analysis}
 

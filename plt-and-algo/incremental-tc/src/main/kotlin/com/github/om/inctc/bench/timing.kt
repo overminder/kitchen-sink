@@ -3,6 +3,7 @@ package com.github.om.inctc.bench
 class Timer {
     private val callStack = mutableListOf<String>()
     private val records = mutableMapOf<List<String>, MutableList<Pair<Long, Long>>>()
+    var printImmediately = false
 
     fun <A> timed(name: String, run: () -> A): A {
         callStack.add(name)
@@ -16,15 +17,23 @@ class Timer {
             }
         }
         callStack.removeAt(callStack.size - 1)
+        if (printImmediately) {
+            printStatFor(tag)
+        }
         return r
     }
 
     fun printStat() {
-        for (r in records) {
-            val tag = r.key.joinToString(".")
-            val totalTime = r.value.sumBy { (it.second - it.first).toInt() }
-            println("$tag: $totalTime millis")
+        for (r in records.keys) {
+            printStatFor(r)
         }
+    }
+
+    private fun printStatFor(rawTag: List<String>) {
+        val tag = rawTag.joinToString(".")
+        val value = requireNotNull(records[rawTag])
+        val totalTime = value.sumBy { (it.second - it.first).toInt() }
+        println("$tag: $totalTime millis")
     }
 
     companion object {

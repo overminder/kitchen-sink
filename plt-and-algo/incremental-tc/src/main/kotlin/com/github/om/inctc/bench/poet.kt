@@ -11,6 +11,7 @@ class StlcGenerator(val nModules: Int, val nSteps: Int, rngSeed: Long = 12345678
     private var idGen = 1
 
     private val modules = mutableMapOf<ModuleName, MutableMap<Ident, Decl>>()
+    private val modulesOrder = mutableMapOf<ModuleName, Int>()
 
     fun build(): List<Module> {
         return modules.map {
@@ -46,18 +47,24 @@ class StlcGenerator(val nModules: Int, val nSteps: Int, rngSeed: Long = 12345678
         }
         val moduleNames = modules.entries.shuffled(rng)
         val useSite = moduleNames[0]
-        // Probably can optimize this better.
-        val defSite = moduleNames[1]
-        if (defSite.value.isEmpty()) {
-            return false
+        for (defSite in moduleNames.drop(1)) {
+            if (requireNotNull(modulesOrder[useSite.key]) > requireNotNull(modulesOrder[defSite.key])) {
+                // Make sure we don't create cycles between modules (this is an unfortunate performance restriction)
+                continue
+            }
+            if (defSite.value.isEmpty()) {
+                // Make sure we have something to import
+                continue
+            }
+            for (def in defSite.value.asIterable().shuffled(rng)) {
+                if (useSite.value.containsKey(def.key)) {
+                    continue
+                }
+                useSite.value += def.key to Import(defSite.key, def.key)
+                return true
+            }
         }
-        val def = defSite.value.asIterable().shuffled(rng).first()
-        if (useSite.value.containsKey(def.key)) {
-            return false
-        }
-
-        useSite.value += def.key to Import(defSite.key, def.key)
-        return true
+        return false
     }
 
     private fun addDef(): Boolean {
@@ -77,6 +84,7 @@ class StlcGenerator(val nModules: Int, val nSteps: Int, rngSeed: Long = 12345678
     private fun addModule(): Boolean {
         val name = mkModuleName()
         modules += name to mutableMapOf()
+        modulesOrder += name to modulesOrder.size
         return true
     }
 

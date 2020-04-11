@@ -10,13 +10,19 @@ import com.github.om.inctc.lang.stlc.*
 /**
  * Some notes: 5k decls per file cause the parser to stack overflow.
  * 2k decls per file, 5 files -- parsing needs 1.5-2.3s (after JIT warms up: .9s) and tc 1.2s LOL
- * (Though this is partly because the language permits recursive definitions across module boundaries --
+ *
+ * Though this is partly because the language permits recursive definitions across module boundaries --
  * this is something GHC doesn't allow (https://wiki.haskell.org/Mutually_recursive_modules).
- * Essentially this makes the whole module system a giant single file, which is bad. Let me trydisabling that...)
+ * Essentially this makes the whole module system a giant single file, which is bad. Let me try disabling that...
+ *
+ * Kt OTOH allows mutually recursive decls split across different files. Though you have to specify one of the
+ * return type for the decl (this is the same even if they are defined in the same file).
  */
 
 fun bench(files: List<Pair<ModuleName, String>>, printStat: Boolean = false) {
-    val tm = Timer()
+    val tm = Timer().apply {
+        printImmediately = false
+    }
     val parsedAgain = tm.timed("parse") {
         files.map {
             requireNotNull(StlcParser.file(it.first).run(it.second))
@@ -24,8 +30,9 @@ fun bench(files: List<Pair<ModuleName, String>>, printStat: Boolean = false) {
     }
     val rCtx = tm.timed("rCtx") { ResolutionContext(parsedAgain) }
     tm.timed("findUndef") { rCtx.findUndefinedUses().firstOrNull() }
-    val tCtx = TypeContext()
-    tm.timed("tc") { tCtx.populateAndInferModules(rCtx) }
+    val sortedModules = tm.timed("topoSortModule") { rCtx.topoSortedModules() }
+    val tCtx = TypeChecker(rCtx, sortedModules)
+    tm.timed("tc") { tCtx.inferModules() }
     if (printStat) {
         tm.printStat()
     }
@@ -34,7 +41,7 @@ fun bench(files: List<Pair<ModuleName, String>>, printStat: Boolean = false) {
 fun main() {
     val tm = Timer()
     val modules = tm.timed("poet") {
-        val g = StlcGenerator(500, 10000)
+        val g = StlcGenerator(1500, 20000)
         val totalSteps = tm.timed("run") { g.run() }
         println("Total steps: $totalSteps")
         tm.timed("build") { g.build() }

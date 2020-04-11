@@ -1,179 +1,79 @@
 package com.github.om.inctc.lang.stlc
 
-class ResolutionContext(modules: List<Module>) {
-    val moduleMap: Map<ModuleName, Module>
-    val moduleDecls: Map<FqName, Decl>
-    val defUses: Lazy<Map<FqName, Set<FqName>>>
-    val moduleDefUses: Lazy<Map<ModuleName,  Set<ModuleName>>>
-
-    init {
-        moduleMap = modules.map { it.name to it }.toMap()
-        moduleDecls = modules.flatMap { m ->
-            m.decls.map { d ->
-                FqName(m.name, d.ident) to d
-            }
-        }.toMap()
-        defUses = lazy {
-            gatherDeclarationDependencies(moduleMap)
-        }
-        moduleDefUses = lazy {
-            val res = mutableMapOf<ModuleName, MutableSet<ModuleName>>()
-            for (du in defUses.value) {
-                res.compute(du.key.moduleName) { k, v ->
-                    (v ?: mutableSetOf()).apply {
-                        addAll(du.value.map { it.moduleName })
-                    }
-                }
-            }
-            res
-        }
-    }
-
-    fun findUndefinedUses(): Sequence<Pair<FqName, Set<FqName>>> {
-        return defUses.value.asSequence().filter {
-            !moduleDecls.containsKey(it.key)
-        }.map { it.toPair() }
-    }
-
-    /*
-    fun findModuleCycles(): ModuleName? {
-        val g = moduleDefUses.value
-        val moduleNames = g.keys
-        val visited = mutableSetOf<ModuleName>()
-        val notYet = moduleNames.toMutableSet()
-
-        fun go(m: ModuleName): ModuleName? {
-            val nonSelfUses = requireNotNull(g[m]).filter {
-                it != m
-            }
-            for (u in nonSelfUses) {
-                if (visited.contains(u)) {
-                    return u
-                } else {
-                    visited += u
-                    go()
-                }
-            }
-        }
-
-        while (notYet.isNotEmpty()) {
-            val m = notYet.first()
-            notYet.remove(m)
-            visited += m
-
-            for (u in nonSelfUses) {
-                if (visited.contains(u)) {
-                    return u
-                }
-            }
-        }
-    }
-
-     */
+class ModuleTypeContext(
+    internal val global: TypeChecker,
+    internal val u: UnificationContext,
+    internal val here: Module
+) {
+    internal val nameToType = mutableMapOf<Ident, Type>()
 }
 
-class TypeContext {
+class UnificationContext {
     private var uniqGen = 1
 
-    val nameToType = mutableMapOf<FqName, Type>()
-
-    val substitutions = mutableMapOf<TyVar, Type>()
-
+    internal val substitutions = mutableMapOf<TyVar, Type>()
     fun mkTyVar(): TyVar = TyVar(uniqGen++)
-    private fun getOrPutTyVar(key: FqName): Type = nameToType.getOrPut(key, this::mkTyVar)
+}
 
-    fun addImport(def: FqName, use: FqName) {
-        val defTy = requireNotNull(nameToType[def])
-        val useTy = requireNotNull(nameToType[use])
-        unify(defTy, useTy)
-    }
+class TypeChecker(
+    internal val rCtx: ResolutionContext,
+    internal val ordering: List<ModuleName>
+) {
+    internal val moduleTyCtxs = mutableMapOf<ModuleName, ModuleTypeContext>()
 
-    fun addDef(def: FqName): Type = getOrPutTyVar(def)
-
-    fun populateFrom(rCtx: ResolutionContext) {
-        for (name in rCtx.moduleDecls.keys) {
-            addDef(name)
+    fun inferredType(defSite: FqName): Type {
+        val m = requireNotNull(moduleTyCtxs[defSite.moduleName]) {
+            "No module for ${defSite.moduleName} -- all modules: ${moduleTyCtxs.keys}"
+        }
+        return requireNotNull(m.nameToType[defSite.ident]) {
+            "No type for ${defSite.ident} -- all idents: ${m.nameToType.keys}"
         }
     }
 }
 
-// Returns {def: uses}
-fun gatherDeclarationDependencies(ms: Map<ModuleName, Module>): Map<FqName, Set<FqName>> {
-    val dependsOn = mutableMapOf<FqName, MutableSet<FqName>>()
+fun TypeChecker.inferModules() {
+    val uCtx = UnificationContext()
+    for (mn in ordering) {
+        val m = requireNotNull(rCtx.moduleMap[mn])
+        val mTyCtx = ModuleTypeContext(this, uCtx, m)
+        moduleTyCtxs[mn] = mTyCtx
 
-    fun usesOfExp(e: Exp, here: ModuleName, localDefined: List<Ident> = listOf()): List<FqName> = when (e) {
-        is Var -> if (localDefined.contains(e.ident)) {
-            emptyList()
-        } else {
-            listOf(FqName(here, e.ident))
-        }
-        is Lam -> usesOfExp(e.body, here, localDefined + e.args)
-        is LitI -> listOf()
-        is If -> usesOfExp(e.cond, here, localDefined) +
-                usesOfExp(e.then, here, localDefined) +
-                usesOfExp(e.else_, here, localDefined)
-        is App -> usesOfExp(e.func, here, localDefined) + usesOfExp(e.arg, here, localDefined)
-        is BOp -> usesOfExp(e.left, here, localDefined) + usesOfExp(e.right, here, localDefined)
+        // Assume all local defs are mutual exclusive -- grab imports and make placeholder types for definitions.
+        mTyCtx.populateDeclTypes()
+        mTyCtx.inferDecls()
+        mTyCtx.freeze()
     }
+}
 
-    for (m in ms) {
-        for (decl in m.value.decls) {
-            val (def, uses) = when (decl) {
-                is Import -> {
-                    val def = FqName(decl.moduleName, decl.ident)
-                    def to listOf(FqName(m.key, decl.ident))
-                }
-                is Define -> {
-                    val def = FqName(m.key, decl.ident)
-                    def to usesOfExp(decl.body, m.key)
-                }
-            }
-            dependsOn.compute(def) { _, mbUses ->
-                (mbUses ?: mutableSetOf()).also {
-                    it += uses
-                }
-            }
+fun ModuleTypeContext.populateDeclTypes() {
+    for (d in here.decls) {
+        when (d) {
+            is Import -> nameToType += d.ident to global.inferredType(d.defSite)
+            is Define -> require(nameToType.put(d.ident, u.mkTyVar()) == null)
         }
     }
-
-    return dependsOn
 }
 
-fun TypeContext.populateAndInferModules(rCtx: ResolutionContext) {
-    populateFrom(rCtx)
-    for (m in rCtx.moduleMap.values) {
-        inferModule(m, rCtx)
-    }
-    for (declTy in nameToType) {
-        declTy.setValue(subst(declTy.value))
+fun ModuleTypeContext.inferDecls() {
+    for (d in here.decls) {
+        inferDecl(d, nameToType)
     }
 }
 
-fun TypeContext.inferModule(m: Module, rCtx: ResolutionContext) {
-    val moduleEnv = rCtx.moduleDecls.keys.map {
-        it.ident to requireNotNull(nameToType[it])
-    }.toMap()
-    for (d in m.decls) {
-        inferDecl(d, m.name, moduleEnv)
-    }
-}
-
-fun TypeContext.inferDecl(d: Decl, here: ModuleName, env: Map<Ident, Type>): Unit = when(d) {
+fun ModuleTypeContext.inferDecl(d: Decl, env: Map<Ident, Type>): Unit = when(d) {
     is Import -> {
-        val def = FqName(d.moduleName, d.ident)
-        val use = FqName(here, d.ident)
-        addImport(def, use)
+        nameToType += d.ident to global.inferredType(d.defSite)
     }
     is Define -> {
-        val def = FqName(here, d.ident)
-        val ty = addDef(def)
+        // Populated beforehand in ModuleTC.populateDeclTypes. But we can optimize this better.
+        val ty = requireNotNull(nameToType[d.ident])
         val bodyTy = infer(d.body, env)
-        unify(ty, bodyTy)
+        nameToType[d.ident] = u.unify(ty, bodyTy)
         Unit
     }
 }
 
-fun TypeContext.subst(t: Type): Type = when (t) {
+fun UnificationContext.subst(t: Type): Type = when (t) {
     is TyArr -> {
         val from = subst(t.from)
         val to = subst(t.to)
@@ -197,7 +97,7 @@ fun TypeContext.subst(t: Type): Type = when (t) {
     else -> t
 }
 
-fun TypeContext.unify(t1: Type, t2: Type): Type {
+fun UnificationContext.unify(t1: Type, t2: Type): Type {
     if (t1 is TyVar) {
         return unifyTyVar(t1, t2)
     }
@@ -224,20 +124,20 @@ fun TypeContext.unify(t1: Type, t2: Type): Type {
     }
 }
 
-fun TypeContext.unifyTyVar(t1: TyVar, t2: Type): Type {
+fun UnificationContext.unifyTyVar(t1: TyVar, t2: Type): Type {
     substitutions += t1 to t2
     return t2
 }
 
 private fun mkTyArr(args: List<Type>, resTy: Type): Type = args.foldRight(resTy, ::TyArr)
 
-fun TypeContext.infer(e: Exp, env: Map<Ident, Type> = emptyMap()) = subst(infer0(e, env))
+fun ModuleTypeContext.infer(e: Exp, env: Map<Ident, Type> = emptyMap()) = u.subst(infer0(e, env))
 
-fun TypeContext.infer0(e: Exp, env: Map<Ident, Type>): Type = when (e) {
+fun ModuleTypeContext.infer0(e: Exp, env: Map<Ident, Type>): Type = when (e) {
     is Var -> requireNotNull(env[e.ident]) { "Unbound var: ${e.ident.name}" }
     is Lam -> {
         val argTys = e.args.map {
-            mkTyVar()
+            u.mkTyVar()
         }
         val newEnv = env + e.args.zip(argTys).toMap()
         // Probably need to make a local subst as well.
@@ -248,16 +148,16 @@ fun TypeContext.infer0(e: Exp, env: Map<Ident, Type>): Type = when (e) {
     is LitI -> TyInt
     is If -> {
         val condTy = infer(e.cond, env)
-        unify(condTy, TyBool)
+        u.unify(condTy, TyBool)
         val thenTy = infer(e.then, env)
         val elseTy = infer(e.else_, env)
-        unify(thenTy, elseTy)
+        u.unify(thenTy, elseTy)
     }
     is App -> {
         val argTy = infer(e.arg, env)
-        val resTy = mkTyVar()
+        val resTy = u.mkTyVar()
         val funcTy = infer(e.func, env)
-        unify(funcTy, TyArr(argTy, resTy))
+        u.unify(funcTy, TyArr(argTy, resTy))
         resTy
     }
     is BOp -> {
@@ -268,8 +168,20 @@ fun TypeContext.infer0(e: Exp, env: Map<Ident, Type>): Type = when (e) {
         }
         val leftTy = infer(e.left, env)
         val rightTy = infer(e.right, env)
-        unify(leftTy, ratorTy)
-        unify(rightTy, ratorTy)
+        u.unify(leftTy, ratorTy)
+        u.unify(rightTy, ratorTy)
         resTy
     }
+}
+
+fun ModuleTypeContext.freeze() {
+    nameToType.mapValues {
+        val sTy = u.subst(it.value)
+        require(!sTy.hasTyVars) {
+            "$sTy still has type vars! Current subst: ${u.substitutions.keys}"
+        }
+        sTy
+    }
+
+    u.substitutions.clear()
 }

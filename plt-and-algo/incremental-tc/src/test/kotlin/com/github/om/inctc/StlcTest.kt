@@ -5,7 +5,6 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 private fun parseFiles(files: List<Pair<String, String>>): List<Module> {
     return files.map {
@@ -65,14 +64,19 @@ class StlcTest {
                 """.trimIndent()
         )
 
-        val tCtx = TypeContext()
-        tCtx.populateAndInferModules(rCtx)
-        assertEquals(TyInt, tCtx.nameToType[FqName.parse("main.a")])
-        assertEquals(TyInt, tCtx.nameToType[FqName.parse("main.b")])
-        assertEquals(TyArr(TyInt, TyInt), tCtx.nameToType[FqName.parse("main.c")])
-        assertEquals(TyBool, tCtx.nameToType[FqName.parse("main.d")])
-        assertEquals(TyInt, tCtx.nameToType[FqName.parse("main.e")])
-        assertEquals(TyArr(TyInt, TyInt), tCtx.nameToType[FqName.parse("main.even")])
-        assertEquals(TyArr(TyInt, TyInt), tCtx.nameToType[FqName.parse("main.odd")])
+        val tCtx = TypeChecker(rCtx, rCtx.topoSortedModules())
+        tCtx.inferModules()
+        val cases = listOf(
+            TyInt to "main.a",
+            TyInt to "main.b",
+            TyArr(TyInt, TyInt) to "main.c",
+            TyBool to "main.d",
+            TyInt to "main.e",
+            TyArr(TyInt, TyBool) to "main.rec",
+            TyArr(TyInt, TyInt) to "main.even"
+        )
+        for ((exTy, name) in cases) {
+            assertEquals(exTy, tCtx.inferredType(FqName.parse(name)), "$name should have type $exTy")
+        }
     }
 }

@@ -46,6 +46,9 @@ data class FqName(val moduleName: ModuleName, val ident: Ident) {
     }
 }
 
+val Import.defSite: FqName
+    get() = FqName(moduleName, ident)
+
 enum class Keyword(val token: String) {
     FUN("fun"),
     IN("in"),
