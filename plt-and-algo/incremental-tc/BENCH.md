@@ -25,8 +25,10 @@ extremely slow -- unification has to keep all tyvars around.
 
 ## Per-Module Type Inferencing (stlc)
 
-This is what GHC does -- There's no module-level cycles. Once a module
-type-checks, its "contributed bindings" never changes.
+An obvious optimization is to disallow module-level cycles (but still treat
+intra-module bindings as arbitrarily recursive bindings). This is what GHC
+does -- There're no module-level cycles. Once a module type-checks, its
+"contributed bindings" never changes.
 
 This gives okay speed up on large modules (because inside a module we still
 allow arbitrary recursive definitions), and makes small modules super fast
@@ -45,3 +47,24 @@ Being able to clean up the unification context is just a tiny improvement
 
 ### Small files
 20k decls total, 1500 files: 0.04s
+
+## Per-Module Type Inferencing +Intra-Module SCC (stlc)
+
+A further optimization is based on the observation that not all of the
+bindings inside a module are recursive. In fact, usually only few of the
+bindings are recursive. This means that we only need to make tyvar placeholders
+for each strongly connected components.
+
+This gives tremendeous speed up for non-recursive bindings.
+
+### Large files
+10k decls total, 5 files: 0.001s
+20k decls total, 15 files: 0.002s
+
+### Small files
+20k decls total, 1500 files: 0.004s
+
+(Any benchmarks above are generated with 50% def and 50% import and no
+actual recursive bindings inside a module)
+
+But what about recursive bindings?

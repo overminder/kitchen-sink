@@ -36,8 +36,19 @@ application {
     // Define the main class for the application.
     mainClassName = 'com.github.om.inctc.AppKt'
 }
+
+def ktcArgs = [
+    "-XXLanguage:+InlineClasses",
+    // 1.4?
+    "-Xopt-in=kotlin.contracts.ExperimentalContracts",
+    // 1.3
+    "-Xuse-experimental=kotlin.contracts.ExperimentalContracts",
+]
+
 compileKotlin {
-    kotlinOptions {
-        freeCompilerArgs = ["-XXLanguage:+InlineClasses"]
-    }
+    kotlinOptions.freeCompilerArgs = ktcArgs
+}
+
+compileTestKotlin {
+    kotlinOptions.freeCompilerArgs = ktcArgs
 }

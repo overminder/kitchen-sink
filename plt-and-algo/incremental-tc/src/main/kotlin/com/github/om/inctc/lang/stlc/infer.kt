@@ -3,7 +3,8 @@ package com.github.om.inctc.lang.stlc
 class ModuleTypeContext(
     internal val global: TypeChecker,
     internal val u: UnificationContext,
-    internal val here: Module
+    internal val here: Module,
+    internal val bindingOrdering: List<List<Ident>>
 ) {
     internal val nameToType = mutableMapOf<Ident, Type>()
 }
@@ -16,9 +17,10 @@ class UnificationContext {
 }
 
 class TypeChecker(
-    internal val rCtx: ResolutionContext,
-    internal val ordering: List<ModuleName>
+    internal val rCtx: ResolutionContext
 ) {
+    internal val ordering = rCtx.topoSortedModules.value
+    internal val bindingOrdering = rCtx.moduleDeclSccs.value
     internal val moduleTyCtxs = mutableMapOf<ModuleName, ModuleTypeContext>()
 
     fun inferredType(defSite: FqName): Type {
@@ -35,28 +37,46 @@ fun TypeChecker.inferModules() {
     val uCtx = UnificationContext()
     for (mn in ordering) {
         val m = requireNotNull(rCtx.moduleMap[mn])
-        val mTyCtx = ModuleTypeContext(this, uCtx, m)
+        val mTyCtx = ModuleTypeContext(this, uCtx, m, requireNotNull(bindingOrdering[mn]))
         moduleTyCtxs[mn] = mTyCtx
 
-        // Assume all local defs are mutual exclusive -- grab imports and make placeholder types for definitions.
-        mTyCtx.populateDeclTypes()
-        mTyCtx.inferDecls()
-        mTyCtx.freeze()
+        mTyCtx.inferAll()
     }
 }
 
-fun ModuleTypeContext.populateDeclTypes() {
-    for (d in here.decls) {
-        when (d) {
-            is Import -> nameToType += d.ident to global.inferredType(d.defSite)
-            is Define -> require(nameToType.put(d.ident, u.mkTyVar()) == null)
+private fun ModuleTypeContext.isSelfRecursive(x: Ident): Boolean {
+    val deps = requireNotNull(global.rCtx.deps.value[here.name])
+    return (deps.local[x] ?: emptySet()).contains(x)
+}
+
+private fun ModuleTypeContext.declFromName(x: Ident): Decl {
+    return requireNotNull(global.rCtx.moduleDecls[FqName(here.name, x)])
+}
+
+fun ModuleTypeContext.inferAll() {
+    for (scc in bindingOrdering) {
+        if (scc.size == 1) {
+            val id = scc.first()
+            val decl = declFromName(id)
+            if (isSelfRecursive(id)) {
+                makeTyVarPlaceholderForDecl(decl)
+            }
+            inferDecl(decl, nameToType)
+        } else {
+            val decls = scc.map(::declFromName)
+            decls.forEach(::makeTyVarPlaceholderForDecl)
+            decls.forEach {
+                inferDecl(it, nameToType)
+            }
         }
     }
+    freeze()
 }
 
-fun ModuleTypeContext.inferDecls() {
-    for (d in here.decls) {
-        inferDecl(d, nameToType)
+fun ModuleTypeContext.makeTyVarPlaceholderForDecl(d: Decl) {
+    when (d) {
+        is Import -> nameToType += d.ident to global.inferredType(d.defSite)
+        is Define -> require(nameToType.put(d.ident, u.mkTyVar()) == null)
     }
 }
 
@@ -66,9 +86,14 @@ fun ModuleTypeContext.inferDecl(d: Decl, env: Map<Ident, Type>): Unit = when(d) 
     }
     is Define -> {
         // Populated beforehand in ModuleTC.populateDeclTypes. But we can optimize this better.
-        val ty = requireNotNull(nameToType[d.ident])
+        val placeholderTy = nameToType[d.ident]
         val bodyTy = infer(d.body, env)
-        nameToType[d.ident] = u.unify(ty, bodyTy)
+        nameToType[d.ident] = if (placeholderTy != null) {
+            // This is for recursive decls.
+            u.unify(placeholderTy, bodyTy)
+        } else {
+            bodyTy
+        }
         Unit
     }
 }

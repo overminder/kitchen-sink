@@ -52,12 +52,9 @@ class StlcGenerator(val nModules: Int, val nSteps: Int, rngSeed: Long = 12345678
                 // Make sure we don't create cycles between modules (this is an unfortunate performance restriction)
                 continue
             }
-            if (defSite.value.isEmpty()) {
-                // Make sure we have something to import
-                continue
-            }
             for (def in defSite.value.asIterable().shuffled(rng)) {
                 if (useSite.value.containsKey(def.key)) {
+                    // Avoid redeclaration
                     continue
                 }
                 useSite.value += def.key to Import(defSite.key, def.key)

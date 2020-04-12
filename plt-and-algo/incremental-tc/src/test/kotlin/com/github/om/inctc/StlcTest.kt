@@ -5,18 +5,7 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-
-private fun parseFiles(files: List<Pair<String, String>>): List<Module> {
-    return files.map {
-        val moduleName = ModuleName(it.first)
-        assertNotNull(StlcParser.file(moduleName).run(it.second))
-    }
-}
-
-private fun rCtxFromFiles(vararg files: Pair<String, String>): ResolutionContext {
-    val ms = parseFiles(files.toList())
-    return ResolutionContext(ms)
-}
+import kotlin.test.assertTrue
 
 class StlcTest {
     @Test
@@ -44,7 +33,7 @@ class StlcTest {
         assertEquals(mapOf(
                 FqName.parse("fibo.fibo") to setOf(FqName.parse("fibo.fibo"), FqName.parse("main.fibo")),
                 FqName.parse("main.main") to setOf(FqName.parse("main.fibo"))
-        ), rCtx.defUses.value)
+        ), defUseToMap(rCtx))
 
         assertNull(rCtx.findUndefinedUses().firstOrNull())
     }
@@ -64,7 +53,8 @@ class StlcTest {
                 """.trimIndent()
         )
 
-        val tCtx = TypeChecker(rCtx, rCtx.topoSortedModules())
+        val tCtx = TypeChecker(rCtx)
+        assertTrue(rCtx.topoSortedModules.value.isNotEmpty())
         tCtx.inferModules()
         val cases = listOf(
             TyInt to "main.a",
@@ -79,4 +69,39 @@ class StlcTest {
             assertEquals(exTy, tCtx.inferredType(FqName.parse(name)), "$name should have type $exTy")
         }
     }
+}
+
+private fun parseFiles(files: List<Pair<String, String>>): List<Module> {
+    return files.map {
+        val moduleName = ModuleName(it.first)
+        assertNotNull(StlcParser.file(moduleName).run(it.second))
+    }
+}
+
+private fun rCtxFromFiles(vararg files: Pair<String, String>): ResolutionContext {
+    val ms = parseFiles(files.toList())
+    return ResolutionContext(ms)
+}
+
+private fun defUseToMap(rCtx: ResolutionContext): Map<FqName, Set<FqName>> {
+    val res = mutableMapOf<FqName, MutableSet<FqName>>()
+    val dus = rCtx.deps.value
+    for (du in dus) {
+        val m = du.key
+        for ((def, use) in du.value.imports) {
+            res.compute(def) { _, uss ->
+                (uss ?: mutableSetOf()).apply {
+                    this += FqName(m, use)
+                }
+            }
+        }
+        for ((def, use) in du.value.local) {
+            res.compute(FqName(m, def)) { _, uss ->
+                (uss ?: mutableSetOf()).apply {
+                    addAll(use.map { FqName(m, it) })
+                }
+            }
+        }
+    }
+    return res
 }

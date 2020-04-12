@@ -20,7 +20,7 @@ import com.github.om.inctc.lang.stlc.*
  */
 
 fun bench(files: List<Pair<ModuleName, String>>, printStat: Boolean = false) {
-    val tm = Timer().apply {
+    val tm = Timer.create().apply {
         printImmediately = false
     }
     val parsedAgain = tm.timed("parse") {
@@ -28,10 +28,9 @@ fun bench(files: List<Pair<ModuleName, String>>, printStat: Boolean = false) {
             requireNotNull(StlcParser.file(it.first).run(it.second))
         }
     }
-    val rCtx = tm.timed("rCtx") { ResolutionContext(parsedAgain) }
+    val rCtx = ResolutionContext(parsedAgain, tm)
     tm.timed("findUndef") { rCtx.findUndefinedUses().firstOrNull() }
-    val sortedModules = tm.timed("topoSortModule") { rCtx.topoSortedModules() }
-    val tCtx = TypeChecker(rCtx, sortedModules)
+    val tCtx = TypeChecker(rCtx)
     tm.timed("tc") { tCtx.inferModules() }
     if (printStat) {
         tm.printStat()
@@ -39,9 +38,9 @@ fun bench(files: List<Pair<ModuleName, String>>, printStat: Boolean = false) {
 }
 
 fun main() {
-    val tm = Timer()
+    val tm = Timer.create()
     val modules = tm.timed("poet") {
-        val g = StlcGenerator(1500, 20000)
+        val g = StlcGenerator(5, 10000)
         val totalSteps = tm.timed("run") { g.run() }
         println("Total steps: $totalSteps")
         tm.timed("build") { g.build() }
