@@ -50,6 +50,8 @@ class StlcTest {
                     def rec = fun x in if x < 5 then x < 5 else rec(x + 1) end end
                     def even = fun x in if x < 1 then 1 else odd(x - 1) - 1 end end
                     def odd = fun x in if x < 2 then 1 else even(x - 1) - 1 end end
+
+                    def deadCode = 5
                 """.trimIndent()
         )
 
@@ -63,7 +65,8 @@ class StlcTest {
             TyBool to "main.d",
             TyInt to "main.e",
             TyArr(TyInt, TyBool) to "main.rec",
-            TyArr(TyInt, TyInt) to "main.even"
+            TyArr(TyInt, TyInt) to "main.even",
+            TyInt to "main.deadCode"
         )
         for ((exTy, name) in cases) {
             assertEquals(exTy, tCtx.inferredType(FqName.parse(name)), "$name should have type $exTy")
@@ -96,6 +99,10 @@ private fun defUseToMap(rCtx: ResolutionContext): Map<FqName, Set<FqName>> {
             }
         }
         for ((def, use) in du.value.local) {
+            if (use.isEmpty()) {
+                // Ignore empty uses so we don't have to write empty sets in tests...
+                continue
+            }
             res.compute(FqName(m, def)) { _, uss ->
                 (uss ?: mutableSetOf()).apply {
                     addAll(use.map { FqName(m, it) })

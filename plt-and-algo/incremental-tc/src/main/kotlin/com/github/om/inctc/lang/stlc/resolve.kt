@@ -108,13 +108,16 @@ private fun collectModuleDeps(ms: List<Module>): Map<ModuleName, ModuleDependenc
 }
 
 private fun collectSingleModuleDeps(m: Module): ModuleDependencies {
-    val local = mutableMapOf<Ident, MutableSet<Ident>>()
+    // Pre-populate sets, because we need to keep track of all local defs.
+    val local = m.decls.associateTo(mutableMapOf()) {
+        it.ident to mutableSetOf<Ident>()
+    }
     val imports = mutableMapOf<FqName, Ident>()
     for (decl in m.decls) {
         when (decl) {
             is Import -> imports += decl.defSite to decl.ident
             is Define -> local.compute(decl.ident) { _, v ->
-                (v ?: mutableSetOf()).apply {
+                requireNotNull(v).apply {
                     addAll(usesOfExp(decl.body))
                 }
             }
@@ -126,6 +129,8 @@ private fun collectSingleModuleDeps(m: Module): ModuleDependencies {
 private fun gatherModuleSccs(dus: Map<Ident, Set<Ident>>): List<List<Ident>> {
     val g = buildGraph<Ident> {
         dus.forEach { (d, us) ->
+            // Since uses can be empty.
+            it += d
             us.forEach { u ->
                 it += d to u
             }

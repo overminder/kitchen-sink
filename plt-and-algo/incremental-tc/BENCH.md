@@ -55,16 +55,38 @@ bindings inside a module are recursive. In fact, usually only few of the
 bindings are recursive. This means that we only need to make tyvar placeholders
 for each strongly connected components.
 
-This gives tremendeous speed up for non-recursive bindings.
+This gives a bit more speed up for non-recursive bindings.
 
 ### Large files
-10k decls total, 5 files: 0.001s
-20k decls total, 15 files: 0.002s
+10k decls total, 5 files: 0.24s
+20k decls total, 15 files: 0.31s
 
 ### Small files
-20k decls total, 1500 files: 0.004s
+20k decls total, 1500 files: 0.047s
 
 (Any benchmarks above are generated with 50% def and 50% import and no
 actual recursive bindings inside a module)
 
-But what about recursive bindings?
+But what about recursive bindings? Let's say each SCC has 1-9 mutually recursive
+bindings. And we have 1/3 imports, 1/3 non-rec defs, and 1/3 rec defs.
+
+### Large files
+10k decls total, 5 files: 0.30s
+20k decls total, 15 files: 0.32s
+
+### Small files
+20k decls total, 1500 files: 0.07s
+
+## Detour
+
+Sometimes it's worth doing profiling if we don't know where's the bottleneck.
+So I used IntelliJ's excellent Java CPU profiling tool to capture a flame
+graph. Turned out that the `infer` function was doing excessive copying on the
+passed tyEnv (a Map), which was taking >90% of execution time ;D
+
+Optimizing that with a chained map resulted in a 10x to 30x speed up on large
+files. And it's even better on JIT-ed code (as excessive allocation is not
+something that the compiler can optimize away, and the allocated map is used
+immediately so no escape analysis / allocation sinking can be done).
+
+Now SCC calculation takes almost the same time as type inference!

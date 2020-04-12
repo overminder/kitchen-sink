@@ -107,6 +107,20 @@ class GraphTest {
     }
 
     @Test
+    fun testSccNotConnected() {
+        val g = buildGraph<Int> {
+            it += 1
+            it += 2
+            it += 3
+            it += 4
+            it += 5
+        }
+        val sccs = GraphAlgo.sccKosaraju(g)
+        assertEquals(5, sccs.size)
+        assertEquals(List(5) { 1 }, sccs.map{ it.size })
+    }
+
+    @Test
     fun testSccDoesTopoSort() {
         val g = buildGraph<Int> {
             it.addMany(1 to 2 to 3 to 2)

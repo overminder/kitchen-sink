@@ -58,19 +58,21 @@ fun ModuleTypeContext.inferAll() {
         if (scc.size == 1) {
             val id = scc.first()
             val decl = declFromName(id)
-            if (isSelfRecursive(id)) {
+            val isRec = isSelfRecursive(id)
+            if (isRec) {
                 makeTyVarPlaceholderForDecl(decl)
             }
-            inferDecl(decl, nameToType)
+            inferTopLevelDecl(decl)
         } else {
             val decls = scc.map(::declFromName)
             decls.forEach(::makeTyVarPlaceholderForDecl)
             decls.forEach {
-                inferDecl(it, nameToType)
+                inferTopLevelDecl(it)
             }
         }
+        lintInferredTypes(scc)
+        cleanUpSubst()
     }
-    freeze()
 }
 
 fun ModuleTypeContext.makeTyVarPlaceholderForDecl(d: Decl) {
@@ -80,18 +82,19 @@ fun ModuleTypeContext.makeTyVarPlaceholderForDecl(d: Decl) {
     }
 }
 
-fun ModuleTypeContext.inferDecl(d: Decl, env: Map<Ident, Type>): Unit = when(d) {
+fun ModuleTypeContext.inferTopLevelDecl(d: Decl): Unit = when(d) {
     is Import -> {
         nameToType += d.ident to global.inferredType(d.defSite)
     }
     is Define -> {
         // Populated beforehand in ModuleTC.populateDeclTypes. But we can optimize this better.
         val placeholderTy = nameToType[d.ident]
-        val bodyTy = infer(d.body, env)
+        val bodyTy = infer(d.body, TyEnv.topLevel(nameToType))
         nameToType[d.ident] = if (placeholderTy != null) {
             // This is for recursive decls.
             u.unify(placeholderTy, bodyTy)
         } else {
+            assert(bodyTy !is TyVar) { "$bodyTy leaked from $d" }
             bodyTy
         }
         Unit
@@ -156,15 +159,36 @@ fun UnificationContext.unifyTyVar(t1: TyVar, t2: Type): Type {
 
 private fun mkTyArr(args: List<Type>, resTy: Type): Type = args.foldRight(resTy, ::TyArr)
 
-fun ModuleTypeContext.infer(e: Exp, env: Map<Ident, Type> = emptyMap()) = u.subst(infer0(e, env))
+private fun ModuleTypeContext.infer(e: Exp, env: TyEnv) = u.subst(infer0(e, env))
 
-fun ModuleTypeContext.infer0(e: Exp, env: Map<Ident, Type>): Type = when (e) {
+private class TyEnv private constructor(val parent: TyEnv?, val here: Map<Ident, Type>) {
+    companion object {
+        fun topLevel(env: Map<Ident, Type>) = TyEnv(null, env)
+    }
+
+    fun extend(inner: Map<Ident, Type>) = TyEnv(this, inner)
+    operator fun get(id: Ident): Type? {
+        var env: TyEnv? = this
+        while (env != null) {
+            val ty = env.here[id]
+            if (ty != null) {
+                return ty
+            }
+            env = env.parent
+        }
+        return null
+    }
+}
+
+private fun ModuleTypeContext.infer0(e: Exp, env: TyEnv): Type = when (e) {
     is Var -> requireNotNull(env[e.ident]) { "Unbound var: ${e.ident.name}" }
     is Lam -> {
         val argTys = e.args.map {
             u.mkTyVar()
         }
-        val newEnv = env + e.args.zip(argTys).toMap()
+        // This line was originally "accidentally quadratic" ;D -- We used to do Map.plus here, so this ends up
+        // allocating a new map with all the entries. And since env can be huge...
+        val newEnv = env.extend(e.args.zip(argTys).toMap())
         // Probably need to make a local subst as well.
         val bodyTy = infer(e.body, newEnv)
         // Probably need to run subst on arg. And check no tyVar leakage.
@@ -199,14 +223,15 @@ fun ModuleTypeContext.infer0(e: Exp, env: Map<Ident, Type>): Type = when (e) {
     }
 }
 
-fun ModuleTypeContext.freeze() {
-    nameToType.mapValues {
-        val sTy = u.subst(it.value)
-        require(!sTy.hasTyVars) {
-            "$sTy still has type vars! Current subst: ${u.substitutions.keys}"
-        }
-        sTy
-    }
-
+fun ModuleTypeContext.cleanUpSubst() {
     u.substitutions.clear()
+}
+
+fun ModuleTypeContext.lintInferredTypes(names: Iterable<Ident>) {
+    names.forEach {
+        val ty = requireNotNull(nameToType[it])
+        require(!ty.hasTyVars) {
+            "$ty ($it) still has type vars! Current subst: ${u.substitutions.keys}"
+        }
+    }
 }

@@ -19,14 +19,18 @@ import com.github.om.inctc.lang.stlc.*
  * return type for the decl (this is the same even if they are defined in the same file).
  */
 
-fun bench(files: List<Pair<ModuleName, String>>, printStat: Boolean = false) {
+fun bench(modules: List<Module>, files: List<Pair<ModuleName, String>>, redoParse: Boolean = false, printStat: Boolean = false) {
     val tm = Timer.create().apply {
         printImmediately = false
     }
-    val parsedAgain = tm.timed("parse") {
-        files.map {
-            requireNotNull(StlcParser.file(it.first).run(it.second))
+    val parsedAgain = if (redoParse) {
+        tm.timed("parse") {
+            files.map {
+                requireNotNull(StlcParser.file(it.first).run(it.second))
+            }
         }
+    } else {
+        modules
     }
     val rCtx = ResolutionContext(parsedAgain, tm)
     tm.timed("findUndef") { rCtx.findUndefinedUses().firstOrNull() }
@@ -40,7 +44,7 @@ fun bench(files: List<Pair<ModuleName, String>>, printStat: Boolean = false) {
 fun main() {
     val tm = Timer.create()
     val modules = tm.timed("poet") {
-        val g = StlcGenerator(5, 10000)
+        val g = StlcGenerator(150, 100000)
         val totalSteps = tm.timed("run") { g.run() }
         println("Total steps: $totalSteps")
         tm.timed("build") { g.build() }
@@ -52,13 +56,10 @@ fun main() {
         }
     }
 
-    /*
-    repeat(10) {
-        println("$it run")
-        bench(files)
+    repeat(3) {
+        println("${it + 1}th run")
+        bench(modules, files, redoParse = false, printStat = true)
     }
 
-     */
-
-    bench(files, true)
+    // bench(modules, files, redoParse = false, printStat = true)
 }
