@@ -67,6 +67,18 @@ fun Exp.ppr(st: PprState): Unit = when (this) {
         body.ppr(st)
         st.text(" end")
     }
+    is Let -> {
+        st.text("let")
+        for ((ident, rhs) in bindings) {
+            st.text(" ")
+            ident.ppr(st)
+            st.text(" = ")
+            rhs.ppr(st)
+        }
+        st.text(" in ")
+        body.ppr(st)
+        st.text(" end")
+    }
     is LitI -> st.text("$value")
     is If -> {
         st.text("if ")

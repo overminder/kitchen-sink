@@ -1,22 +1,42 @@
 package com.github.om.inctc.lang.stlc
 
-sealed class Type
+sealed class TypeOrScheme
+sealed class Type: TypeOrScheme()
+
 object TyInt: Type() {
-    override fun toString(): String = "TyInt"
+    override fun toString(): String = "int"
 }
 object TyBool: Type() {
-    override fun toString(): String = "TyBool"
+    override fun toString(): String = "bool"
 }
 // Not yet specialized.
-data class TyVar(val id: Int): Type()
-data class TyArr(val from: Type, val to: Type): Type()
+data class TyVar(val id: Int): Type() {
+    override fun toString(): String {
+        return "t$id"
+    }
+}
+data class TyArr(val from: Type, val to: Type): Type() {
+    override fun toString(): String {
+        return "$from -> $to"
+    }
+}
 
-val Type.tyVars: Sequence<TyVar>
+// Scheme: let-generalized polymorphic type (so no longer STLC)
+data class TyScm(val args: List<TyVar>, val body: Type): TypeOrScheme() {
+    override fun toString(): String {
+        val bindings = args.joinToString()
+        return "∀$bindings.$body"
+    }
+}
+
+val TypeOrScheme.freeTyVars: Sequence<TyVar>
     get() = when (this) {
         is TyVar -> sequenceOf(this)
-        is TyArr -> from.tyVars + to.tyVars
+        is TyArr -> from.freeTyVars + to.freeTyVars
+        is TyScm -> body.freeTyVars - args
         else -> emptySequence()
     }
 
-val Type.hasTyVars: Boolean
-    get() = tyVars.firstOrNull() != null
+val TypeOrScheme.hasFreeTyVars: Boolean
+    get() = freeTyVars.firstOrNull() != null
+

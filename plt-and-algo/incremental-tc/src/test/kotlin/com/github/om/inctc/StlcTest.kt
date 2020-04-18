@@ -39,37 +39,85 @@ class StlcTest {
     }
 
     @Test
-    fun testInferSimple() {
-        val rCtx = rCtxFromFiles(
-                "main" to """
-                    def a = 5
-                    def b = a + 5
-                    def c = fun x in x + 5 end
-                    def d = a < 5
-                    def e = if a < 5 then c(a) else 7 end
-                    def rec = fun x in if x < 5 then x < 5 else rec(x + 1) end end
-                    def even = fun x in if x < 1 then 1 else odd(x - 1) - 1 end end
-                    def odd = fun x in if x < 2 then 1 else even(x - 1) - 1 end end
+    fun testInfer1() {
+        checkInfer(listOf(
+            "main" to """
+                def a = 5
+                def b = fun x in x + a end
+                def c = let
+                  id = fun x in x end
+                in id(5) < 8 end
+                def d = e
+                def e = if 1 < 2 then d else 1 end
+            """.trimIndent()
+        ), listOf(
+            "main.a" to TyInt,
+            "main.b" to TyArr(TyInt, TyInt)
+        ))
+    }
 
-                    def deadCode = 5
-                """.trimIndent()
+    @Test
+    fun testInferLocalPolyLambda() {
+        checkInfer(listOf(
+            "main" to """
+                def a =
+                  let id = fun x in x end
+                   in id(id(5) < 8) end
+            """.trimIndent()
+        ), listOf("main.a" to TyBool))
+    }
+
+    @Test
+    fun testInferToplevelPolyLambda() {
+        checkInfer(listOf(
+            "main" to """
+                def id = fun x in x end
+            """.trimIndent()
+        ), listOf("main.id" to TyBool))
+    }
+
+    @Test
+    fun testInferSimple() {
+        val files = listOf(
+            "main" to """
+                def a = 5
+                def b = a + 5
+                def c = fun x in x + 5 end
+                def d = a < 5
+                def e = if a < 5 then c(a) else 7 end
+                def rec = fun x in if x < 5 then x < 5 else rec(x + 1) end end
+                def even = fun x in if x < 1 then 1 else odd(x - 1) - 1 end end
+                def odd = fun x in if x < 2 then 1 else even(x - 1) - 1 end end
+
+                def deadCode = 5
+
+                def tryLet = let x = 5 y = x + a in x + y end
+            """.trimIndent()
         )
 
+        val cases = listOf(
+            "main.a" to TyInt,
+            "main.b" to TyInt,
+            "main.c" to TyArr(TyInt, TyInt),
+            "main.d" to TyBool,
+            "main.e" to TyInt,
+            "main.rec" to TyArr(TyInt, TyBool),
+            "main.even" to TyArr(TyInt, TyInt),
+            "main.deadCode" to TyInt,
+            "main.tryLet" to TyInt
+        )
+        checkInfer(files, cases)
+    }
+
+    private fun checkInfer(files: List<Pair<String, String>>, types: List<Pair<String, Type>>) {
+        val rCtx = ResolutionContext(parseFiles(files))
         val tCtx = TypeChecker(rCtx)
         assertTrue(rCtx.topoSortedModules.value.isNotEmpty())
         tCtx.inferModules()
-        val cases = listOf(
-            TyInt to "main.a",
-            TyInt to "main.b",
-            TyArr(TyInt, TyInt) to "main.c",
-            TyBool to "main.d",
-            TyInt to "main.e",
-            TyArr(TyInt, TyBool) to "main.rec",
-            TyArr(TyInt, TyInt) to "main.even",
-            TyInt to "main.deadCode"
-        )
-        for ((exTy, name) in cases) {
-            assertEquals(exTy, tCtx.inferredType(FqName.parse(name)), "$name should have type $exTy")
+        for ((name, exTy) in types) {
+            val inferred = tCtx.inferredType(FqName.parse(name))
+            assertTrue(inferred.args.isEmpty())
+            assertEquals(exTy, inferred.body, "$name should have type $exTy")
         }
     }
 }

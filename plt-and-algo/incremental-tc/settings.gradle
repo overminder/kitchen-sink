@@ -7,4 +7,14 @@
  * in the user manual at https://docs.gradle.org/6.2.2/userguide/multi_project_builds.html
  */
 
+pluginManagement {
+    repositories {
+        // Grab bleeding edge versions of Kotlin gradle plugin.
+        maven {
+            url = "https://dl.bintray.com/kotlin/kotlin-eap/"
+        }
+        gradlePluginPortal()
+    }
+}
+
 rootProject.name = 'inc-tc-pg'

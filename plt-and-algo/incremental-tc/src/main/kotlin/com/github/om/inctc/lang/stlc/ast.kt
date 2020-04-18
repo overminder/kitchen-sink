@@ -8,8 +8,11 @@ import com.github.om.inctc.parse.curried
 sealed class Exp
 data class Var(val ident: Ident): Exp()
 data class Lam(var args: List<Ident>, val body: Exp): Exp()
+// Actually let* (non-recursive, each binding can refer to all the previous bindings)
+data class Let(var bindings: List<Pair<Ident, Exp>>, val body: Exp): Exp()
 data class LitI(val value: Int): Exp()
 data class If(val cond: Exp, val then: Exp, val else_: Exp): Exp()
+// Consider make arg a list to improve perf.
 data class App(val func: Exp, val arg: Exp): Exp()
 data class BOp(val op: BRator, val left: Exp, val right: Exp): Exp()
 
@@ -54,6 +57,7 @@ enum class Keyword(val token: String) {
     IN("in"),
     END("end"),
     DEF("def"),
+    LET("let"),
     IF("if"),
     THEN("then"),
     ELSE("else"),
@@ -115,6 +119,14 @@ object StlcParser {
         p.pure(::If.curried()).ap(cond).ap(then).ap(else_)
     }
 
+    // let (v = e)+ in e end
+    val letExp: Parser<Let> by lazy {
+        val binding = p.andThen(ident, token("=").ignoreLeft(exp))
+        p.pure(::Let.curried())
+            .ap(keyword(Keyword.LET).ignoreLeft(p.many1(binding)))
+            .ap(keyword(Keyword.IN).ignoreLeft(exp).ignoreRight(keyword(Keyword.END)))
+    }
+
     private fun mkApp(f: Exp, args: List<Exp>) = args.fold(f, ::App)
 
     private val tokenMap: Map<CharSequence, BRator> = BRator.values().map {
@@ -146,7 +158,7 @@ object StlcParser {
 
     val exp: Parser<Exp> = bexp
 
-    val atom: Parser<Exp> = p.choice(listOf(lam, ifExp, var_, litI, p.makeLazy { parenthesized(bexp) }))
+    val atom: Parser<Exp> = p.choice(listOf(lam, ifExp, letExp, var_, litI, p.makeLazy { parenthesized(bexp) }))
 
     // Decls
 
@@ -173,4 +185,28 @@ object StlcParser {
     val decl: Parser<Decl> = p.orElse(def, import)
 
     fun file(name: ModuleName): Parser<Module> = p.pure(::Module.curried()(name)).ap(p.many(decl)).ignoreRight(p.eof())
+}
+
+// XXX This can be quadratic for large exps.
+fun Exp.freeVariables(localEnv: List<Ident> = listOf()): List<Ident> = when (this) {
+    is Var -> if (localEnv.contains(ident)) {
+        emptyList()
+    } else {
+        listOf(ident)
+    }
+    is Let -> {
+        val uses = mutableListOf<Ident>()
+        val moarEnv = localEnv.toMutableList()
+        for ((ident, rhs) in bindings) {
+            uses.addAll(rhs.freeVariables(moarEnv))
+            moarEnv += ident
+        }
+        uses.addAll(body.freeVariables(moarEnv))
+        uses
+    }
+    is Lam -> body.freeVariables(localEnv + args)
+    is LitI -> emptyList()
+    is If -> listOf(cond, then, else_).flatMap { it.freeVariables(localEnv) }
+    is App -> listOf(func, arg).flatMap { it.freeVariables(localEnv) }
+    is BOp -> listOf(left, right).flatMap { it.freeVariables(localEnv) }
 }

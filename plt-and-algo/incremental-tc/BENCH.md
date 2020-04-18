@@ -16,6 +16,12 @@ This essentially treats all the modules as a whole huge file (because
 each use can recursively depend on defs from all modules). So this is
 extremely slow -- unification has to keep all tyvars around.
 
+### Benchmark settings
+- Best of 10 runs, Java 8, 8th gen i7
+- Time spent sololy on type inferencing
+- Decls generated randomly split between given number of modules, 50% import
+ and 50 def. Def is a simple Int -> Int function (see e645224 poet.kt:addDef).
+
 ### Large files
 10k decls total, 5 files: 1.2s 
 20k decls total, 15 files: 4s
@@ -68,7 +74,8 @@ This gives a bit more speed up for non-recursive bindings.
 actual recursive bindings inside a module)
 
 But what about recursive bindings? Let's say each SCC has 1-9 mutually recursive
-bindings. And we have 1/3 imports, 1/3 non-rec defs, and 1/3 rec defs.
+bindings. And we have 1/3 imports, 1/3 non-rec defs, and 1/3 rec defs (we will
+continue to use this setting until explicitly saying otherwise)
 
 ### Large files
 10k decls total, 5 files: 0.30s
@@ -90,3 +97,27 @@ something that the compiler can optimize away, and the allocated map is used
 immediately so no escape analysis / allocation sinking can be done).
 
 Now SCC calculation takes almost the same time as type inference!
+
+### Large files
+10k decls total, 5 files: 0.006s
+20k decls total, 15 files: 0.01s
+100k decls total, 15 files: 0.088s (Almost linear! SCC takes 0.15s)
+
+### Small files
+20k decls total, 1.5k files: 0.013s
+100k decls total, 1.5k files: 0.069s (Linear!)
+
+## Introducing HM-style inference (seems to be algorithm W)
+
+Following Jones's Typing Haskell in Haskell. The downside is that
+substitutions are applied too often and we don't have many of the purely
+functional data structure (so essentially we become quadratic again!).
+
+The result is horrendous for slightly larger files.
+
+### Large files
+1.5k decls total, 5 files: 0.5s
+
+### Small files
+1.5k decls total, 50 files: 0.026s
+20k decls total, 1.5k files: 0.1s

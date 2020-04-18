@@ -84,22 +84,6 @@ class ResolutionContext(
     }
 }
 
-// Use of toplevel bindings, not local bindings.
-private fun usesOfExp(e: Exp, localEnv: List<Ident> = listOf()): List<Ident> = when (e) {
-    is Var -> if (localEnv.contains(e.ident)) {
-        emptyList()
-    } else {
-        listOf(e.ident)
-    }
-    is Lam -> usesOfExp(e.body, localEnv + e.args)
-    is LitI -> listOf()
-    is If -> usesOfExp(e.cond, localEnv) +
-        usesOfExp(e.then, localEnv) +
-        usesOfExp(e.else_, localEnv)
-    is App -> usesOfExp(e.func, localEnv) + usesOfExp(e.arg, localEnv)
-    is BOp -> usesOfExp(e.left, localEnv) + usesOfExp(e.right, localEnv)
-}
-
 // Def -> Uses
 data class ModuleDependencies(val local: Map<Ident, Set<Ident>>, val imports: Map<FqName, Ident>)
 
@@ -118,7 +102,7 @@ private fun collectSingleModuleDeps(m: Module): ModuleDependencies {
             is Import -> imports += decl.defSite to decl.ident
             is Define -> local.compute(decl.ident) { _, v ->
                 requireNotNull(v).apply {
-                    addAll(usesOfExp(decl.body))
+                    addAll(decl.body.freeVariables())
                 }
             }
         }

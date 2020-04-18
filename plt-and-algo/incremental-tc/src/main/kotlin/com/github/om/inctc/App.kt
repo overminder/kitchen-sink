@@ -44,7 +44,7 @@ fun bench(modules: List<Module>, files: List<Pair<ModuleName, String>>, redoPars
 fun main() {
     val tm = Timer.create()
     val modules = tm.timed("poet") {
-        val g = StlcGenerator(150, 100000)
+        val g = StlcGenerator(1500, 20000)
         val totalSteps = tm.timed("run") { g.run() }
         println("Total steps: $totalSteps")
         tm.timed("build") { g.build() }
@@ -58,8 +58,8 @@ fun main() {
 
     repeat(3) {
         println("${it + 1}th run")
-        bench(modules, files, redoParse = false, printStat = true)
+        bench(modules, files, redoParse = false, printStat = false)
     }
 
-    // bench(modules, files, redoParse = false, printStat = true)
+    bench(modules, files, redoParse = false, printStat = true)
 }
