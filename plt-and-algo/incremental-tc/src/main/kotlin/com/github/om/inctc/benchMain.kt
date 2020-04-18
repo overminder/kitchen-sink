@@ -3,9 +3,9 @@
  */
 package com.github.om.inctc
 
-import com.github.om.inctc.bench.StlcGenerator
+import com.github.om.inctc.bench.PolyLangGenerator
 import com.github.om.inctc.bench.Timer
-import com.github.om.inctc.lang.stlc.*
+import com.github.om.inctc.lang.poly.*
 
 /**
  * Some notes: 5k decls per file cause the parser to stack overflow.
@@ -26,7 +26,7 @@ fun bench(modules: List<Module>, files: List<Pair<ModuleName, String>>, redoPars
     val parsedAgain = if (redoParse) {
         tm.timed("parse") {
             files.map {
-                requireNotNull(StlcParser.file(it.first).run(it.second))
+                requireNotNull(PolyLangParser.file(it.first).run(it.second))
             }
         }
     } else {
@@ -44,7 +44,7 @@ fun bench(modules: List<Module>, files: List<Pair<ModuleName, String>>, redoPars
 fun main() {
     val tm = Timer.create()
     val modules = tm.timed("poet") {
-        val g = StlcGenerator(1500, 20000)
+        val g = PolyLangGenerator(1500, 20000)
         val totalSteps = tm.timed("run") { g.run() }
         println("Total steps: $totalSteps")
         tm.timed("build") { g.build() }

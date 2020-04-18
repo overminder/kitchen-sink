@@ -1,4 +1,4 @@
-package com.github.om.inctc.lang.stlc
+package com.github.om.inctc.lang.poly
 
 import com.github.om.inctc.bench.Timer
 import com.github.om.inctc.bench.timedLazy

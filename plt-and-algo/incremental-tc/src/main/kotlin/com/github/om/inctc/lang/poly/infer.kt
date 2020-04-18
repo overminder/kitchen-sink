@@ -1,7 +1,4 @@
-package com.github.om.inctc.lang.stlc
-
-// STLC inference is relative simpl.
-// H-M OTOH requires defining type schemes (https://www.cl.cam.ac.uk/teaching/1415/L28/type-inference.pdf)
+package com.github.om.inctc.lang.poly
 
 // region Global type checker context
 

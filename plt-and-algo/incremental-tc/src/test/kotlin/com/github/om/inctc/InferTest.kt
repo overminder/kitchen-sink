@@ -1,13 +1,13 @@
 package com.github.om.inctc
 
-import com.github.om.inctc.lang.stlc.*
+import com.github.om.inctc.lang.poly.*
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class StlcTest {
+class InferTest {
     @Test
     fun testGatherDeps() {
         val fibo = """
@@ -125,7 +125,7 @@ class StlcTest {
 private fun parseFiles(files: List<Pair<String, String>>): List<Module> {
     return files.map {
         val moduleName = ModuleName(it.first)
-        assertNotNull(StlcParser.file(moduleName).run(it.second))
+        assertNotNull(PolyLangParser.file(moduleName).run(it.second))
     }
 }
 

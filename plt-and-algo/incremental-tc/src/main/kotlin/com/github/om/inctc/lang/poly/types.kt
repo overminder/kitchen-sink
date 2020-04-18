@@ -1,4 +1,4 @@
-package com.github.om.inctc.lang.stlc
+package com.github.om.inctc.lang.poly
 
 sealed class TypeOrScheme
 sealed class Type: TypeOrScheme()
@@ -21,7 +21,8 @@ data class TyArr(val from: Type, val to: Type): Type() {
     }
 }
 
-// Scheme: let-generalized polymorphic type (so no longer STLC)
+// Scheme: let-generalized polymorphic type
+
 data class TyScm(val args: List<TyVar>, val body: Type): TypeOrScheme() {
     override fun toString(): String {
         val bindings = args.joinToString()

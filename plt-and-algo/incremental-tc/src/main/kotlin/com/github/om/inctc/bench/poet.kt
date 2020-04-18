@@ -1,23 +1,23 @@
 package com.github.om.inctc.bench
 
-import com.github.om.inctc.lang.stlc.App
-import com.github.om.inctc.lang.stlc.BOp
-import com.github.om.inctc.lang.stlc.BRator
-import com.github.om.inctc.lang.stlc.Decl
-import com.github.om.inctc.lang.stlc.Define
-import com.github.om.inctc.lang.stlc.Ident
-import com.github.om.inctc.lang.stlc.Import
-import com.github.om.inctc.lang.stlc.Lam
-import com.github.om.inctc.lang.stlc.LitI
-import com.github.om.inctc.lang.stlc.Module
-import com.github.om.inctc.lang.stlc.ModuleName
-import com.github.om.inctc.lang.stlc.Var
-import com.github.om.inctc.lang.stlc.Visibility
+import com.github.om.inctc.lang.poly.App
+import com.github.om.inctc.lang.poly.BOp
+import com.github.om.inctc.lang.poly.BRator
+import com.github.om.inctc.lang.poly.Decl
+import com.github.om.inctc.lang.poly.Define
+import com.github.om.inctc.lang.poly.Ident
+import com.github.om.inctc.lang.poly.Import
+import com.github.om.inctc.lang.poly.Lam
+import com.github.om.inctc.lang.poly.LitI
+import com.github.om.inctc.lang.poly.Module
+import com.github.om.inctc.lang.poly.ModuleName
+import com.github.om.inctc.lang.poly.Var
+import com.github.om.inctc.lang.poly.Visibility
 import kotlin.random.Random
 
 // Generate module files.
 
-class StlcGenerator(val nModules: Int, val nSteps: Int, rngSeed: Long = 12345678L) {
+class PolyLangGenerator(val nModules: Int, val nSteps: Int, rngSeed: Long = 12345678L) {
     private val rng = Random(rngSeed)
     private var idGen = 1
 

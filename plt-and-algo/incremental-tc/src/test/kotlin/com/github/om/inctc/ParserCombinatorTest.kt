@@ -1,6 +1,6 @@
 package com.github.om.inctc
 
-import com.github.om.inctc.lang.stlc.*
+import com.github.om.inctc.lang.poly.*
 import com.github.om.inctc.parse.Parser
 import com.github.om.inctc.parse.ParserCombinators0
 import org.junit.Test
@@ -30,8 +30,8 @@ class ParserCombinatorTest {
     }
 
     @Test
-    fun testStlcParser() {
-        val p = StlcParser
+    fun testPolyLangParser() {
+        val p = PolyLangParser
         val p0 = ParserCombinators0
         assertTrue {
             p.keywords.containsAll(listOf("fun", "end", "in"))

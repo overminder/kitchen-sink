@@ -1,9 +1,9 @@
 package com.github.om.inctc
 
-import com.github.om.inctc.lang.stlc.ModuleName
-import com.github.om.inctc.lang.stlc.PprState
-import com.github.om.inctc.lang.stlc.StlcParser
-import com.github.om.inctc.lang.stlc.ppr
+import com.github.om.inctc.lang.poly.ModuleName
+import com.github.om.inctc.lang.poly.PprState
+import com.github.om.inctc.lang.poly.PolyLangParser
+import com.github.om.inctc.lang.poly.ppr
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -20,7 +20,7 @@ class PrettyPrinterTest {
     }
 
     private fun assertPpr(source: String) {
-        val m = assertNotNull(StlcParser.file(ModuleName("test")).run(source))
+        val m = assertNotNull(PolyLangParser.file(ModuleName("test")).run(source))
         val st = PprState()
         m.ppr(st)
         val printed = st.output

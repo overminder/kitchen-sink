@@ -1,4 +1,4 @@
-package com.github.om.inctc.lang.stlc
+package com.github.om.inctc.lang.poly
 
 import com.github.om.inctc.parse.Parser
 import com.github.om.inctc.parse.ParserCombinators0
@@ -65,7 +65,7 @@ enum class Keyword(val token: String) {
     USE("use"),
 }
 
-object StlcParser {
+object PolyLangParser {
     private val p = ParserCombinators0
     val keywords: List<String> = Keyword.values().map { it.token }
 

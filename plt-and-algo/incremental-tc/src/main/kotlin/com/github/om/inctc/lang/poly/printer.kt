@@ -1,4 +1,4 @@
-package com.github.om.inctc.lang.stlc
+package com.github.om.inctc.lang.poly
 
 class PprState(val sb: StringBuilder = StringBuilder()) {
     val output: String
