@@ -69,22 +69,30 @@ class InferTest {
 
     @Test
     fun testInferReturnPoly() {
+        val x = TyGen(1)
         checkInfer(listOf(
             "main" to """
                 def a =
                   let id = fun x in x end
                    in id end
             """.trimIndent()
-        ), listOf("main.a" to TyBool))
+        ), listOf("main.a" to TyArr(x, x)))
     }
 
     @Test
     fun testInferToplevelPolyLambda() {
+        val x = TyGen(1)
         checkInfer(listOf(
             "main" to """
                 def id = fun x in x end
             """.trimIndent()
-        ), listOf("main.id" to TyBool))
+        ), listOf("main.id" to TyArr(x, x)))
+    }
+
+    @Test
+    fun testInst() {
+        val arr = TyArr(TyInt, TyInt)
+        assertEquals(arr.normTyGen(), arr)
     }
 
     @Test
@@ -120,26 +128,22 @@ class InferTest {
         checkInfer(files, cases)
     }
 
-    private fun <A: Any> checkInferBy(files: List<Pair<String, String>>, types: List<Pair<String, A>>,
-                                      eq: (A, TyScm) -> Boolean) {
+    private fun <A: Any, Norm: Any> checkInferBy(files: List<Pair<String, String>>, types: List<Pair<String, A>>,
+                                                 aToNorm: (A) -> Norm, tyToNorm: (Type) -> Norm) {
         val rCtx = ResolutionContext(parseFiles(files))
         val tCtx = TypeChecker(rCtx)
         assertTrue(rCtx.topoSortedModules.value.isNotEmpty())
         tCtx.inferModules()
-        for ((name, exTy) in types) {
+        for ((name, expected) in types) {
             val inferred = tCtx.inferredType(FqName.parse(name))
-            assertTrue(eq(exTy, inferred), "$name should have type $exTy, but got $inferred")
+            val expectedN = aToNorm(expected)
+            val gotN = tyToNorm(inferred)
+            assertEquals(expectedN, gotN, "$name should have type $expectedN, but got $gotN")
         }
     }
 
     private fun checkInfer(files: List<Pair<String, String>>, types: List<Pair<String, Type>>) {
-        checkInferBy(files, types) { ty, tyScm ->
-            tyScm.alphaEq(TyScm(emptyList(), ty))
-        }
-    }
-
-    private fun checkInferScm(files: List<Pair<String, String>>, types: List<Pair<String, TyScm>>) {
-        checkInferBy(files, types, TyScm::alphaEq)
+        checkInferBy(files, types, Type::normTyGen, Type::normTyGen)
     }
 }
 

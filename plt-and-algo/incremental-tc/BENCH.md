@@ -128,3 +128,21 @@ too much time. Why?
 ### Small files
 1.5k decls total, 50 files: 0.026s
 20k decls total, 1.5k files: 0.1s
+
+## Fast unification with ML-style destructive substitution
+
+We now represent TyVars as mutable cells, and substs are implicitly applied
+as destructive updates. So we only need to do copying on generalization and
+instantiation. Another optimization is to treat toplevel bindings as
+immutable and assume they never contain unbound TyVars. This is only true
+because we do type inference in topological SCC order. (But this assumption
+will be invalidated once we allow mutability...)
+
+### Large files
+10k decls total, 5 files: 0.013s
+20k decls total, 15 files: 0.022s
+100k decls total, 15 files: 0.064s (Even faster than STLC?)
+
+### Small files
+20k decls total, 1.5k files: 0.031s
+100k decls total, 1.5k files: 0.082s (Still linear)
