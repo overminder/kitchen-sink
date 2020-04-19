@@ -30,6 +30,23 @@ data class TyScm(val args: List<TyVar>, val body: Type): TypeOrScheme() {
     }
 }
 
+val TyScm.isTrivial: Boolean
+    get() = args.isEmpty()
+
+fun TyScm.alphaEq(o: TyScm): Boolean {
+    if (this === o) return true
+    if (isTrivial) return o.isTrivial
+
+    val ug = UniqueGen()
+
+    if (args.size != o.args.size) {
+        return false
+    }
+
+    val fresh = List(args.size) { ug.freshTyVar() }
+    return body.applyFrom(args.zip(fresh).toMap()) == o.body.applyFrom(o.args.zip(fresh).toMap())
+}
+
 val TypeOrScheme.freeTyVars: Sequence<TyVar>
     get() = when (this) {
         is TyVar -> sequenceOf(this)
@@ -40,4 +57,43 @@ val TypeOrScheme.freeTyVars: Sequence<TyVar>
 
 val TypeOrScheme.hasFreeTyVars: Boolean
     get() = freeTyVars.firstOrNull() != null
+
+
+// region Substitution
+internal typealias Subst = Map<TyVar, Type>
+internal typealias MutableSubst = MutableMap<TyVar, Type>
+
+/*
+// Not sure if this works
+private fun <A: TypeOrScheme> A.applyFrom(subst: Subst): A = when (this) {
+    is TyVar -> this
+    else -> this
+}
+ */
+
+internal fun Type.applyFrom(subst: Subst): Type = when (this) {
+    is TyVar -> subst.getOrDefault(this, this)
+    is TyArr -> TyArr(from.applyFrom(subst), to.applyFrom(subst))
+    else -> this
+}
+
+internal fun TyScm.applyFrom(subst: Subst): TyScm {
+    // XXX(perf)
+    return TyScm(args, body.applyFrom(subst - args))
+}
+
+internal fun Subst.applyFrom(subst: Subst): Subst {
+    // XXX(perf)
+    return mapValues { it.value.applyFrom(subst) } + subst
+}
+
+internal fun MutableSubst.applyFrom(subst: Subst) {
+    entries.forEach {
+        it.setValue(it.value.applyFrom(subst))
+    }
+
+    this += subst
+}
+
+// endregion
 

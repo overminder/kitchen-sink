@@ -113,7 +113,14 @@ Following Jones's Typing Haskell in Haskell. The downside is that
 substitutions are applied too often and we don't have many of the purely
 functional data structure (so essentially we become quadratic again!).
 
-The result is horrendous for slightly larger files.
+The result is horrendous for slightly larger files, due to applyFrom spending
+too much time. Why?
+- Substitutions are represented as immutable maps and needs o be constantly
+  updated with new substitutions. Whereas Ocaml and Prolog use ref cells
+  inside tyVars to destructively apply substitutions.
+- Generalization over large type env is also expensive (See
+  [Oleg Kiselyov's article](http://okmij.org/ftp/ML/generalization.html),
+  section generalization)
 
 ### Large files
 1.5k decls total, 5 files: 0.5s

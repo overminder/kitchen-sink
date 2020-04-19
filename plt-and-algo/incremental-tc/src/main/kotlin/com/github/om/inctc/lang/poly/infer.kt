@@ -47,15 +47,17 @@ class ModuleTypeContext(
 
     internal val uStack = mutableListOf(UnificationContext(uniqGen))
 
+    internal fun Type.generalize(ftvsFromEnv: Sequence<TyVar>): TyScm {
+        val envs = ftvsFromEnv.toList()
+        val ftv = freeTyVars.toMutableSet()
+        println("Generalize: $this by $ftv - $envs")
+        ftv -= ftvsFromEnv
+        return TyScm(ftv.toList(), this)
+    }
+
     internal fun TyScm.instantiate(): Type {
         val subst = args.associateWith { u.mkTyVar() }
         return body.applyFrom(subst)
-    }
-
-    internal fun Type.generalize(ftvsFromEnv: Sequence<TyVar>): TyScm {
-        val ftv = freeTyVars.toMutableSet()
-        ftv -= ftvsFromEnv
-        return TyScm(ftv.toList(), this)
     }
 
     internal fun Type.closeOver(): TyScm = TyScm(emptyList(), this)
@@ -75,6 +77,16 @@ internal fun <A: Any> ModuleTypeContext.withNewUCtx(f: () -> A): A {
     val r = f()
     uStack.removeLast()
     return r
+}
+
+private fun ModuleTypeContext.inferAndGeneralize(e: Exp, env: TyEnv): TyScm = withNewUCtx {
+    val ty = infer(e, env)
+    println("Let: infer as $ty")
+    u.solveAll()
+    val subst = u.substitutions
+    // XXX(perf) also is this correct?
+    env.applyFrom(subst)
+    ty.applyFrom(subst).generalize(env.freeTyVars())
 }
 
 private fun ModuleTypeContext.isSelfRecursive(x: Ident): Boolean {
@@ -116,9 +128,13 @@ fun ModuleTypeContext.inferScc(scc: List<Ident>) {
     }
 
     u.solveAll()
+    val env = TyEnv.topLevel(nameToType)
+    println("InferScc: moduleEnv = $nameToType")
+    env.applyFrom(u.substitutions)
+    val ftvsFromEnv = env.freeTyVars()
     for (name in needSubst) {
         val tv = requireNotNull(nameToType[name]).body
-        nameToType += name to tv.applyFrom(u.substitutions).closeOver()
+        nameToType += name to tv.applyFrom(u.substitutions).generalize(ftvsFromEnv)
     }
 }
 
@@ -159,7 +175,7 @@ fun ModuleTypeContext.inferTopLevelDecl(d: Decl): Unit = when(d) {
 private fun ModuleTypeContext.lookupVar(i: Ident, env: TyEnv): Type {
     val ty = requireNotNull(env[i]) { "Unbound var: ${i.name}" }
     val ity = ty.instantiate()
-    // println("lookup($i): found $ty, instantiate as $ity")
+    println("lookup($i): found $ty, instantiate as $ity")
     return ity
 }
 
@@ -179,16 +195,8 @@ private fun ModuleTypeContext.infer(e: Exp, env: TyEnv): Type = when (e) {
         val newBindings = mutableMapOf<Ident, TyScm>()
         val letEnv = env.extend(newBindings)
         for ((ident, rhs) in e.bindings) {
-            val ty = withNewUCtx {
-                val ty = infer(rhs, letEnv)
-                // println("Let: infer as $ty")
-                u.solveAll()
-                val subst = u.substitutions
-                // XXX(perf) also is this correct?
-                letEnv.applyFrom(subst)
-                ty.applyFrom(subst).generalize(letEnv.freeTyVars())
-            }
-            // println("Let: generalize as $ty")
+            val ty = inferAndGeneralize(rhs, letEnv)
+            println("Let: generalize as $ty")
 
             newBindings += ident to ty
         }
@@ -240,15 +248,17 @@ class UniqueGen(private var nextValue: Int = 1) {
     fun next(): Int = nextValue++
 }
 
+internal fun UniqueGen.freshTyVar(): TyVar = TyVar(next())
+
 class UnificationContext(private val uniqGen: UniqueGen = UniqueGen()) {
     internal val substitutions = mutableMapOf<TyVar, Type>()
     internal val constraints = mutableListOf<Pair<Type, Type>>()
 
-    fun mkTyVar(): TyVar = TyVar(uniqGen.next())
-
     internal fun clear() {
         substitutions.clear()
     }
+
+    fun mkTyVar() = uniqGen.freshTyVar()
 
     val debugRepr: String
         get() {
@@ -325,9 +335,6 @@ fun UnificationContext.unify(t1: Type, t2: Type): Subst {
         is TyVar -> {
             error("Not reachable")
         }
-        else -> {
-            error("Shouldn't unify $t1 with $t2")
-        }
     }
 }
 
@@ -346,7 +353,7 @@ private fun Type.containsFree(tv: TyVar): Boolean = freeTyVars.contains(tv)
 
 fun UnificationContext.solveAll() {
     for ((t1, t2) in constraints) {
-        // println("solve $t1 = $t2, subst = $substitutions")
+        println("solve $t1 = $t2, subst = $substitutions")
         val newSubst = try {
             unify(t1.applyFrom(substitutions), t2.applyFrom(substitutions))
         } catch (e: CannotUnify) {
@@ -405,43 +412,6 @@ private fun TyEnv.applyFrom(subst: Subst) {
     }
 }
 
-// endregion
-
-// region Substitution
-private typealias Subst = Map<TyVar, Type>
-private typealias MutableSubst = MutableMap<TyVar, Type>
-
-/*
-// Not sure if this works
-private fun <A: TypeOrScheme> A.applyFrom(subst: Subst): A = when (this) {
-    is TyVar -> this
-    else -> this
-}
- */
-
-private fun Type.applyFrom(subst: Subst): Type = when (this) {
-    is TyVar -> subst.getOrDefault(this, this)
-    is TyArr -> TyArr(from.applyFrom(subst), to.applyFrom(subst))
-    else -> this
-}
-
-private fun TyScm.applyFrom(subst: Subst): TyScm {
-    // XXX(perf)
-    return TyScm(args, body.applyFrom(subst - args))
-}
-
-private fun Subst.applyFrom(subst: Subst): Subst {
-    // XXX(perf)
-    return mapValues { it.value.applyFrom(subst) } + subst
-}
-
-private fun MutableSubst.applyFrom(subst: Subst) {
-    entries.forEach {
-        it.setValue(it.value.applyFrom(subst))
-    }
-
-    this += subst
-}
 // endregion
 
 // region Extension methods for other modules

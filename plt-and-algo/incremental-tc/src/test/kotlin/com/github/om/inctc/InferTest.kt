@@ -68,6 +68,17 @@ class InferTest {
     }
 
     @Test
+    fun testInferReturnPoly() {
+        checkInfer(listOf(
+            "main" to """
+                def a =
+                  let id = fun x in x end
+                   in id end
+            """.trimIndent()
+        ), listOf("main.a" to TyBool))
+    }
+
+    @Test
     fun testInferToplevelPolyLambda() {
         checkInfer(listOf(
             "main" to """
@@ -109,16 +120,26 @@ class InferTest {
         checkInfer(files, cases)
     }
 
-    private fun checkInfer(files: List<Pair<String, String>>, types: List<Pair<String, Type>>) {
+    private fun <A: Any> checkInferBy(files: List<Pair<String, String>>, types: List<Pair<String, A>>,
+                                      eq: (A, TyScm) -> Boolean) {
         val rCtx = ResolutionContext(parseFiles(files))
         val tCtx = TypeChecker(rCtx)
         assertTrue(rCtx.topoSortedModules.value.isNotEmpty())
         tCtx.inferModules()
         for ((name, exTy) in types) {
             val inferred = tCtx.inferredType(FqName.parse(name))
-            assertTrue(inferred.args.isEmpty())
-            assertEquals(exTy, inferred.body, "$name should have type $exTy")
+            assertTrue(eq(exTy, inferred), "$name should have type $exTy, but got $inferred")
         }
+    }
+
+    private fun checkInfer(files: List<Pair<String, String>>, types: List<Pair<String, Type>>) {
+        checkInferBy(files, types) { ty, tyScm ->
+            tyScm.alphaEq(TyScm(emptyList(), ty))
+        }
+    }
+
+    private fun checkInferScm(files: List<Pair<String, String>>, types: List<Pair<String, TyScm>>) {
+        checkInferBy(files, types, TyScm::alphaEq)
     }
 }
 
