@@ -49,8 +49,8 @@ class ModuleTypeContext(
 
     internal val uStack = mutableListOf(UnificationContext(uniqGen))
 
-    internal val Decl.asDefine: Define?
-        get() = this as? Define
+    internal val Decl.asDefine: ValueDef?
+        get() = this as? ValueDef
 }
 
 internal val ModuleTypeContext.u: UnificationContext
@@ -92,6 +92,7 @@ fun ModuleTypeContext.inferAll() {
 
 fun ModuleTypeContext.inferScc(scc: List<Ident>) {
     val topEnv = TyEnv.topLevel(nameToType)
+    // Defines require generalization, while imports don't.
     val needGen = if (scc.size == 1) {
         val id = scc.first()
         val decl = declFromName(id)
@@ -116,9 +117,8 @@ fun ModuleTypeContext.inferScc(scc: List<Ident>) {
         }
 
         val inferredTypes = decls.associate { it.ident to inferTopLevelDecl(it, env) }
-        phEnv.keys.map {
-            it to requireNotNull(inferredTypes[it])
-        }
+        // phEnv.keys.map { it to requireNotNull(inferredTypes[it]) }
+        phEnv.toList()
     }
 
     Log.d { "InferScc($scc): before solveAll" }
@@ -138,7 +138,7 @@ fun ModuleTypeContext.makeTyVarPlaceholderForDecl(d: Decl): Type? =
             nameToType += d.ident to global.inferredType(d.defSite)
             null
         }
-        is Define -> {
+        is ValueDef -> {
             // Not sure if this works...
             val tv = u.mkTyVar()
             val originalTy = nameToType.get(d.ident)
@@ -146,6 +146,9 @@ fun ModuleTypeContext.makeTyVarPlaceholderForDecl(d: Decl): Type? =
                 "${d.ident} already had a type: $originalTy"
             }
             tv
+        }
+        else -> {
+            TODO("Not implemented: $d")
         }
     }
 
@@ -155,7 +158,7 @@ private fun ModuleTypeContext.inferTopLevelDecl(d: Decl, env: TyEnv): Type = whe
         nameToType += d.ident to ty
         ty
     }
-    is Define -> {
+    is ValueDef -> {
         // Populated beforehand in ModuleTC.populateDeclTypes. But we can optimize this better.
         val placeholderTy = env[d.ident]
         val bodyTy = infer(d.body, env)
@@ -164,6 +167,9 @@ private fun ModuleTypeContext.inferTopLevelDecl(d: Decl, env: TyEnv): Type = whe
             u.deferUnify(placeholderTy, bodyTy, "TopLevel define placeholder")
         }
         bodyTy
+    }
+    else -> {
+        TODO("Not implemented: $d")
     }
 }
 

@@ -4,7 +4,7 @@ import com.github.om.inctc.lang.poly.App
 import com.github.om.inctc.lang.poly.BOp
 import com.github.om.inctc.lang.poly.BRator
 import com.github.om.inctc.lang.poly.Decl
-import com.github.om.inctc.lang.poly.Define
+import com.github.om.inctc.lang.poly.ValueDef
 import com.github.om.inctc.lang.poly.Ident
 import com.github.om.inctc.lang.poly.Import
 import com.github.om.inctc.lang.poly.Lam
@@ -90,7 +90,7 @@ class PolyLangGenerator(val nModules: Int, val nSteps: Int, rngSeed: Long = 1234
         val ident = mkIdent()
         val arg = mkIdent()
         val body = Lam(listOf(arg), BOp(BRator.PLUS, Var(arg), LitI(5)))
-        defSite.value += ident to Define(ident, Visibility.Public, body)
+        defSite.value += ident to ValueDef(ident, Visibility.Public, body)
         return 1
     }
 
@@ -115,7 +115,7 @@ class PolyLangGenerator(val nModules: Int, val nSteps: Int, rngSeed: Long = 1234
         if (nDecls == 1) {
             val ident = idents.first()
             val arg = args.first()
-            defSite.value += ident to Define(ident, Visibility.Public, mkDecl(ident, arg))
+            defSite.value += ident to ValueDef(ident, Visibility.Public, mkDecl(ident, arg))
         } else {
             // f1 call f2, ..., fN-1 call fN
             val fs = idents.drop(1).zip(args).map { (nextFunc, arg) ->
@@ -125,7 +125,7 @@ class PolyLangGenerator(val nModules: Int, val nSteps: Int, rngSeed: Long = 1234
             val f = mkDecl(idents.first(), args.last())
 
             for ((ident, body) in idents.zip(listOf(f) + fs)) {
-                defSite.value += ident to Define(ident, Visibility.Public, body)
+                defSite.value += ident to ValueDef(ident, Visibility.Public, body)
             }
         }
         return nDecls

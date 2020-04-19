@@ -44,7 +44,7 @@ fun bench(modules: List<Module>, files: List<Pair<ModuleName, String>>, redoPars
 fun main() {
     val tm = Timer.create()
     val modules = tm.timed("poet") {
-        val g = PolyLangGenerator(1500, 20000)
+        val g = PolyLangGenerator(15, 20000)
         val totalSteps = tm.timed("run") { g.run() }
         println("Total steps: $totalSteps")
         tm.timed("build") { g.build() }

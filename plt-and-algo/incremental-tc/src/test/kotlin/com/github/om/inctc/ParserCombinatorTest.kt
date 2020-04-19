@@ -30,7 +30,7 @@ class ParserCombinatorTest {
     }
 
     @Test
-    fun testPolyLangParser() {
+    fun testPolyLangParserForValues() {
         val p = PolyLangParser
         val p0 = ParserCombinators0
         assertTrue {
@@ -69,12 +69,43 @@ class ParserCombinatorTest {
                 wholely = true)
 
         assertParses(p.decl, "pub def foo = 5",
-                Define(Ident("foo"), Visibility.Public, LitI(5)),
+                ValueDef(Ident("foo"), Visibility.Public, LitI(5)),
                 wholely = true)
 
         assertParses(p.decl, "def foo = 5",
-                Define(Ident("foo"), Visibility.Internal, LitI(5)),
+                ValueDef(Ident("foo"), Visibility.Internal, LitI(5)),
                 wholely = true)
+    }
+
+    @Test
+    fun testPolyLangParserForTypes() {
+        val p = PolyLangParser
+        assertParses(p.decl, "type a = b",
+            TypeDef(Ident("a"), Visibility.Internal, TypealiasSpec(emptyList(), TypeIdent(Ident("b")))),
+            wholely = true)
+        assertParses(p.decl, "type a b = b(c)",
+            TypeDef(Ident("a"), Visibility.Internal,
+                TypealiasSpec(listOf(Ident("b")),
+                    TypeApp(TypeIdent(Ident("b")), listOf(TypeIdent(Ident("c")))))),
+            wholely = true)
+
+        assertParses(p.decl, "data a = b | c",
+            TypeDef(Ident("a"), Visibility.Internal,
+                SumOfRecordsSpec(emptyList(),
+                    listOf(
+                        RecordSpec(Ident("b"), emptyList()),
+                        RecordSpec(Ident("c"), emptyList())))),
+            wholely = true)
+
+        assertParses(p.decl, "data Pair a b = Pair { fst: a snd: b }",
+            TypeDef(Ident("Pair"), Visibility.Internal,
+                SumOfRecordsSpec(
+                    listOf(Ident("a"), Ident("b")),
+                    listOf(
+                        RecordSpec(Ident("Pair"), listOf(
+                            RecordField(Ident("fst"), TypeIdent(Ident("a"))),
+                            RecordField(Ident("snd"), TypeIdent(Ident("b")))))))),
+            wholely = true)
     }
 
     private fun <A> assertParses(pa: Parser<A>, source: String, expected: A, wholely: Boolean = false) {

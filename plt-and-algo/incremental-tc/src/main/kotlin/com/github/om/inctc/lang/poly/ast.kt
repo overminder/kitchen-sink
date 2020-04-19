@@ -27,7 +27,22 @@ sealed class Decl {
 }
 // Could possibly support reexport (pub use) as well.
 data class Import(val moduleName: ModuleName, override val ident: Ident): Decl()
-data class Define(override val ident: Ident, val visibility: Visibility, val body: Exp): Decl()
+data class ValueDef(override val ident: Ident, val visibility: Visibility, val body: Exp): Decl()
+data class TypeDef(override val ident: Ident, val visibility: Visibility, val body: TypeSpec): Decl()
+
+// Q: Do we want anonymous sum / record types, or even full structural types? Or we can simply treat complex
+// type combinators as second class citizens... If we go the anonymous route, what about access modifiers to the
+// fields? Module systems are indeed complex and no doubt people want a unified theory of modules...
+sealed class TypeSpec
+data class SumOfRecordsSpec(val args: List<Ident>, val sumOf: List<RecordSpec>): TypeSpec()
+data class TypealiasSpec(val args: List<Ident>, val body: TypeExp): TypeSpec()
+
+data class RecordSpec(val name: Ident, val fields: List<RecordField>)
+data class RecordField(val name: Ident, val type: TypeExp)
+
+sealed class TypeExp
+data class TypeIdent(val id: Ident): TypeExp()
+data class TypeApp(val func: TypeExp, val args: List<TypeExp>): TypeExp()
 
 data class Module(val name: ModuleName, val decls: List<Decl>)
 
@@ -63,6 +78,8 @@ enum class Keyword(val token: String) {
     ELSE("else"),
     PUB("pub"),
     USE("use"),
+    DATA("data"),
+    TYPE("type"),
 }
 
 object PolyLangParser {
@@ -96,7 +113,8 @@ object PolyLangParser {
         }))
     }
 
-    fun <A> parenthesized(p: Parser<A>): Parser<A> = token("(").ignoreLeft(p).ignoreRight(token(")"))
+    fun <A> parenthesized(p: Parser<A>, open: String = "(", close: String = ")"): Parser<A> =
+        token(open).ignoreLeft(p).ignoreRight(token(close))
 
     val ident: Parser<Ident> = name.fmap(::Ident)
     val moduleName: Parser<ModuleName> = name.fmap(::ModuleName)
@@ -128,6 +146,12 @@ object PolyLangParser {
     }
 
     private fun mkApp(f: Exp, args: List<Exp>) = args.fold(f, ::App)
+    private fun mkTypeApp(f: TypeExp, args: List<TypeExp>) =
+        if (args.isEmpty()) {
+            f
+        } else {
+            TypeApp(f, args)
+        }
 
     private val tokenMap: Map<CharSequence, BRator> = BRator.values().map {
         it.token to it
@@ -168,21 +192,72 @@ object PolyLangParser {
         p.pure(::Import.curried()).ap(mod).ap(id)
     }
 
-    val def: Parser<Define> by lazy {
-        val vis = p.optional(keyword(Keyword.PUB)).fmap {
+    val maybeVis: Parser<Visibility> =
+        p.optional(keyword(Keyword.PUB)).fmap {
             if (it != null) {
                 Visibility.Public
             } else {
                 Visibility.Internal
             }
         }
+
+    val valueDef: Parser<ValueDef> by lazy {
         val name = keyword(Keyword.DEF).ignoreLeft(ident)
         val body = token("=").ignoreLeft(exp)
-        fun mkDef(vis: Visibility, name: Ident, body: Exp) = Define(name, vis, body)
-        p.pure(::mkDef.curried()).ap(vis).ap(name).ap(body)
+        fun mkDef(vis: Visibility, name: Ident, body: Exp) = ValueDef(name, vis, body)
+        p.pure(::mkDef.curried()).ap(maybeVis).ap(name).ap(body)
     }
 
-    val decl: Parser<Decl> = p.orElse(def, import)
+    // Do we want "Type Arg", "Type<Arg>", "Type(Arg)", "Type[Arg]"? Parenthesis does help with parsing...
+    // Okay so for now we choose Type(Arg).
+    val typeExp: Parser<TypeExp> by lazy {
+        val f = ident.fmap(::TypeIdent)
+        // Essentially treating x(y, z) the same as x(y)(z)
+        val args = p.makeLazy {
+            p.many(parenthesized(p.sepBy1(typeExp, token(",")))).fmap {
+                it.flatten()
+            }
+        }
+        p.pure(::mkTypeApp.curried()).ap(f).ap(args)
+    }
+
+    val typealiasDef: Parser<TypeDef> by lazy {
+        val typeNameAndArgs = keyword(Keyword.TYPE).ignoreLeft(p.many1(ident)).ignoreRight(token("="))
+        fun mk(vis: Visibility, head: List<Ident>, body: TypeExp): TypeDef {
+            val name = head.first()
+            val args = head.drop(1)
+            return TypeDef(name, vis, TypealiasSpec(args, body))
+        }
+        p.pure(::mk.curried()).ap(maybeVis).ap(typeNameAndArgs).ap(typeExp)
+    }
+
+    val recordSpec: Parser<RecordSpec> by lazy {
+        // Name ({ (name: type)* })?
+        val rawFields = p.many(
+            p.andThen(ident.ignoreRight(token(":")), typeExp).fmap {
+                RecordField(it.first, it.second)
+            })
+        val fields = p.orElse(parenthesized(rawFields, "{", "}"), p.pure(emptyList()))
+        p.pure(::RecordSpec.curried()).ap(ident).ap(fields)
+    }
+
+    val dataDef: Parser<TypeDef> by lazy {
+        val typeNameAndArgs = keyword(Keyword.DATA).ignoreLeft(p.many1(ident)).ignoreRight(token("="))
+        fun mk(vis: Visibility, head: List<Ident>, body: List<RecordSpec>): TypeDef {
+            val name = head.first()
+            val args = head.drop(1)
+            return TypeDef(name, vis, SumOfRecordsSpec(head.drop(1), body))
+        }
+        // Could also consider allowing zero ctor
+        val records = p.sepBy1(recordSpec, token("|"))
+        p.pure(::mk.curried()).ap(maybeVis).ap(typeNameAndArgs).ap(records)
+    }
+
+    val typeDef: Parser<TypeDef> by lazy {
+        p.orElse(typealiasDef, dataDef)
+    }
+
+    val decl: Parser<Decl> = p.choice(listOf(valueDef, import, typeDef))
 
     fun file(name: ModuleName): Parser<Module> = p.pure(::Module.curried()(name)).ap(p.many(decl)).ignoreRight(p.eof())
 }

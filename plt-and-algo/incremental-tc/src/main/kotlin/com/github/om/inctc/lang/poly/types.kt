@@ -26,6 +26,7 @@ data class TyGen(val id: Int): Type() {
     }
 }
 
+// Mutable cell of either an unbound tyVar (id != null) or substituted tyVar (content != null, will be pruned)
 class TvRef(private var content_: Type?, private var id_: Int?) {
     val content: Type?
         get() = content_
@@ -83,9 +84,9 @@ val Type.allTyVars: Sequence<TyVar>
 val Type.hasTyVars: Boolean
     get() = allTyVars.firstOrNull() != null
 
-
 // region Substitution
 
+// Only prune one level
 internal val Type.pruned: Type
     get() = when (this) {
         is TyVar -> ref.prunedOr(this)

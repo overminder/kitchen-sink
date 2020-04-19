@@ -100,7 +100,7 @@ private fun collectSingleModuleDeps(m: Module): ModuleDependencies {
     for (decl in m.decls) {
         when (decl) {
             is Import -> imports += decl.defSite to decl.ident
-            is Define -> local.compute(decl.ident) { _, v ->
+            is ValueDef -> local.compute(decl.ident) { _, v ->
                 requireNotNull(v).apply {
                     addAll(decl.body.freeVariables())
                 }

@@ -44,7 +44,7 @@ fun Decl.ppr(st: PprState) {
             st.text("use ")
             st.pprFqName(moduleName, ident)
         }
-        is Define -> {
+        is ValueDef -> {
             visibility.ppr(st)
             st.text("def ")
             ident.ppr(st)
