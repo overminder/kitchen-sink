@@ -75,7 +75,7 @@ This is the concrete syntax tree of Kotlin.
     \begin{itemize}
         \item Stubs represents the interface parts of a kt compilation unit
         (.h, .mli, .hi etc).
-        \item There's also a LighterASTNNode (KotlinLightParser) -- what is it? (Flyweight pattern is like hash consing)
+        \item There's also a LighterASTNNode (KotlinLightParser) -- Explained in \href{https://github.com/JetBrains/android/blob/230f7af2/android/docs/kotlin-light-classes.md}{Android Studio's tree}.
         \item Some KtElements are related to types: e.g. KtTypeReference (some of them are not KtElements but stubs!)
     \end{itemize}
     \item compiler.psi.KtPsiFactory is the entrypoint for creating KtFile (a PsiElement) from source text.
@@ -526,6 +526,10 @@ Generate class body from a KtPureClassOrObject with a ClassDescriptor. Also does
 
 \paragraph{FunctionCodeGen}
 Generate class body from a KtPureClassOrObject with a ClassDescriptor. Also does bridge generation.
+
+\paragraph{PropertyCodegen}
+
+Checks if a property has JvmField and decides whether to generate accessors. XXX: What if a superclass's property is a JvmField?
 
 \subsubsection{JS}
 
