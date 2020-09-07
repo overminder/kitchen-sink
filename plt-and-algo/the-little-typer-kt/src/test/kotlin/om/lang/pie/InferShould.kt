@@ -9,15 +9,49 @@ import kotlin.test.assertEquals
 class InferShould {
     @Test
     fun inferSimpleTypes() {
-        assertInferredTo("0", Nat)
-        assertInferredTo("1", Nat)
-        assertInferredTo("Nat", Set)
-        assertInferredTo("Set", Set)
+        assertSynthedTo("0", PiType.Nat)
+        assertSynthedTo("1", PiType.Nat)
+        assertSynthedTo("Nat", PiType.Set)
+        assertSynthedTo("Set", PiType.Set)
     }
 
-    private fun assertInferredTo(source: String, expected: Type) {
+    @Test
+    fun checkSimpleProgram() {
+        assertTypeChecks("""
+            (claim a Nat)
+            (define a 0)
+        """)
+
+        assertTypeChecks("""
+            (claim a Nat)
+            (define a 0)
+            
+            (claim b Nat)
+            (define b
+              (add1 a))
+        """)
+
+        assertTypeChecks("""
+            (claim a (-> Nat Nat))
+            (define a
+              (lam (x)
+                (add1 x)))
+                
+            (claim b Nat)
+            (define b (a 0))
+        """)
+    }
+
+    private fun assertSynthedTo(source: String, expected: PiType) {
+        val ctx = TypeChecking.emptyCtx
         val sexpr = SExprParser.parseOne(source)
         val expr = SExprToProgram.expr(sexpr)
-        assertEquals(expected, infer(expr))
+        assertEquals(expected, TypeChecking.synth(expr, ctx))
+    }
+
+    private fun assertTypeChecks(source: String) {
+        val sexprs = SExprParser.parseMany(source)
+        val program = sexprs.map(SExprToProgram::topLevel)
+        TypeChecking.program(program)
     }
 }

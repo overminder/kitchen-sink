@@ -1,3 +1,4 @@
 ### Synopsis
 
-Try to implement the Pie language from `The Little Typer`.
+Re-learn Normalization by Evaluation, by implementing the Pie language
+from `The Little Typer`.
