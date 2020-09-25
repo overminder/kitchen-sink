@@ -12,6 +12,18 @@ sealed class ConsList<A : Any> {
     fun cons(a: A) : ConsList<A> {
         return Cons(a, this)
     }
+
+    fun <B: Any> mapNotNull(f: (A) -> B?): ConsList<B> {
+        var iter = this
+        val out = mutableListOf<B>()
+        while (iter is Cons) {
+            f(iter.head)?.let(out::add)
+            iter = iter.tail
+        }
+        return out.foldRight(nil()) { item, acc ->
+            acc.cons(item)
+        }
+    }
 }
 
 fun <K : Any, V : Any> ConsList<Pair<K, V>>.assoc(k: K): ConsList.Cons<Pair<K, V>>? {

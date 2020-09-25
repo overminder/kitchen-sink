@@ -64,6 +64,7 @@ object ProgramToSExpr {
             is PiExpr.NatLit -> SSymbol(e.value.toString())
             is PiExpr.The -> SList.of("the", expr(e.type), expr(e.body))
             is PiExpr.App -> SList(e.args.mapTo(mutableListOf(expr(e.f)), ::expr))
+            is PiExpr.RecNat -> SList.of("rec-Nat", expr(e.type), expr(e.nat), expr(e.base), expr(e.step))
         }
     }
 
@@ -71,6 +72,7 @@ object ProgramToSExpr {
         return when (t) {
             is Claim -> SList.of("claim", t.name, expr(t.type))
             is Define -> SList.of("define", t.name, expr(t.value))
+            is Output -> SList.of("output", expr(t.value))
         }
     }
 }
@@ -88,6 +90,10 @@ object SExprToProgram {
                 assert(rest.size == 2)
                 val (name, value) = rest
                 Claim(expectSymbol(name), expr(value))
+            }
+            "output" -> {
+                assert(rest.size == 1)
+                Output(expr(rest[0]))
             }
             else -> error("Unknown toplevel syntax: $head")
         }
@@ -163,6 +169,11 @@ object SExprToProgram {
                 val resTy = expr(rest.last())
                 val argTypes = rest.subList(0, rest.size - 1).map(::expr)
                 PiExpr.Arr(argTypes, resTy)
+            }
+            "rec-Nat" -> {
+                assert(rest.size == 4)
+                val (type, nat, base, step) = rest.map(::expr)
+                PiExpr.RecNat(type, nat, base, step)
             }
             else -> null
         }

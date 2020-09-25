@@ -3,11 +3,13 @@ package om.lang.pie
 sealed class TopLevel
 data class Claim(val name: String, val type: PiExpr) : TopLevel()
 data class Define(val name: String, val value: PiExpr) : TopLevel()
+data class Output(val value: PiExpr) : TopLevel()
 
 sealed class PiExpr {
     object Zero : PiExpr()
     data class Succ(val pred: PiExpr) : PiExpr()
     data class NatLit(val value: Int) : PiExpr()
+    data class RecNat(val type: PiExpr, val nat: PiExpr, val base: PiExpr, val step: PiExpr) : PiExpr()
 
     data class Var(val name: String) : PiExpr()
     data class The(val type: PiExpr, val body: PiExpr) : PiExpr()

@@ -17,21 +17,23 @@ class InferShould {
 
     @Test
     fun checkSimpleProgram() {
-        assertTypeChecks("""
+        assertOutput("""
             (claim a Nat)
             (define a 0)
-        """)
+            (output a)
+        """, PiValue.Zero)
 
-        assertTypeChecks("""
+        assertOutput("""
             (claim a Nat)
             (define a 0)
             
             (claim b Nat)
             (define b
               (add1 a))
-        """)
+            (output b)
+        """, PiValue.fromInt(1))
 
-        assertTypeChecks("""
+        assertOutput("""
             (claim a (-> Nat Nat))
             (define a
               (lam (x)
@@ -39,7 +41,19 @@ class InferShould {
                 
             (claim b Nat)
             (define b (a 0))
-        """)
+            (output b)
+        """, PiValue.fromInt(1))
+
+        assertOutput("""
+            (claim +
+              (-> Nat Nat Nat))
+            (define +
+              (lam (n m)
+                (rec-Nat Nat n m
+                  (lam (n-1 sum)
+                    (add1 sum)))))
+            (output (+ 1 2))
+        """, PiValue.fromInt(3))
     }
 
     private fun assertSynthedTo(source: String, expected: PiType) {
@@ -49,9 +63,9 @@ class InferShould {
         assertEquals(expected, TypeChecking.synth(expr, ctx))
     }
 
-    private fun assertTypeChecks(source: String) {
+    private fun assertOutput(source: String, value: PiValue) {
         val sexprs = SExprParser.parseMany(source)
         val program = sexprs.map(SExprToProgram::topLevel)
-        TypeChecking.program(program)
+        assertEquals(listOf(value), Eval.program(program))
     }
 }

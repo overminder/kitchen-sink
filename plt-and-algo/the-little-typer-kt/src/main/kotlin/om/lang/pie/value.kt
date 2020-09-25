@@ -2,9 +2,19 @@ package om.lang.pie
 
 sealed class PiValue {
     object Zero : PiValue()
-    data class Succ(val pred: PiExpr) : PiValue()
-    data class Lam(val arg: String, val env: Env, val body: PiValue) : PiValue()
+    data class Succ(val pred: PiValue) : PiValue()
+    data class Lam(val arg: String, val env: Env, val body: PiExpr) : PiValue()
     data class Neu(val neu: PiNeu) : PiValue()
+
+    companion object {
+        fun fromInt(i: Int): PiValue {
+            var res: PiValue = Zero
+            repeat(i) {
+                res = Succ(res)
+            }
+            return res
+        }
+    }
 }
 
 sealed class PiType : PiValue() {
