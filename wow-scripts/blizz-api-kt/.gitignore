@@ -5,3 +5,8 @@
 build
 
 local.properties
+
+scratch
+
+# Sqlite DB
+/*.db
