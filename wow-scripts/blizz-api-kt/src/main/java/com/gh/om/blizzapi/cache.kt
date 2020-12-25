@@ -4,7 +4,6 @@ import java.io.File
 import java.sql.DriverManager
 import java.util.concurrent.ConcurrentHashMap
 
-
 interface Cache {
     suspend fun put(key: ByteArray, value: ByteArray?)
     suspend fun get(key: ByteArray): ByteArray?

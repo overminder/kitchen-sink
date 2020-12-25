@@ -108,6 +108,7 @@ data class Item(
                 AGILITY,
                 INTELLECT
             )
+            val combatStats = listOf(STAMINA) + primaryStats + secondaryStats
         }
 
         fun isCombatRating(): Boolean {
@@ -129,14 +130,14 @@ data class Item(
         NON_EQUIP,
         HEAD,
         NECK,
-        SHOULDERS,
+        SHOULDER,
         BODY,
         CHEST,
         WAIST,
         LEGS,
         FEET,
-        WRISTS,
-        HANDS,
+        WRIST,
+        HAND,
         FINGER,
         TRINKET,
         WEAPON,
@@ -154,8 +155,7 @@ data class Item(
         THROWN,
         RANGEDRIGHT,
         QUIVER,
-        RELIC,
-        MAX;
+        RELIC;
 
         data class Named(
             val type: Inventory,

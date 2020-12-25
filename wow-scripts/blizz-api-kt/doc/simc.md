@@ -33,7 +33,8 @@
          // Or stamina.
          // cr_type is determined by item_database::item_combat_rating_type --
          // see combat_rating_multiplier_type.
-         return dbc_t::combat_rating_multiplier(ilevel, cr_type) * raw_stat
+         // The `new_ilevel` is not obvious here.
+         return dbc_t::combat_rating_multiplier(new_ilevel, cr_type) * raw_stat
          ```
          Which uses static tables `__combat_ratings_mult_by_ilvl` and `__stamina_mult_by_ilvl`
          (sc_scale_data.inc).
@@ -42,7 +43,8 @@
          15% stat per 15 ilevel.
 
 - What is parsed_item_data_t::stat_alloc? This seems to be a normalized (ilevel / slot independent)
-  stat value. It's calculated from stat_val (the original stat value):
+  stat value. It's calculated from stat_val (the original stat value) in
+  item_database::convert_stat_values :
   ```
   cr_type = item_database::item_combat_rating_type(inventory_type)
   cr_coeff = dbc_t::combat_rating_multiplier(original_ilevel, cr_type)
@@ -50,6 +52,8 @@
   ```
   cr_type is combat_rating_multiplier_type
   cr_coeff is read from static table __combat_ratings_mult_by_ilvl.
+
+- Another place that calcualtes stat_allic is item_database::apply_item_bonus
 
 ### Extra
 

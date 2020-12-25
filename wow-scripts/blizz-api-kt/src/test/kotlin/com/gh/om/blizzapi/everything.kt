@@ -3,16 +3,19 @@
  */
 package com.gh.om.blizzapi
 
+import com.gh.om.blizzapi.base.Simc
+import com.gh.om.blizzapi.geardrops.EquipmentStateImpl
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
 import java.io.File
+import kotlin.math.absoluteValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class SimcReaderTest {
-    val simc = SimcSource.Reader(File(Util.expanduser("~/ref/simc")))
+    val simc = SimcCxxSourceReaderImpl(File(Util.expanduser("~/ref/simc")))
 
     @Test
     fun testReadRandomPropPoints() {
@@ -23,7 +26,7 @@ class SimcReaderTest {
     @Test
     fun testReadCrmTable() {
         val table = simc.getCrmTable()
-        assertEquals(1300, table[ItemScaling.CrmType.WEAPON]?.size)
+        assertEquals(1300, table[Simc.CrmType.WEAPON]?.size)
     }
 }
 
@@ -48,5 +51,107 @@ class SqliteCacheTest {
             cache.put("asdf".toByteArray(), "fdsa".toByteArray())
             assertEquals("fdsa", cache.get("asdf".toByteArray())?.decodeToString())
         }
+    }
+}
+
+class ScalingTest {
+    lateinit var app: App
+
+    @Before
+    fun setUp() {
+        app = createApp()
+    }
+
+    @Test
+    fun testScalingDifference() {
+        val item = runBlocking {
+            app.bapi.getItem("178829")
+        }
+
+        val statTypes = listOf(
+            Item.Stat.HASTE_RATING,
+            Item.Stat.CRIT_RATING,
+            Item.Stat.INTELLECT,
+            Item.Stat.STAMINA,
+        )
+        val statAllocs = statTypes.map { stat ->
+            val statVal = requireNotNull(item.findStat(stat)).value
+            stat to app.itemScaling.normStat(item, stat, statVal)
+        }.toMap()
+
+        data class DP(val haste: Int, val crit: Int = 0, val intel: Int = 0, val stam: Int = 0) {
+            fun getStat(statType: Item.Stat): Int {
+                return when (statType) {
+                    Item.Stat.HASTE_RATING -> haste
+                    Item.Stat.CRIT_RATING -> crit
+                    Item.Stat.INTELLECT -> intel
+                    Item.Stat.STAMINA -> stam
+                    else -> error("$statType")
+                }
+            }
+        }
+
+        val expected = mapOf(
+            158 to DP(54, 38, 192, 70),
+            184 to DP(65, 45, 245, 87),
+            187 to DP(66, 46, 250, 90),
+            190 to DP(68, 47, 260, 95),
+            194 to DP(69, 48, 269, 99),
+            197 to DP(70, 49, 276, 103),
+            200 to DP(72, 50, 283, 106),
+            203 to DP(73, 51, 292, 112),
+            207 to DP(74, 52, 302, 117),
+            210 to DP(76, 54, 311, 122),
+            213 to DP(77, 55, 320, 126),
+            216 to DP(79, 55, 330, 131),
+            220 to DP(80, 56, 341, 137),
+            223 to DP(82, 58, 351, 142),
+            226 to DP(83, 58, 362, 149),
+            233 to DP(86, 60, 386, 162),
+        )
+        val allDiffs = mutableListOf<Double>()
+        val allBads = mutableListOf<String>()
+        for ((ilevel, eScaled) in expected) {
+            val bads = mutableListOf<String>()
+            for ((statType, statAlloc) in statAllocs) {
+                val scaled = app.itemScaling.scaledStat(item, ilevel, statAlloc, statType)
+                val exp = eScaled.getStat(statType)
+                if (exp != scaled) {
+                    val diff = (scaled - exp).toDouble() / exp
+                    allDiffs += diff
+                    bads += "$statType($diff)"
+                }
+            }
+            if (bads.isNotEmpty()) {
+                val msg = "BAD: ilevel $ilevel, bonus ${1472 + ilevel - 158}: ${bads.joinToString()}"
+                allBads += msg
+            }
+        }
+        val avgDiff = allDiffs.sumByDouble { it.absoluteValue } / (expected.size * 4)
+        assert(avgDiff < 0.005) {
+            allBads.joinToString("\n")
+        }
+    }
+}
+
+class EquipmentStateTest {
+    @Test
+    fun testWeaponsInBag() {
+        val state = EquipmentStateImpl()
+        val mh = Simc.Lang.Item(Simc.Slot.MAIN_HAND, "mh")
+        val oh = Simc.Lang.Item(Simc.Slot.OFF_HAND, "oh")
+        val twoh = Simc.Lang.Item(Simc.Slot.MAIN_HAND, "oh", is2hWeapon = true)
+        val oh2 = Simc.Lang.Item(Simc.Slot.OFF_HAND, "oh2")
+
+        state.equip(mh)
+        state.equip(oh)
+        assertEquals(listOf(mh, oh), state.items.toList())
+
+        state.equip(twoh)
+        assertEquals(listOf(twoh), state.items.toList())
+
+        val s2 = state.copy()
+        s2.equip(oh2)
+        assertEquals(listOf(mh, oh2), s2.items.toList())
     }
 }

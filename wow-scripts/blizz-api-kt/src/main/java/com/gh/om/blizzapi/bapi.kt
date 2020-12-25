@@ -1,5 +1,6 @@
 package com.gh.om.blizzapi
 
+import com.gh.om.blizzapi.base.Bapi
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.google.gson.annotations.SerializedName
@@ -18,22 +19,44 @@ import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.url
 import io.ktor.http.parametersOf
+import org.joda.time.DateTime
+import org.joda.time.Duration
 import javax.inject.Inject
 
-interface Bapi {
-    suspend fun configure(id: String, secret: String)
-    suspend fun getItem(id: String): Item
-    val token: AccessToken
+private suspend inline fun <reified A> Cache.tryGetJson(key: String, gson: Gson): A? {
+    val bkey = key.toByteArray()
+    val bs = get(bkey) ?: return null
+    return try {
+        gson.fromJson(bs.decodeToString(), A::class.java)
+    } catch (e: JsonSyntaxException) {
+        put(bkey, null)
+        null
+    }
 }
+
+private suspend inline fun Cache.putJson(key: String, json: String) {
+    val bkey = key.toByteArray()
+    val bs = json.toByteArray()
+    put(bkey, bs)
+}
+
+private fun itemCacheKey(id: String) = "item:$id"
+private fun tokenCacheKey(id: String) = "token:$id"
 
 class BapiImpl @Inject constructor(
     private val cache: Cache,
     private val gsonConfig: GsonConfig,
     private val gson: Gson,
+    private val appConfig: AppConfig,
 ) : Bapi {
     override lateinit var token: AccessToken
 
-    override suspend fun configure(id: String, secret: String) {
+    private suspend fun getToken(id: String, secret: String): TimedAccessToken {
+        cache.tryGetJson<TimedAccessToken>(tokenCacheKey(id), gson)?.let {
+            if (it.expiry < DateTime.now()) {
+                return it
+            }
+        }
         val c = HttpClient(CIO) {
             configureHttpClient(this)
             install(Auth) {
@@ -45,13 +68,18 @@ class BapiImpl @Inject constructor(
             }
         }
         val postBody = parametersOf("grant_type", "client_credentials")
-        token = c.submitForm(postBody) {
+        val token = c.submitForm<AccessToken>(postBody) {
             url("https://us.battle.net/oauth/token")
         }
+        return TimedAccessToken(token, DateTime.now() + Duration.standardSeconds(40000))
+    }
+
+    override suspend fun configure() {
+        token = getToken(appConfig.client.id, appConfig.client.secret).token
     }
 
     override suspend fun getItem(id: String): Item {
-        tryGetCachedItem(id)?.let {
+        cache.tryGetJson<Item>(itemCacheKey(id), gson)?.let {
             return it
         }
 
@@ -64,25 +92,9 @@ class BapiImpl @Inject constructor(
             token.installTo(this)
         }
         val json = c.get<String>("$base$endpoint")
-        putCachedItem(id, json)
-        return gson.fromJson(json, Item::class.java)
-    }
-
-    private suspend fun tryGetCachedItem(id: String): Item? {
-        val key = "item:$id".toByteArray()
-        val bs = cache.get(key) ?: return null
-        return try {
-            gson.fromJson(bs.decodeToString(), Item::class.java)
-        } catch (e: JsonSyntaxException) {
-            cache.put(key, null)
-            null
-        }
-    }
-
-    private suspend fun putCachedItem(id: String, json: String) {
-        val key = "item:${id}".toByteArray()
-        val bs = json.toByteArray()
-        cache.put(key, bs)
+        val result = gson.fromJson(json, Item::class.java)
+        cache.putJson(itemCacheKey(id), json)
+        return result
     }
 
     private fun configureHttpClient(config: HttpClientConfig<*>) {
@@ -106,7 +118,7 @@ data class AccessToken(@SerializedName("access_token") val value: String)
 
 data class TimedAccessToken(
     val token: AccessToken,
-    val expiryDate: Long,
+    val expiry: DateTime,
 )
 
 private fun AccessToken.installTo(config: HttpClientConfig<*>) {
