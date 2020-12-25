@@ -20,7 +20,7 @@ object ShadowlandsGearDropsImpl : ShadowlandsGearDrops {
         get() = ShadowlandsInstance.dungeons.map(::fromInstance)
 
     override val raids: List<GearDropSource>
-        get() = ShadowlandsInstance.dungeons.map(::fromInstance)
+        get() = ShadowlandsInstance.raids.map(::fromInstance)
 
     override fun fromInstance(instance: ShadowlandsInstance): GearDropSource {
         return when (instance) {
@@ -36,8 +36,15 @@ object ShadowlandsGearDropsImpl : ShadowlandsGearDrops {
         }
     }
 
-    override fun fromBoss(boss: Boss): BossWithDrop {
-        return CastleNathria.fromBoss(boss)
+    override fun getDrop(boss: Boss): BossWithDrop {
+        return CastleNathria.getDrop(boss)
+    }
+
+    override fun bossesFrom(instance: ShadowlandsInstance): Collection<Boss> {
+        return when (instance) {
+            ShadowlandsInstance.CastleNathria -> CastleNathria.bosses.keys
+            else -> TODO()
+        }
     }
 
     override fun translateKeystoneLevel(keystoneLevel: Int): MythicPlusDungeonDrop {
@@ -48,8 +55,8 @@ object ShadowlandsGearDropsImpl : ShadowlandsGearDrops {
             keystoneLevel
         }
         val ix = (clamped - 2) * 2
-        val endOfDungeon = keystoneDrops[ix].toInt()
-        val weeklyChest = keystoneDrops[ix + 1].toInt()
+        val endOfDungeon = keystoneDrops[ix]
+        val weeklyChest = keystoneDrops[ix + 1]
         return MythicPlusDungeonDrop(endOfDungeonIlevel = endOfDungeon, weeklyChestIlevel = weeklyChest)
     }
 
@@ -60,7 +67,16 @@ object ShadowlandsGearDropsImpl : ShadowlandsGearDrops {
             RaidDifficulty.Mythic -> 226
         }
     }
+
+    override fun ilevelMod(boss: Boss): Int {
+        return when (boss) {
+            Boss.LEGION, Boss.DENATH -> 7
+            else -> 0
+        }
+    }
 }
 
 private val keystoneDrops = ("187 200 190 203 194 207 194 210 197 210 200 " +
-    "213 200 216 200 216 203 220 203 220 207 223 207 223 207 226 210 226").split(" ")
+    "213 200 216 200 216 203 220 203 220 207 223 207 223 207 226 210 226").split(" ").map {
+    it.toInt()
+}

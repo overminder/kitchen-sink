@@ -5,6 +5,7 @@ package com.gh.om.blizzapi
 
 import com.gh.om.blizzapi.base.Simc
 import com.gh.om.blizzapi.geardrops.EquipmentStateImpl
+import com.google.gson.Gson
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
@@ -138,10 +139,10 @@ class EquipmentStateTest {
     @Test
     fun testWeaponsInBag() {
         val state = EquipmentStateImpl()
-        val mh = Simc.Lang.Item(Simc.Slot.MAIN_HAND, "mh")
-        val oh = Simc.Lang.Item(Simc.Slot.OFF_HAND, "oh")
-        val twoh = Simc.Lang.Item(Simc.Slot.MAIN_HAND, "oh", is2hWeapon = true)
-        val oh2 = Simc.Lang.Item(Simc.Slot.OFF_HAND, "oh2")
+        val mh = Simc.Lang.Item(Simc.Slot.MAIN_HAND, 1)
+        val oh = Simc.Lang.Item(Simc.Slot.OFF_HAND, 2)
+        val twoh = Simc.Lang.Item(Simc.Slot.MAIN_HAND, 3, is2hWeapon = true)
+        val oh2 = Simc.Lang.Item(Simc.Slot.OFF_HAND, 4)
 
         state.equip(mh)
         state.equip(oh)

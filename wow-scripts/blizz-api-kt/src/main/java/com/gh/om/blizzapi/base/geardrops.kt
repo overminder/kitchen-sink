@@ -2,6 +2,7 @@ package com.gh.om.blizzapi.base
 
 import com.gh.om.blizzapi.Item
 import com.gh.om.blizzapi.RaidDifficulty
+import java.util.function.Supplier
 
 enum class ShadowlandsInstance {
 
@@ -62,13 +63,13 @@ enum class Boss {
 
 data class BossWithDrop(
     val name: String,
-    val itemIds: List<String>,
+    val itemIds: List<Int>,
 )
 
 interface GearDropSource {
     val isDungeon: Boolean
     val name: String
-    val bosses: List<BossWithDrop>
+    val bossWithDrops: List<BossWithDrop>
 
     // Some bosses have higher ilevel
     fun ilevelMod(boss: BossWithDrop): Int
@@ -79,9 +80,20 @@ interface ShadowlandsGearDrops {
     val raids: List<GearDropSource>
 
     fun fromInstance(instance: ShadowlandsInstance): GearDropSource
-    fun fromBoss(boss: Boss): BossWithDrop
+    fun getDrop(boss: Boss): BossWithDrop
+    fun bossesFrom(instance: ShadowlandsInstance): Collection<Boss>
     fun translateKeystoneLevel(keystoneLevel: Int): MythicPlusDungeonDrop
     fun translateRaidIlevel(difficulty: RaidDifficulty): Int
+    fun ilevelMod(boss: Boss): Int
+}
+
+interface BonusRollDecisionMaker {
+    fun shouldRollOn(
+        cs: CharacterState,
+        thisBoss: Boss, thisDifficulty: RaidDifficulty,
+        // Not including the current (just defeated) one.
+        restOfBosses: Supplier<List<Pair<Boss, RaidDifficulty>>>,
+    ): Boolean
 }
 
 data class MythicPlusDungeonDrop(
@@ -99,21 +111,21 @@ interface GearDropSimulatorFactory {
 }
 
 interface GearDropSimulator {
-    suspend fun run(): GearDropSimReport
+    fun run(): GearDropSimReport
 }
 
 interface GearDropSimulatorHelper {
     // "Any drop" could either be a piece of gear, or a gear token (e.g. from Castle Nathria).
-    suspend fun scoreAnyDrop(
-        dropId: String,
+    fun scoreAnyDrop(
+        dropId: Int,
         ilevel: Int,
         equipmentState: Simc.EquipmentState,
         baseScore: Double
     ): EffectFromEquip
 
-    suspend fun sumStats(items: Collection<Simc.Lang.Item>): Map<Item.Stat, Int>
+    fun sumStats(items: Collection<Simc.Lang.Item>): Map<Item.Stat, Int>
     fun scoreStats(stats: Map<Item.Stat, Int>): Double
-    suspend fun pprItem(item: Simc.Lang.Item): String
+    fun pprItem(item: Simc.Lang.Item): String
 }
 
 data class EffectFromEquip(
@@ -136,4 +148,9 @@ sealed class GearDropSimReport {
         override val sortedEffects: List<EffectFromEquip>,
         override val averageIncr: Double,
     ) : GearDropSimReport()
+}
+
+enum class LootDistribution {
+    BFA,
+    SL,
 }

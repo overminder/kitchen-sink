@@ -1,6 +1,9 @@
 package com.gh.om.blizzapi
 
 import com.gh.om.blizzapi.base.Bapi
+import com.gh.om.blizzapi.base.FastBapi
+import com.gh.om.blizzapi.base.ShadowlandsGearDrops
+import com.gh.om.blizzapi.base.Simc
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.google.gson.annotations.SerializedName
@@ -42,6 +45,41 @@ private suspend inline fun Cache.putJson(key: String, json: String) {
 
 private fun itemCacheKey(id: String) = "item:$id"
 private fun tokenCacheKey(id: String) = "token:$id"
+
+class FastBapiImpl @Inject constructor(
+    private val bapi: Bapi,
+    private val slDrops: ShadowlandsGearDrops,
+    private val simc: Simc.DB,
+) : FastBapi {
+    private val cache = mutableMapOf<Int, Item>()
+
+    override fun getItem(id: Int): Item {
+        return requireNotNull(cache[id]) {
+            "id $id not in FastBapi (cache.size = ${cache.size})"
+        }
+    }
+
+    private fun putItem(id: Int, item: Item) {
+        cache[id] = item
+    }
+
+    override suspend fun init() {
+        for (d in slDrops.dungeons + slDrops.raids) {
+            for (b in d.bossWithDrops) {
+                for (id in b.itemIds) {
+                    populateItem(id)
+                    simc.tryTradeGearToken(id)?.forEach {
+                        populateItem(it)
+                    }
+                }
+            }
+        }
+    }
+
+    override suspend fun populateItem(id: Int) {
+        putItem(id, bapi.getItem(id.toString()))
+    }
+}
 
 class BapiImpl @Inject constructor(
     private val cache: Cache,

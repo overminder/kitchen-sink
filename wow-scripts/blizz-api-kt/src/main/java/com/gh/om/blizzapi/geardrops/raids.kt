@@ -21,7 +21,7 @@ object CastleNathria : Raid() {
     private val sludge = boss("Sludge", 183022, 182981)
     private val legion = boss("Legion", 183895, 183032, 182998)
     private val denath = boss("Denath", 183898, 183020, 183036, 184028, 184030)
-    override val bosses: List<BossWithDrop> = listOf(
+    override val bossWithDrops: List<BossWithDrop> = listOf(
         shriek, hunter, kael, xymox, desto, darkvein, council, sludge, legion, denath
     )
 
@@ -32,18 +32,22 @@ object CastleNathria : Raid() {
         else -> 0
     }
 
-    fun fromBoss(boss: Boss): BossWithDrop {
-        return when (boss) {
-            Boss.SHRIEK -> shriek
-            Boss.HUNTER -> hunter
-            Boss.KAEL -> kael
-            Boss.XYMOX -> xymox
-            Boss.DESTO -> desto
-            Boss.DARKVEIN -> darkvein
-            Boss.COUNCIL -> council
-            Boss.SLUDGE -> sludge
-            Boss.LEGION -> legion
-            Boss.DENATH -> denath
+    val bosses = mapOf(
+        Boss.SHRIEK to shriek,
+        Boss.HUNTER to hunter,
+        Boss.KAEL to kael,
+        Boss.XYMOX to xymox,
+        Boss.DESTO to desto,
+        Boss.DARKVEIN to darkvein,
+        Boss.COUNCIL to council,
+        Boss.SLUDGE to sludge,
+        Boss.LEGION to legion,
+        Boss.DENATH to denath,
+    )
+
+    fun getDrop(boss: Boss): BossWithDrop {
+        return requireNotNull(bosses[boss]) {
+            "Unknown boss ($boss) in $name"
         }
     }
 }

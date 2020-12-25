@@ -1,6 +1,7 @@
 package com.gh.om.blizzapi
 
 import com.gh.om.blizzapi.base.Bapi
+import com.gh.om.blizzapi.base.FastBapi
 import com.gh.om.blizzapi.base.Simc
 import com.gh.om.blizzapi.geardrops.is2hWeapon
 import java.io.File
@@ -223,9 +224,9 @@ class SimcLangReaderImpl @Inject constructor(
 
     private suspend fun parseLine(line: String): Simc.Lang.Item {
         var slot: Simc.Slot? = null
-        var id: String? = null
-        var bonusIds: List<String>? = null
-        var gemIds: List<String>? = null
+        var id: Int? = null
+        var bonusIds: List<Int>? = null
+        var gemIds: List<Int>? = null
         line.split(",").forEachIndexed { ix, attr ->
             val (name, values) = attr.split("=")
             if (ix == 0) {
@@ -236,10 +237,10 @@ class SimcLangReaderImpl @Inject constructor(
                 when (name) {
                     "id" -> {
                         require(valueIds.size == 1)
-                        id = valueIds[0]
+                        id = valueIds[0].toInt()
                     }
-                    "bonus_id" -> bonusIds = valueIds
-                    "gem_id" -> gemIds = valueIds
+                    "bonus_id" -> bonusIds = valueIds.map { it.toInt() }
+                    "gem_id" -> gemIds = valueIds.map { it.toInt() }
                     else -> {
                         // Ignore
                     }
@@ -252,7 +253,7 @@ class SimcLangReaderImpl @Inject constructor(
             id = id!!,
             bonusIds = bonusIds.orEmpty(),
             gemIds = gemIds.orEmpty(),
-            is2hWeapon = bapi.getItem(id!!).is2hWeapon,
+            is2hWeapon = bapi.getItem(id!!.toString()).is2hWeapon,
         )
         // Sanity check
         if (res.is2hWeapon) {
@@ -309,12 +310,12 @@ class SimcDBImpl @Inject constructor(reader: Simc.CxxSourceReader) : Simc.DB {
         return res?.let(Simc.SlotCombination::Just)
     }
 
-    override fun tryTradeGearToken(itemId: String): List<String>? {
+    override fun tryTradeGearToken(itemId: Int): List<Int>? {
         return when (itemId) {
-            "183898" -> listOf("184261", "184259")
-            "183895" -> listOf("184258")
-            "183888" -> listOf("184246")
-            "183891" -> listOf("184249", "184247")
+            183898 -> listOf(184261, 184259)
+            183895 -> listOf(184258)
+            183888 -> listOf(184246)
+            183891 -> listOf(184249, 184247)
             else -> null
         }
     }

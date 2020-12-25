@@ -3,7 +3,7 @@ package com.gh.om.blizzapi
 import com.google.gson.annotations.SerializedName
 
 data class Item(
-    val id: String,
+    val id: Int,
     val name: String,
     // i.e. ilevel
     val level: Int,

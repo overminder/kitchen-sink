@@ -3,13 +3,18 @@ package com.gh.om.blizzapi
 import ShadowlandsGearDropsImpl
 import com.fatboyindustrial.gsonjodatime.Converters
 import com.gh.om.blizzapi.base.Bapi
+import com.gh.om.blizzapi.base.BonusRollDecisionMaker
+import com.gh.om.blizzapi.base.CharacterStateFactory
+import com.gh.om.blizzapi.base.FastBapi
 import com.gh.om.blizzapi.base.GearDropSimulatorFactory
 import com.gh.om.blizzapi.base.GearDropSimulatorHelper
 import com.gh.om.blizzapi.base.ShadowlandsGearDrops
 import com.gh.om.blizzapi.base.Simc
+import com.gh.om.blizzapi.geardrops.CharacterStateFactoryImpl
 import com.gh.om.blizzapi.geardrops.EquipmentStateFactoryImpl
 import com.gh.om.blizzapi.geardrops.GearDropSimulatorFactoryImpl
 import com.gh.om.blizzapi.geardrops.GearDropSimulatorHelperImpl
+import com.gh.om.blizzapi.geardrops.GreedyBonusRollDecisionMaker
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonDeserializationContext
@@ -23,7 +28,6 @@ import dagger.Module
 import dagger.Provides
 import java.io.File
 import java.lang.reflect.Type
-import java.util.function.Consumer
 import java.util.function.Supplier
 import javax.inject.Singleton
 import kotlin.random.Random
@@ -34,6 +38,7 @@ interface App {
     val config: AppConfig
     val itemScaling: Simc.ItemScaling
     val gearDropSimPresets: GearDropSimPresets
+    val fastBapi: FastBapi
 }
 
 @Singleton
@@ -75,7 +80,17 @@ class AppModule {
 
     @Provides
     @Singleton
-    fun provide(factoryImpl: GearDropSimulatorFactoryImpl): GearDropSimulatorFactory = factoryImpl
+    fun provideBonusRollDecisionMaker(impl: GreedyBonusRollDecisionMaker): BonusRollDecisionMaker = impl
+
+    @Provides
+    @Singleton
+    fun provideGearDropSimulatorFactory(
+        factoryImpl: GearDropSimulatorFactoryImpl
+    ): GearDropSimulatorFactory = factoryImpl
+
+    @Provides
+    @Singleton
+    fun provideCharacterStateFactory(): CharacterStateFactory = CharacterStateFactoryImpl
 
     @Provides
     @Singleton
@@ -93,6 +108,10 @@ class AppModule {
     @Provides
     @Singleton
     fun provideBapi(bapiImpl: BapiImpl): Bapi = bapiImpl
+
+    @Provides
+    @Singleton
+    fun provideFastBapi(impl: FastBapiImpl): FastBapi = impl
 
     @Provides
     @Singleton

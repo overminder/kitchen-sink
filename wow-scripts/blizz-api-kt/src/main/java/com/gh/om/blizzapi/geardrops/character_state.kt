@@ -1,7 +1,16 @@
 package com.gh.om.blizzapi.geardrops
 
+import com.gh.om.blizzapi.GreatVaultOption
+import com.gh.om.blizzapi.PlayerActivity
+import com.gh.om.blizzapi.RaidDifficulty
+import com.gh.om.blizzapi.base.Boss
+import com.gh.om.blizzapi.base.CharacterState
+import com.gh.om.blizzapi.base.CharacterStateFactory
+import com.gh.om.blizzapi.base.LootDistribution
+import com.gh.om.blizzapi.base.ShadowlandsInstance
 import com.gh.om.blizzapi.base.Simc
 import javax.inject.Inject
+import kotlin.math.min
 
 class EquipmentStateFactoryImpl @Inject constructor() : Simc.EquipmentStateFactory {
     override fun create(): Simc.EquipmentState {
@@ -9,9 +18,101 @@ class EquipmentStateFactoryImpl @Inject constructor() : Simc.EquipmentStateFacto
     }
 }
 
+object CharacterStateFactoryImpl : CharacterStateFactory {
+    override fun create(
+        equipmentState: Simc.EquipmentState,
+        lootDistribution: LootDistribution,
+    ) = CharacterStateImpl(equipmentState, lootDistribution)
+}
+
+class CharacterStateImpl(
+    override val equipments: Simc.EquipmentState,
+    private val lootDistribution: LootDistribution
+) : CharacterState {
+    private val defeatedLastBoss = mutableSetOf<RaidDifficulty>()
+
+    // Keystone levels this week
+    private val mythicPlusCompleted = mutableListOf<Int>()
+
+    // Per difficulty this week
+    private val raidBossesKilled = mutableMapOf<RaidDifficulty, MutableSet<Boss>>()
+
+    override var bonusRollCount: Int = 0
+
+    override fun startWeek() {
+        if (lootDistribution.chances.bonusRoll != null) {
+            bonusRollCount = min(5, bonusRollCount + 2)
+        }
+    }
+
+    override fun runActivity(activity: PlayerActivity) {
+        when (activity) {
+            is PlayerActivity.Raid -> {
+                for (boss in activity.bosses) {
+                    raidBossesKilled.compute(activity.difficulty) { _, v ->
+                        (v ?: mutableSetOf()).also {
+                            it += boss
+                        }
+                    }
+                }
+            }
+            is PlayerActivity.MythicPlus -> {
+                mythicPlusCompleted += activity.keystoneLevel
+            }
+        }
+    }
+
+    override fun finalizeWeeklyChests(): List<GreatVaultOption> {
+        val res = when (lootDistribution) {
+            LootDistribution.BFA -> generateOptionsForBfa()
+            LootDistribution.SL -> generateOptionsForSl()
+        }
+        mythicPlusCompleted.clear()
+        raidBossesKilled.clear()
+        return res
+    }
+
+    private fun generateOptionsForBfa(): List<GreatVaultOption> {
+        // Only count the highest M+
+        return listOfNotNull(mythicPlusCompleted.maxOrNull()?.let(GreatVaultOption::MythicPlus))
+    }
+
+    private fun generateOptionsForSl(): List<GreatVaultOption> {
+        // 1. Update defeatedLastBoss.
+        for ((diff, bosses) in raidBossesKilled) {
+            if (bosses.contains(Boss.DENATH)) {
+                defeatedLastBoss.add(diff)
+            }
+        }
+
+        // 2. Sort content completed and generate great vault options
+        // 2.1 M+
+        val keystones = mythicPlusCompleted.sortedDescending()
+        val mplusOptions = listOf(1, 4, 10).mapNotNull {
+            keystones.getOrNull(it - 1)
+        }.map(GreatVaultOption::MythicPlus)
+
+        // 2.2 Raid
+        val bossDifficulties = raidBossesKilled.flatMap { entry ->
+            List(entry.value.size) { entry.key }
+        }.sortedDescending()
+        val raidOptions = listOf(3, 7, 10).mapNotNull {
+            bossDifficulties.getOrNull(it - 1)
+        }.map {
+            GreatVaultOption.Raid(
+                ShadowlandsInstance.CastleNathria,
+                it,
+                defeatedLastBoss.contains(it)
+            )
+        }
+        return mplusOptions + raidOptions
+    }
+}
+
 class EquipmentStateImpl : Simc.EquipmentState {
     private val slots = mutableMapOf<Simc.Slot, Simc.Lang.Item>()
     private var has2hWeapon = false
+
     // Store the unequipped MH/OH/2H weapons so that we can switch them back
     private val bag = mutableMapOf<Simc.Lang.WeaponKind, Simc.Lang.Item>()
 

@@ -17,7 +17,7 @@ abstract class Dungeon : GearDropSource {
 }
 
 internal fun boss(name: String, vararg itemIds: Int): BossWithDrop {
-    return BossWithDrop(name, itemIds.map(Int::toString))
+    return BossWithDrop(name, itemIds.toList())
 }
 
 object TheaterOfPain : Dungeon() {
@@ -27,7 +27,7 @@ object TheaterOfPain : Dungeon() {
     private val kul = boss("Kul", 178792, 178870, 178809)
     private val mord = boss("Mord", 178868, 178804, 178872)
 
-    override val bosses: List<BossWithDrop>
+    override val bossWithDrops: List<BossWithDrop>
         get() = listOf(aac, gore, xav, kul, mord)
 }
 
@@ -37,7 +37,7 @@ object Plaguefall : Dungeon() {
     private val domina = boss("Domina", 178930, 178933)
     private val margrave = boss("Margrave", 178755, 178761, 178769)
 
-    override val bosses: List<BossWithDrop>
+    override val bossWithDrops: List<BossWithDrop>
         get() = listOf(glob, ickus, domina, margrave)
 }
 
@@ -46,7 +46,7 @@ object Mist : Dungeon() {
     private val mistcaller = boss("Mistcaller", 178707, 178705)
     private val tred = boss("Tred", 178714, 178693)
 
-    override val bosses: List<BossWithDrop>
+    override val bossWithDrops: List<BossWithDrop>
         get() = listOf(ingra, mistcaller, tred)
 }
 
@@ -56,7 +56,7 @@ object DeOtherSide : Dungeon() {
     private val xyexa = boss("Xyexa", 179349, 179343, 179350)
     private val mueh = boss("Mueh", 179351, 179355)
 
-    override val bosses: List<BossWithDrop>
+    override val bossWithDrops: List<BossWithDrop>
         get() = listOf(hakkar, manastorms, xyexa, mueh)
 }
 
@@ -66,7 +66,7 @@ object Spires : Dungeon() {
     private val oryph = boss("3", 180107, 180117)
     private val devos = boss("4", 180123, 180098)
 
-    override val bosses: List<BossWithDrop>
+    override val bossWithDrops: List<BossWithDrop>
         get() = listOf(kin, vent, oryph, devos)
 }
 
@@ -76,7 +76,7 @@ object HoA : Dungeon() {
     private val aleez = boss("3", 178828, 178822, 178826)
     private val chamb = boss("4", 178829, 178831, 178824)
 
-    override val bosses: List<BossWithDrop>
+    override val bossWithDrops: List<BossWithDrop>
         get() = listOf(halk, eche, aleez, chamb)
 }
 
@@ -86,7 +86,7 @@ object SD : Dungeon() {
     private val bery = boss("3", 178852, 178838)
     private val kaal = boss("4", 178860)
 
-    override val bosses: List<BossWithDrop>
+    override val bossWithDrops: List<BossWithDrop>
         get() = listOf(kryx, tarv, bery, kaal)
 }
 
@@ -96,7 +96,7 @@ object NecroticWake : Dungeon() {
     private val stitch = boss("3", 178748, 178772)
     private val nalt = boss("4", 178782, 178781)
 
-    override val bosses: List<BossWithDrop>
+    override val bossWithDrops: List<BossWithDrop>
         get() = listOf(blight, amarth, stitch, nalt)
 }
 

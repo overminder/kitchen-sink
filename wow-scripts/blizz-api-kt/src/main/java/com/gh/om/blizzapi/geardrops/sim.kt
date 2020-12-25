@@ -1,16 +1,15 @@
 package com.gh.om.blizzapi.geardrops
 
 import com.gh.om.blizzapi.Item
-import com.gh.om.blizzapi.base.Bapi
 import com.gh.om.blizzapi.base.BossWithDrop
 import com.gh.om.blizzapi.base.EffectFromEquip
+import com.gh.om.blizzapi.base.FastBapi
 import com.gh.om.blizzapi.base.GearDropSimReport
 import com.gh.om.blizzapi.base.GearDropSimulator
 import com.gh.om.blizzapi.base.GearDropSimulatorFactory
 import com.gh.om.blizzapi.base.GearDropSimulatorHelper
 import com.gh.om.blizzapi.base.GearDropSource
 import com.gh.om.blizzapi.base.Simc
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 class GearDropSimulatorFactoryImpl @Inject constructor(
@@ -30,9 +29,9 @@ private class GearDropSimulatorImpl(
     private val newIlevel: Int,
 ) : GearDropSimulator {
     private val equipEffects = mutableListOf<EffectFromEquip>()
-    private val baseScore = runBlocking { helper.score(equipmentState) }
+    private val baseScore = helper.score(equipmentState)
 
-    override suspend fun run(): GearDropSimReport {
+    override fun run(): GearDropSimReport {
         return if (site.isDungeon) {
             runDungeon()
         } else {
@@ -41,11 +40,11 @@ private class GearDropSimulatorImpl(
     }
 
     // Run a M+ dungeon
-    private suspend fun runDungeon(): GearDropSimReport.OneDrop {
-        for (boss in site.bosses) {
+    private fun runDungeon(): GearDropSimReport.OneDrop {
+        for (boss in site.bossWithDrops) {
             doBoss(boss)
         }
-        val totalPossibleDrops = site.bosses.sumBy { it.itemIds.size }
+        val totalPossibleDrops = site.bossWithDrops.sumBy { it.itemIds.size }
         val sortedEffects = takeSortedEffects()
         require(totalPossibleDrops == sortedEffects.size)
         val averageIncr = sortedEffects.filter { it.scoreIncr > 0 }.sumByDouble { it.scoreIncr } / totalPossibleDrops
@@ -55,9 +54,9 @@ private class GearDropSimulatorImpl(
         )
     }
 
-    private suspend fun runRaid(): GearDropSimReport.Raid {
+    private fun runRaid(): GearDropSimReport.Raid {
         val bossReports = mutableListOf<GearDropSimReport>()
-        for (boss in site.bosses) {
+        for (boss in site.bossWithDrops) {
             val totalPossibleDrops = boss.itemIds.size
             doBoss(boss)
             val sortedEffects = takeSortedEffects()
@@ -72,7 +71,7 @@ private class GearDropSimulatorImpl(
         }
         val allEffects = bossReports.flatMapTo(mutableListOf()) { it.sortedEffects }
         allEffects.sortByDescending { it.scoreIncr }
-        val averageIncr = bossReports.sumByDouble { it.averageIncr } / site.bosses.size
+        val averageIncr = bossReports.sumByDouble { it.averageIncr } / site.bossWithDrops.size
         return GearDropSimReport.Raid(bossReports, allEffects, averageIncr)
     }
 
@@ -82,7 +81,7 @@ private class GearDropSimulatorImpl(
         return sorted
     }
 
-    private suspend fun doBoss(boss: BossWithDrop) {
+    private fun doBoss(boss: BossWithDrop) {
         for (dropId in boss.itemIds) {
             val toIlevel = newIlevel + site.ilevelMod(boss)
             equipEffects += helper.scoreAnyDrop(dropId, toIlevel, equipmentState, baseScore)
@@ -92,11 +91,11 @@ private class GearDropSimulatorImpl(
 
 class GearDropSimulatorHelperImpl @Inject constructor(
     private val simc: Simc.DB,
-    private val bapi: Bapi,
+    private val bapi: FastBapi,
     private val itemScaling: Simc.ItemScaling,
 ) : GearDropSimulatorHelper {
-    override suspend fun scoreAnyDrop(
-        dropId: String,
+    override fun scoreAnyDrop(
+        dropId: Int,
         ilevel: Int,
         equipmentState: Simc.EquipmentState,
         baseScore: Double,
@@ -118,7 +117,7 @@ class GearDropSimulatorHelperImpl @Inject constructor(
         )
     }
 
-    override suspend fun sumStats(items: Collection<Simc.Lang.Item>): Map<Item.Stat, Int> {
+    override fun sumStats(items: Collection<Simc.Lang.Item>): Map<Item.Stat, Int> {
         val totalStats = mutableMapOf<Item.Stat, Int>()
         for (item in items) {
             val apiItem = bapi.getItem(item.id)
@@ -142,14 +141,14 @@ class GearDropSimulatorHelperImpl @Inject constructor(
             (stats[Item.Stat.VERSATILITY] ?: 0) * 1.15
     }
 
-    override suspend fun pprItem(item: Simc.Lang.Item): String {
+    override fun pprItem(item: Simc.Lang.Item): String {
         val apiItem = bapi.getItem(item.id)
         val ilevel = apiItem.level + inferItemLevelDiff(item.bonusIds)
         return "${item.id}($ilevel, ${apiItem.name})"
     }
 
-    private suspend fun scoreSingleGear(
-        itemId: String,
+    private fun scoreSingleGear(
+        itemId: Int,
         toIlevel: Int,
         equipmentState: Simc.EquipmentState
     ): Pair<Double, Simc.Slot> {
@@ -158,12 +157,12 @@ class GearDropSimulatorHelperImpl @Inject constructor(
 
         return when (val slotComb = simc.inventoryToSlot(apiItem.inventory.type)) {
             is Simc.SlotCombination.Just -> {
-                equipAndRescore(apiItem, toIlevel, slotComb.slot, false, equipmentState) to slotComb.slot
+                equipAndRescore(apiItem, toIlevel, slotComb.slot, equipmentState) to slotComb.slot
             }
             is Simc.SlotCombination.Or -> {
                 // Greedly choose the best slot to equip
                 val combs = slotComb.slots.map {
-                    equipAndRescore(apiItem, toIlevel, it, false, equipmentState) to it
+                    equipAndRescore(apiItem, toIlevel, it, equipmentState) to it
                 }
                 combs.maxByOrNull {
                     it.first
@@ -174,7 +173,7 @@ class GearDropSimulatorHelperImpl @Inject constructor(
                     "invtype: ${apiItem.inventory}"
                 }
                 val slot = Simc.Slot.MAIN_HAND
-                equipAndRescore(apiItem, toIlevel, slot, true, equipmentState) to slot
+                equipAndRescore(apiItem, toIlevel, slot, equipmentState) to slot
             }
             else -> {
                 error("Don't know how to handle $itemId (${apiItem.inventory.type})")
@@ -182,11 +181,10 @@ class GearDropSimulatorHelperImpl @Inject constructor(
         }
     }
 
-    private suspend fun equipAndRescore(
+    private fun equipAndRescore(
         apiItem: Item,
         newIlevel: Int,
         slot: Simc.Slot,
-        is2h: Boolean,
         equipmentState: Simc.EquipmentState
     ): Double {
         // blocklist legendary slot / trinkets (hard to sim -- maybe use average improvement?)
@@ -218,7 +216,7 @@ private fun <A : Any> addToCounter(key: A, value: Int, toMap: MutableMap<A, Int>
 private fun createSimcItemWithIlevel(apiItem: Item, slot: Simc.Slot, newIlevel: Int): Simc.Lang.Item {
     val baseIlevel = apiItem.level
     val bonusId = 1472 + (newIlevel - baseIlevel)
-    val bonusIds = listOf(bonusId.toString())
+    val bonusIds = listOf(bonusId)
     require(apiItem.level + inferItemLevelDiff(bonusIds) == newIlevel) {
         val inferred = apiItem.level + inferItemLevelDiff(bonusIds)
         "bonusId = $bonusIds, item = ${apiItem.id}, inferred = $inferred, new = $newIlevel"
@@ -226,18 +224,13 @@ private fun createSimcItemWithIlevel(apiItem: Item, slot: Simc.Slot, newIlevel: 
     return Simc.Lang.Item(slot, apiItem.id, bonusIds, emptyList(), is2hWeapon = apiItem.is2hWeapon)
 }
 
-private fun inferItemLevelDiff(bonusIds: List<String>): Int {
+private fun inferItemLevelDiff(bonusIds: List<Int>): Int {
     var diff = 0
     for (bid in bonusIds) {
-        val ibid = try {
-            bid.toInt()
-        } catch (e: NumberFormatException) {
-            continue
-        }
-        if (ibid in 1372..1672) {
-            diff += ibid - 1472
-        } else if (ibid in 5846..6245) {
-            diff += ibid - 5845
+        if (bid in 1372..1672) {
+            diff += bid - 1472
+        } else if (bid in 5846..6245) {
+            diff += bid - 5845
         }
     }
 

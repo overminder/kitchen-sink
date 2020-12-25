@@ -8,3 +8,10 @@ interface Bapi {
     suspend fun getItem(id: String): Item
     val token: AccessToken
 }
+
+interface FastBapi {
+    fun getItem(id: Int): Item
+
+    suspend fun init()
+    suspend fun populateItem(id: Int)
+}

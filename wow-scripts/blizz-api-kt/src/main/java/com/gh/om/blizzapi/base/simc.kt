@@ -55,9 +55,9 @@ object Simc {
     object Lang {
         data class Item(
             val slot: Slot,
-            val id: String,
-            val bonusIds: List<String> = emptyList(),
-            val gemIds: List<String> = emptyList(),
+            val id: Int,
+            val bonusIds: List<Int> = emptyList(),
+            val gemIds: List<Int> = emptyList(),
             val is2hWeapon: Boolean = false,
         )
 
@@ -92,7 +92,7 @@ object Simc {
 
         fun inventoryToSlot(inventory: Item.Inventory): SlotCombination?
 
-        fun tryTradeGearToken(itemId: String): List<String>?
+        fun tryTradeGearToken(itemId: Int): List<Int>?
     }
 
     interface CxxSourceReader {
