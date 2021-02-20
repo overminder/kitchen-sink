@@ -39,6 +39,33 @@ fun createApp(): App {
     return app
 }
 
+fun simThisWeek(app: App) {
+    // BFA(8, myself) is 688 before bonus roll, 741 after.
+    val nWeeks = 1
+    // M+8 7H: 102/65
+    // +2x4: +10
+    // M+8+7 7H: 116/72
+    // +3x7: +14
+    // M+10+8 7H: 126/80
+    // +2x4: +19
+    // M+12+10 7H: 145/88
+    // +2H: +8
+    // M+12+10 9H: 153/86
+    // +1H: +20
+    // M+12+10 10H: 173/95
+    // +2x4: +17
+    // M+14+12 10H: 190/102
+    // +3M: +20
+    // M+14+12 10H 3M: 210/112
+    val weeklyActivities = List(nWeeks) {
+        listOf(
+            PlayerActivity.MythicPlus(11, ShadowlandsInstance.DeOtherSide),
+            ActivityPresets.raidFor(RaidDifficulty.Heroic, 8),
+        )
+    }
+    app.gearDropSimPresets.multipleWeeks(batch = 4000, nWeeks = nWeeks, LootDistribution.SL, weeklyActivities::get)
+}
+
 fun main() {
     val app = createApp()
     val t0 = System.nanoTime()
@@ -46,15 +73,10 @@ fun main() {
         app.fastBapi.init()
         app.gearDropSimPresets.init()
     }
-    // app.gearDropSimPresets.greatVaultFromDungeonOnce()
-    // app.gearDropSimPresets.raidOnce()
-    // BFA(8, myself) is 688 before bonus roll, 741 after.
-    val nWeeks = 1
-    val weeklyActivities = List(nWeeks) {
-        ActivityPresets.limit(it + 1)
-    }
-    app.gearDropSimPresets.multipleWeeks(batch = 300, nWeeks = nWeeks, LootDistribution.BFA, weeklyActivities::get)
-    app.gearDropSimPresets.multipleWeeks(batch = 1000, nWeeks = nWeeks, LootDistribution.SL, weeklyActivities::get)
+
+    // app.gearDropSimPresets.dungeonOnce(10)
+    simThisWeek(app)
+
     val dt = (System.nanoTime() - t0) / 1_000_000
     println("Time used: $dt")
 }
@@ -119,15 +141,18 @@ class GearDropSimPresets @Inject constructor(
     }
 
     // Simply calculate average dps incr from one great vault item.
-    fun greatVaultFromDungeonOnce() {
-        for (ilevel in listOf(216, 220, 223, 226)) {
-            val reports = slDrops.dungeons.map { site ->
-                val gearDropSim = gearDropSimulatorFactory.create(site, equipmentState, ilevel)
-                gearDropSim.run()
-            }
-            val avg = reports.sumByDouble { it.averageIncr } / reports.size
-            println("All dungeon average for $ilevel: $avg")
+    fun dungeonOnce(keystoneLevel: Int) {
+        val ilevel = slDrops.translateKeystoneLevel(keystoneLevel).endOfDungeonIlevel
+        val reports = slDrops.dungeons.mapTo(mutableListOf()) { site ->
+            val gearDropSim = gearDropSimulatorFactory.create(site, equipmentState, ilevel)
+            site to gearDropSim.run()
         }
+        reports.sortByDescending { it.second.averageIncr }
+        for (report in reports) {
+            println("${report.first.name}: incr = ${report.second.averageIncr}")
+        }
+        val avg = reports.sumByDouble { it.second.averageIncr } / reports.size
+        println("All dungeon average for $ilevel: $avg")
     }
 
     // Simply calculate average dps incr by completing one raid.

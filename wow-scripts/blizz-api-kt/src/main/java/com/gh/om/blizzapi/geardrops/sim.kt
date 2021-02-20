@@ -134,11 +134,11 @@ class GearDropSimulatorHelperImpl @Inject constructor(
 
     override fun scoreStats(stats: Map<Item.Stat, Int>): Double {
         // Put your pawn score here.
-        return (stats[Item.Stat.INTELLECT] ?: 0) * 3.13 +
-            (stats[Item.Stat.HASTE_RATING] ?: 0) * 1.43 +
-            (stats[Item.Stat.MASTERY_RATING] ?: 0) * 1.28 +
-            (stats[Item.Stat.CRIT_RATING] ?: 0) * 1.25 +
-            (stats[Item.Stat.VERSATILITY] ?: 0) * 1.15
+        return (stats[Item.Stat.INTELLECT] ?: 0) * 3.16 +
+            (stats[Item.Stat.HASTE_RATING] ?: 0) * 1.46 +
+            (stats[Item.Stat.MASTERY_RATING] ?: 0) * 1.30 +
+            (stats[Item.Stat.CRIT_RATING] ?: 0) * 1.29 +
+            (stats[Item.Stat.VERSATILITY] ?: 0) * 1.17
     }
 
     override fun pprItem(item: Simc.Lang.Item): String {

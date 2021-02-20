@@ -29,7 +29,7 @@ class CharacterStateImpl(
     override val equipments: Simc.EquipmentState,
     private val lootDistribution: LootDistribution
 ) : CharacterState {
-    private val defeatedLastBoss = mutableSetOf<RaidDifficulty>()
+    private val defeatedLastBoss = mutableSetOf<RaidDifficulty>(RaidDifficulty.Normal)
 
     // Keystone levels this week
     private val mythicPlusCompleted = mutableListOf<Int>()
