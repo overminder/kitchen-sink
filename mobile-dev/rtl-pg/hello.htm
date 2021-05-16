@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<p>English text</p>
+<p>ويكيبيديا العربية</p>
+
+<script>
+(() => {
+  let addDiv = (content, rtl = false) => {
+    let div = document.createElement('div');
+    div.innerText = content;
+    if (rtl) {
+      div.dir = 'rtl';
+    }
+    document.body.appendChild(div);
+    return div;
+  };
+
+  let en1 = 'en1';
+  let en2 = 'en2';
+  let ar1 = 'ويك';
+  let ar2 = 'العرب';
+
+  let l2rEmb = '\u202a';
+  let l2rMrk = '\u200e';
+  let l2rMrk = '\u200e';
+
+  let addBoth = (content) => {
+    addDiv(content);
+    addDiv(content, true);
+  };
+
+  addBoth(en1 + ' ' + en2 + '!');
+  addBoth(ar1 + ' ' + ar2 + '!');
+  addBoth(en1
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,7 @@
+(executable
+  (name      scm_main)
+  (libraries core stdio))
+
+(env
+  (dev
+    (flags (:standard -w -32 -w -33 -w -34))))
