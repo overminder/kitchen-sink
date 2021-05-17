@@ -17,6 +17,7 @@ import com.github.h0tk3y.betterParse.lexer.regexToken
 import com.github.h0tk3y.betterParse.parser.Parser
 import com.github.h0tk3y.betterParse.parser.parseToEnd
 import java.lang.Exception
+import kotlin.reflect.KClass
 
 sealed class Expr {
     data class I(val value: Int) : Expr()
@@ -40,6 +41,7 @@ class ExprGrammar : Grammar<Expr>() {
     val int by regexToken("\\d+")
     val ident by regexToken("\\w+")
     val plus by literalToken("+")
+    // To separate toplevel definitions -- Just to be lazy...
     val eq by literalToken("=")
     val semi by literalToken(";")
     val comma by literalToken(",")
@@ -103,34 +105,42 @@ data class Program(val defns: List<ToplevelEquation>, val body: Expr) {
 // "ScDefn" in Simon's funimpl book
 data class ToplevelEquation(val name: String, val body: Expr)
 
+class Env<V : Any>(private val here: Map<String, V>, private val outer: Env<V>? = null) {
+    operator fun get(name: String): V? {
+        return here[name] ?: outer?.get(name)
+    }
+
+    fun extend(name: String, value: V): Env<V> {
+        return Env(mapOf(name to value), this)
+    }
+
+    fun getBound(name: String): V {
+        return this[name] ?: throw Stuck.UnboundVariable(name)
+    }
+}
+
+sealed class Stuck(msg: String) : Exception(msg) {
+    class Bottom() : Stuck("Bottom evaluated")
+    class UnboundVariable(val varName: String) : Stuck("Unbound variable: $varName")
+    class Loop(val msg: String) : Stuck(msg)
+    class IncorrectType(val expr: Expr, val result: Any /* hmm */, val type: KClass<*>) :
+        Stuck("$expr evaluates to $result which is not a ${type.simpleName}")
+}
+
 object Cbv {
     sealed class Value {
         data class I(val value: Int) : Value()
 
         // Represents an uninitialized rhs of an equation
-        object Ind : Value()
-        data class Lam(val arg: String, val body: Expr, val env: Env) : Value()
+        object Uninitialized : Value()
+        data class Lam(val arg: String, val body: Expr, val env: Env<Value>) : Value()
     }
 
-    sealed class Stuck(msg: String): Exception(msg) {
-        class Bottom() : Stuck("Bottom evaluated")
-        class UnboundVariable(val varName: String) : Stuck("Unbound variable: $varName")
-    }
-
-    class Env(private val here: Map<String, Value>, private val outer: Env? = null) {
-        operator fun get(name: String): Value? {
-            return here[name] ?: outer?.get(name)
-        }
-
-        fun extend(name: String, value: Value): Env {
-            return Env(mapOf(name to value), this)
-        }
-    }
-
-    fun run(defns: List<ToplevelEquation>, body: Expr): Value {
+    fun run(program: Program): Value {
+        val (defns, body) = program
         // First: make toplevel env from all defns
         val toplevelBindings = defns.map {
-            it.name to Value.Ind
+            it.name to Value.Uninitialized
         }.toMap(mutableMapOf<String, Value>())
         val env = Env(toplevelBindings)
         defns.forEach {
@@ -139,11 +149,13 @@ object Cbv {
         return eval(body, env)
     }
 
-    private fun eval(expr: Expr, env: Env): Value {
+    private fun eval(expr: Expr, env: Env<Value>): Value {
         return when (expr) {
             is Expr.Var -> {
-                val value = env[expr.name] ?: throw Stuck.UnboundVariable(expr.name)
-                require(value !is Value.Ind) { "Toplevel equation ${expr.name} used before it's initialized" }
+                val value = env.getBound(expr.name)
+                if (value is Value.Uninitialized) {
+                    throw Stuck.Loop("Toplevel equation ${expr.name} used before it's initialized")
+                }
                 value
             }
             is Expr.App -> {
@@ -162,9 +174,11 @@ object Cbv {
         }
     }
 
-    private inline fun <reified A> evalAs(expr: Expr, env: Env): A {
+    private inline fun <reified A> evalAs(expr: Expr, env: Env<Value>): A {
         val result = eval(expr, env)
-        require(result is A) { "$expr evaluates to $result which is not a ${A::class.simpleName}" }
+        if (result !is A) {
+            throw Stuck.IncorrectType(expr, result, A::class)
+        }
         return result
     }
 }
@@ -173,10 +187,78 @@ object Cbv {
 object Cbn {
     sealed class Value {
         data class I(val value: Int) : Value()
+        data class Ind(var thunk: Thunk) : Value()
+        data class Lam(val arg: String, val body: Expr, val env: Env<Value>) : Value()
+
+        companion object {
+            fun mkInd(expr: Expr, env: Env<Value>): Ind {
+                return Ind(Thunk.Lazy(expr, env))
+            }
+        }
     }
 
-    fun run(defns: List<ToplevelEquation>, body: Expr): Value {
-        // First: make toplevel env from all defns
-        TODO()
+    sealed class Thunk {
+        data class Lazy(val expr: Expr, val env: Env<Value>) : Thunk()
+        object Forcing : Thunk()
+        data class Forced(val value: Value) : Thunk()
+    }
+
+    fun run(program: Program): Value {
+        val (defns, body) = program
+        // First: make empty toplevel env
+        val toplevelBindings = mutableMapOf<String, Value>()
+        val env = Env(toplevelBindings)
+        // Then: fill in the env with lazy values
+        defns.forEach {
+            toplevelBindings[it.name] = Value.mkInd(it.body, env)
+        }
+        return eval(body, env)
+    }
+
+    private fun eval(expr: Expr, env: Env<Value>): Value {
+        return when (expr) {
+            is Expr.I -> Value.I(expr.value)
+            Expr.Bot -> throw Stuck.Bottom()
+            is Expr.Var -> {
+                val value = env.getBound(expr.name)
+                if (value is Value.Ind) {
+                    unwrapInd(value)
+                } else {
+                    value
+                }
+            }
+            is Expr.App -> {
+                val f = evalAs<Value.Lam>(expr.f, env)
+                val arg = Value.mkInd(expr.arg, env)
+                eval(f.body, f.env.extend(f.arg, arg))
+            }
+            is Expr.Add -> {
+                val lhs = evalAs<Value.I>(expr.lhs, env)
+                val rhs = evalAs<Value.I>(expr.rhs, env)
+                Value.I(lhs.value + rhs.value)
+            }
+            is Expr.Lam -> Value.Lam(expr.name, expr.body, env)
+        }
+    }
+
+    private inline fun <reified A> evalAs(expr: Expr, env: Env<Value>): A {
+        val result = eval(expr, env)
+        if (result !is A) {
+            throw Stuck.IncorrectType(expr, result, A::class)
+        }
+        return result
+    }
+
+    private fun unwrapInd(ind: Value.Ind): Value {
+        return when (val thunk = ind.thunk) {
+            is Thunk.Lazy -> {
+                ind.thunk = Thunk.Forcing
+                val result = eval(thunk.expr, thunk.env)
+                ind.thunk = Thunk.Forced(result)
+                result
+            }
+            Thunk.Forcing -> throw Stuck.Loop("Re-forcing a thunk")
+            is Thunk.Forced -> thunk.value
+        }
     }
 }
