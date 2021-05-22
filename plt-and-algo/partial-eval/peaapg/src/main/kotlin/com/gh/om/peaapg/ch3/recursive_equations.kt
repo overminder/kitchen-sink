@@ -149,7 +149,7 @@ object Cbv {
         return eval(body, env)
     }
 
-    private fun eval(expr: Expr, env: Env<Value>): Value {
+    private tailrec fun eval(expr: Expr, env: Env<Value>): Value {
         return when (expr) {
             is Expr.Var -> {
                 val value = env.getBound(expr.name)
@@ -160,6 +160,7 @@ object Cbv {
             }
             is Expr.App -> {
                 val f = evalAs<Value.Lam>(expr.f, env)
+                @Suppress("NON_TAIL_RECURSIVE_CALL")
                 val arg = eval(expr.arg, env)
                 eval(f.body, f.env.extend(f.arg, arg))
             }
@@ -197,6 +198,7 @@ object Cbn {
         }
     }
 
+    // I.e. the "cell" based thunk model described in STG (Jones 92)
     sealed class Thunk {
         data class Lazy(val expr: Expr, val env: Env<Value>) : Thunk()
         object Forcing : Thunk()
@@ -215,7 +217,7 @@ object Cbn {
         return eval(body, env)
     }
 
-    private fun eval(expr: Expr, env: Env<Value>): Value {
+    private tailrec fun eval(expr: Expr, env: Env<Value>): Value {
         return when (expr) {
             is Expr.I -> Value.I(expr.value)
             Expr.Bot -> throw Stuck.Bottom()
@@ -228,6 +230,8 @@ object Cbn {
                 }
             }
             is Expr.App -> {
+                // Same as "unrolling the spine" in push-enter model
+                // Though here we are using the eval-apply model
                 val f = evalAs<Value.Lam>(expr.f, env)
                 val arg = Value.mkInd(expr.arg, env)
                 eval(f.body, f.env.extend(f.arg, arg))
