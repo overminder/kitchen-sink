@@ -12,7 +12,7 @@ https://www.itu.dk/people/sestoft/pebook/
   + Specialize interpreters into compilers
   + Specialize compilers into compiler generators
 - common notions (double brackets and T-tetromino)
-- Futumura projections
+- Futamura projections
 
 ## Ch 2: Intros to basic PL knowledge 
 
@@ -27,7 +27,7 @@ Intros to untyped lambda calculus, and 3 mini languages:
 
 What can/can't specialization of interpreters achieve:
 - Can: remove interpretation overhead
-- Can't: change data structure / langauge paradigm (functional expr to
+- Can't: change data structure / language paradigm (functional expr to
   imperative machine instr)
 
 ## Ch 4: PE on the flow chart language
@@ -36,7 +36,7 @@ Core idea: specialize all the reachable program points `pp`
 and stores `vs` (named poly)
 1. **Division**: Classify variables into static ones and dynamic ones. The static ones
    will be evaluated at specialization time, while the dynamic ones will be
-   evalauted at the runtime (as residue programs).
+   evaluated at the runtime (as residue programs).
 2. Start from the initial state `(pp_0, vs_0)`, where `vs_0` contains the
    static inputs
 3. Compute each of the next reachable `(pp_i, vs_i)`, following the
@@ -52,8 +52,8 @@ Things to consider:
 - **Division** (the process of computing that is BTA, binding-time analysis)
   + Choosing the wrong division can cause PE to not terminate
   + The right division is not computable (or we solve halting problem)
-  + This chapter assumes that the same division is applicable to the
-    whole input program
+  + This chapter assumes that the same division ("uniform") is applicable
+    to the whole input program
   + A simple way is to repeatedly propagate dynamic values by looking
     at the static input program
 - **Transition Compression**
@@ -63,17 +63,30 @@ Things to consider:
   + I don't completely understand this, need to read again
 - **Offline vs Online**: Online PEs use the concrete values computed during
   specialization to make further decisions, while offline PEs make
-  decisions (e.g. BTA and compressions) before the specialization.
+  decisions (e.g. BTA and compression) before the specialization.
 
 Specializing `mix` itself to make a compiler
 - BTA on mix: manually done to show the reasoning (a more friendly
   way is to let user provide BTA annotation)
 - Resulting residual program is structured roughly the same way
   as the interpreter
+- The `division` variable needs to be static to get good result
+  on self-application.
 
 Binding-time improvement
-- Re-structure part of the the program to surface more static variables.
-- *The Trick*: If a function takes a dynamic yet finite input, its return
+- Re-structure part of the program to surface more static variables.
+- **The Trick**: If a function takes a dynamic yet finite input, its return
   value can indeed by static.
 
+Granularity of BTA
+- **Uniform**: All `pp` share the same division.
+- **Pointwise**: Takes control flow into consideration, so the
+  resulting BTA is a map from `pp` to division.
+- For imperative languages, the global store can contain dead static
+  variables. This leads to superfluous specializations. Need to do
+  liveness analysis and reclassify dead static vars as dynamic.
+- **Polyvariant**: Each pp can be reached different and have different
+  division, so the resulting BTA is a map from `pp` to set of divisions.
 
+4.10 contains a size and time comparison for all PE combinations
+on this language.
