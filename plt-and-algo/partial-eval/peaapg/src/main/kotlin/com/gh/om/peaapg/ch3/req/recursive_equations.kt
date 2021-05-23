@@ -1,4 +1,4 @@
-package com.gh.om.peaapg.ch3
+package com.gh.om.peaapg.ch3.req
 
 import com.github.h0tk3y.betterParse.combinators.leftAssociative
 import com.github.h0tk3y.betterParse.combinators.map
@@ -41,8 +41,9 @@ class ExprGrammar : Grammar<Expr>() {
     val int by regexToken("\\d+")
     val ident by regexToken("\\w+")
     val plus by literalToken("+")
-    // To separate toplevel definitions -- Just to be lazy...
+
     val eq by literalToken("=")
+    // To separate toplevel definitions -- Just to be lazy...
     val semi by literalToken(";")
     val comma by literalToken(",")
     val lpar by literalToken("(")
@@ -115,16 +116,28 @@ class Env<V : Any>(private val here: Map<String, V>, private val outer: Env<V>? 
     }
 
     fun getBound(name: String): V {
-        return this[name] ?: throw Stuck.UnboundVariable(name)
+        return this[name] ?: throw Stuck.UnboundVariable(name).intoException()
     }
 }
 
-sealed class Stuck(msg: String) : Exception(msg) {
-    class Bottom() : Stuck("Bottom evaluated")
-    class UnboundVariable(val varName: String) : Stuck("Unbound variable: $varName")
-    class Loop(val msg: String) : Stuck(msg)
-    class IncorrectType(val expr: Expr, val result: Any /* hmm */, val type: KClass<*>) :
-        Stuck("$expr evaluates to $result which is not a ${type.simpleName}")
+class StuckException(val why: Stuck) : Exception(why.message)
+
+sealed class Stuck {
+    val message: String
+        get() = when (this) {
+            Bottom -> "Bottom evaluated"
+            is IncorrectType -> "$expr evaluates to $result which is not a ${type.simpleName}"
+            is Loop -> msg
+            is UnboundVariable -> "Unbound variable: $varName"
+        }
+
+    fun intoException() = StuckException(this)
+
+    object Bottom : Stuck()
+    class UnboundVariable(val varName: String) : Stuck()
+
+    class Loop(val msg: String) : Stuck()
+    class IncorrectType(val expr: Expr, val result: Any /* hmm */, val type: KClass<*>) : Stuck()
 }
 
 object Cbv {
@@ -154,12 +167,13 @@ object Cbv {
             is Expr.Var -> {
                 val value = env.getBound(expr.name)
                 if (value is Value.Uninitialized) {
-                    throw Stuck.Loop("Toplevel equation ${expr.name} used before it's initialized")
+                    throw Stuck.Loop("Toplevel equation ${expr.name} used before it's initialized").intoException()
                 }
                 value
             }
             is Expr.App -> {
                 val f = evalAs<Value.Lam>(expr.f, env)
+
                 @Suppress("NON_TAIL_RECURSIVE_CALL")
                 val arg = eval(expr.arg, env)
                 eval(f.body, f.env.extend(f.arg, arg))
@@ -171,14 +185,14 @@ object Cbv {
             }
             is Expr.Lam -> Value.Lam(expr.name, expr.body, env)
             is Expr.I -> Value.I(expr.value)
-            Expr.Bot -> throw Stuck.Bottom()
+            Expr.Bot -> throw Stuck.Bottom.intoException()
         }
     }
 
     private inline fun <reified A> evalAs(expr: Expr, env: Env<Value>): A {
         val result = eval(expr, env)
         if (result !is A) {
-            throw Stuck.IncorrectType(expr, result, A::class)
+            throw Stuck.IncorrectType(expr, result, A::class).intoException()
         }
         return result
     }
@@ -220,7 +234,7 @@ object Cbn {
     private tailrec fun eval(expr: Expr, env: Env<Value>): Value {
         return when (expr) {
             is Expr.I -> Value.I(expr.value)
-            Expr.Bot -> throw Stuck.Bottom()
+            Expr.Bot -> throw Stuck.Bottom.intoException()
             is Expr.Var -> {
                 val value = env.getBound(expr.name)
                 if (value is Value.Ind) {
@@ -248,7 +262,7 @@ object Cbn {
     private inline fun <reified A> evalAs(expr: Expr, env: Env<Value>): A {
         val result = eval(expr, env)
         if (result !is A) {
-            throw Stuck.IncorrectType(expr, result, A::class)
+            throw Stuck.IncorrectType(expr, result, A::class).intoException()
         }
         return result
     }
@@ -261,7 +275,7 @@ object Cbn {
                 ind.thunk = Thunk.Forced(result)
                 result
             }
-            Thunk.Forcing -> throw Stuck.Loop("Re-forcing a thunk")
+            Thunk.Forcing -> throw Stuck.Loop("Re-forcing a thunk").intoException()
             is Thunk.Forced -> thunk.value
         }
     }

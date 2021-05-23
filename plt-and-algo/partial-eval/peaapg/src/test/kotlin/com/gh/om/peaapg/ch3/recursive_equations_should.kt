@@ -1,5 +1,11 @@
 package com.gh.om.peaapg.ch3
 
+import com.gh.om.peaapg.ch3.req.Cbn
+import com.gh.om.peaapg.ch3.req.Cbv
+import com.gh.om.peaapg.ch3.req.Expr
+import com.gh.om.peaapg.ch3.req.Program
+import com.gh.om.peaapg.ch3.req.Stuck
+import com.gh.om.peaapg.ch3.req.StuckException
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -29,8 +35,8 @@ class RecursiveEquationsShould {
 
         fun failsToEval(src: String, checkError: (Stuck) -> Unit) {
             val p = Program.parseToEnd(src)
-            val ex = assertFailsWith(Stuck::class) { Cbv.run(p) }
-            checkError(ex)
+            val ex = assertFailsWith(StuckException::class) { Cbv.run(p) }
+            checkError(ex.why)
         }
 
         evalsTo("40 + 2", Cbv.Value.I(42))
@@ -51,8 +57,8 @@ class RecursiveEquationsShould {
 
         fun failsToEval(src: String, checkError: (Stuck) -> Unit) {
             val p = Program.parseToEnd(src)
-            val ex = assertFailsWith(Stuck::class) { Cbn.run(p) }
-            checkError(ex)
+            val ex = assertFailsWith(StuckException::class) { Cbn.run(p) }
+            checkError(ex.why)
         }
 
         evalsTo("40 + 2", Cbn.Value.I(42))

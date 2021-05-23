@@ -61,20 +61,19 @@ mixS :: Target (Target (i -> o) -> i -> Target o)
 mixS = undefined
 
 -- Another form of mixS that takes two inputs. Can be derived from mixS
--- from some preparations (in fact only needs pure)
+-- from some preparations (in fact only needs pure and run)
 mixS2 :: forall a b o. Target (Target (a -> b -> o) -> a -> b -> Target o)
 mixS2 = pure $ \prog a b ->
-  let prog' (a, b) = run prog a b
-  in run mixS' (pure prog') (a, b)
+  let runProg' (a, b) = run prog a b
+  in run mixS' (pure runProg') (a, b)
  where
   -- mixS in curried form
   mixS' :: Target (Target ((a, b) -> o) -> (a, b) -> Target o)
   mixS' = mixS
 
 -- Specialize the interpreter using mix to generate target program.
--- s is the static input while d is the dynamic input.
 -- This is the first futamura projection
-firstProj :: forall s d o. S (s -> d -> o) -> s -> Target (d -> o)
+firstProj :: S (i -> o) -> i -> Target o
 firstProj = run mixS2 intS
 
 -- Self-apply mix to generate a compiler
@@ -94,6 +93,9 @@ thirdProj = run mixS mixS mixS
 -- Now see what we can do to use these proj
 compFromCogen :: Target (S o -> Target o)
 compFromCogen = run thirdProj intS
+
+cogenFromCogen :: Target (Target (i -> o) -> Target (i -> Target o))
+cogenFromCogen = run thirdProj mixS
 
 targetFromComp :: S o -> Target o
 targetFromComp = run secondProj

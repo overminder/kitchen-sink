@@ -15,7 +15,7 @@ plugins {
 repositories {
     // Use jcenter for resolving dependencies.
     // You can declare any Maven/Ivy/file repository here.
-    jcenter()
+    mavenCentral()
 }
 
 dependencies {
@@ -33,4 +33,9 @@ dependencies {
 
     // parser combinator
     implementation("com.github.h0tk3y.betterParse:better-parse:0.4.2")
+}
+compileKotlin {
+    kotlinOptions {
+        freeCompilerArgs = ["-Xinline-classes"]
+    }
 }
