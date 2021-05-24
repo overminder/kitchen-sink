@@ -85,7 +85,7 @@ private fun Expr.pprTo(sb: StringBuilder) {
         is Expr.I -> sb.append(value)
         is Expr.Symbol -> {
             sb.append("'")
-            sb.append(value)
+            sb.append(name)
         }
         is Expr.UOp -> {
             op.pprTo(sb)

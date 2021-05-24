@@ -15,11 +15,38 @@ fun Program.execute(argValues: List<Value>): Value {
     val bbMap = bbs.associateBy(BB::label)
 
     // Build store and populate the args
-    val store = MutableStore()
-    store.populate(args, argValues)
+    val store = args.zip(argValues).toMap(mutableMapOf())
 
     return execute(bbs.first(), bbMap, store)
 }
+
+fun Expr.eval(store: Store): Value = when (this) {
+    is Expr.BOp -> {
+        when (op) {
+            BinaryRator.Add -> doIntBOp(this, store) { l, r -> l + r }
+            BinaryRator.Sub -> doIntBOp(this, store) { l, r -> l - r }
+            BinaryRator.Eqv -> doBOp<Value>(this, store) { l, r -> toValue(doEqv(l, r)) }
+            BinaryRator.Mul -> doIntBOp(this, store) { l, r -> l * r }
+            BinaryRator.Cons -> doBOp<Value>(this, store) { l, r -> Value.Cons(l, r) }
+        }
+    }
+    is Expr.I -> Value.I(value)
+    is Expr.Symbol -> Value.Symbol(name)
+    is Expr.UOp -> {
+        when (op) {
+            UnaryRator.Head -> evalAs<Value.Cons>(arg, store).head
+            UnaryRator.Tail -> evalAs<Value.Cons>(arg, store).tail
+        }
+    }
+    is Expr.Var -> store[name] ?: throw Stuck.UnboundVariable(name).intoException()
+    is Expr.MkList -> {
+        val values = args.map { it.eval(store) }
+        values.foldRight(Value.Nil, Value::Cons)
+    }
+}
+
+typealias Store = Map<String, Value>
+typealias MutableStore = MutableMap<String, Value>
 
 class StuckException(val why: Stuck) : Exception(why.message)
 
@@ -36,86 +63,29 @@ sealed class Stuck {
     class IncorrectType(val expr: Expr, val result: Value, val type: KClass<*>) : Stuck()
 }
 
-private abstract class Store {
-    abstract operator fun get(name: String): Value?
-}
+val Value.isTrue: Boolean
+    get() = !isFalsy
 
-private class MutableStore : Store() {
-    private val values = mutableListOf<Value>()
-    private val nameToSlot = mutableMapOf<String, Int>()
-    private var nextSlot = 0
-
-    override operator fun get(name: String): Value? {
-        val slot = nameToSlot[name] ?: return null
-        return values[slot]
-    }
-
-    operator fun set(name: String, value: Value) {
-        val slot = nameToSlot.getOrPut(name) { nextSlot++ }
-        if (slot >= values.size) {
-            require(slot == values.size)
-            values.add(value)
-        } else {
-            values[slot] = value
-        }
-    }
-
-    fun populate(names: List<String>, values: List<Value>) {
-        require(names.size == values.size)
-        names.zip(values).forEach { (name, value) -> set(name, value) }
-    }
-}
+val Value.isFalsy: Boolean
+    get() = this is Value.I && value == 0
 
 private tailrec fun execute(bb: BB, bbMap: Map<Label, BB>, store: MutableStore): Value {
     for (stmt in bb.body) {
-        store[stmt.name] = eval(stmt.expr, store)
+        store[stmt.name] = stmt.expr.eval(store)
     }
     val nextLabel = when (val jump = bb.last) {
         is Jump.Goto -> jump.label
         is Jump.If -> {
-            if (eval(jump.cond, store).isTrue) {
+            if (jump.cond.eval(store).isTrue) {
                 jump.ifTrue
             } else {
                 jump.ifFalse
             }
         }
-        is Jump.Return -> {
-            return eval(jump.expr, store)
-        }
+        is Jump.Return -> return jump.expr.eval(store)
     }
     val nextBB = requireNotNull(bbMap[nextLabel]) { "Label $nextLabel not found" }
     return execute(nextBB, bbMap, store)
-}
-
-private val Value.isTrue: Boolean
-    get() = !isFalsy
-
-private val Value.isFalsy: Boolean
-    get() = this is Value.I && value == 0
-
-private fun eval(expr: Expr, store: Store): Value = when (expr) {
-    is Expr.BOp -> {
-        when (expr.op) {
-            BinaryRator.Add -> doIntBOp(expr, store) { l, r -> l + r }
-            BinaryRator.Sub -> doIntBOp(expr, store) { l, r -> l - r }
-            BinaryRator.Eqv -> doBOp<Value>(expr, store) { l, r -> toValue(doEqv(l, r)) }
-            BinaryRator.Mul -> doIntBOp(expr, store) { l, r -> l * r }
-            BinaryRator.Cons -> doBOp<Value>(expr, store) { l, r -> Value.Cons(l, r) }
-        }
-    }
-    is Expr.I -> Value.I(expr.value)
-    is Expr.Symbol -> Value.Symbol(expr.value)
-    is Expr.UOp -> {
-        when (expr.op) {
-            UnaryRator.Head -> evalAs<Value.Cons>(expr.arg, store).head
-            UnaryRator.Tail -> evalAs<Value.Cons>(expr.arg, store).tail
-        }
-    }
-    is Expr.Var -> store[expr.name] ?: throw Stuck.UnboundVariable(expr.name).intoException()
-    is Expr.MkList -> {
-        val values = expr.args.map { eval(it, store) }
-        values.foldRight(Value.Nil, Value::Cons)
-    }
 }
 
 private inline fun <reified A: Value> doBOp(e: Expr.BOp, store: Store, op: (A, A) -> Value): Value {
@@ -129,7 +99,7 @@ private inline fun doIntBOp(e: Expr.BOp, store: Store, op: (Int, Int) -> Int): V
 }
 
 private inline fun <reified A: Value> evalAs(e: Expr, store: Store): A {
-    val v = eval(e, store)
+    val v = e.eval(store)
     if (v !is A) {
         throw Stuck.IncorrectType(e, v, A::class).intoException()
     }

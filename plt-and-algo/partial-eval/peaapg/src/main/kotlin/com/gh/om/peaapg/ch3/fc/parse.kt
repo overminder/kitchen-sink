@@ -28,7 +28,7 @@ class ProgramGrammar : Grammar<Program>() {
     val tokHead by literalToken("head")
     val tokTail by literalToken("tail")
     val tokInt by regexToken("\\d+")
-    val tokId by regexToken("\\w+")
+    val tokId by regexToken("[a-zA-Z_][a-zA-Z0-9_]*")
     val tokPlus by literalToken("+")
     val tokMinus by literalToken("-")
     val tokTimes by literalToken("*")

@@ -17,7 +17,7 @@ sealed class Jump {
 sealed class Expr {
     data class I(val value: Int) : Expr()
     data class Var(val name: String) : Expr()
-    data class Symbol(val value: String) : Expr()
+    data class Symbol(val name: String) : Expr()
     data class BOp(val op: BinaryRator, val lhs: Expr, val rhs: Expr) : Expr()
     data class UOp(val op: UnaryRator, val arg: Expr) : Expr()
     data class MkList(val args: List<Expr>) : Expr()

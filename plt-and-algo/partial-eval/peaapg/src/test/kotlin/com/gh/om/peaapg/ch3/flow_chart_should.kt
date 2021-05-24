@@ -3,6 +3,7 @@ package com.gh.om.peaapg.ch3
 import com.gh.om.peaapg.ch3.fc.Expr
 import com.gh.om.peaapg.ch3.fc.Program
 import com.gh.om.peaapg.ch3.fc.ProgramGrammar
+import com.gh.om.peaapg.ch3.fc.Sources
 import com.gh.om.peaapg.ch3.fc.Value
 import com.gh.om.peaapg.ch3.fc.execute
 import com.gh.om.peaapg.ch3.fc.ppr
@@ -41,14 +42,14 @@ class FlowChartShould {
 
     @Test
     fun executeFiboProgram() {
-        val fibo = parseProgram(PROGRAM_FIBO)
+        val fibo = parseProgram(Sources.fibo)
         val result = fibo.execute(listOf(Value.I(10)))
         assertEquals(Value.I(55), result)
     }
 
     @Test
     fun executeRangeProgram() {
-        val p = parseProgram(PROGRAM_RANGE)
+        val p = parseProgram(Sources.range)
         val result = p.execute(listOf(Value.I(10)))
         assertEquals("[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]", result.ppr())
     }
@@ -78,37 +79,4 @@ bar:
     if a == 10 goto baz else foo;
 baz:
     return b;
-""".trimIndent()
-
-private val PROGRAM_FIBO = """
-read n;
-start:
-    a = 0;
-    b = 1;
-    goto loopStart;
-loopStart:
-    if n == 0 goto end else loop;
-loop:
-    t = b;
-    b = a + b;
-    a = t;
-    n = n - 1;
-    goto loopStart;
-end:
-    return a;
-""".trimIndent()
-
-private val PROGRAM_RANGE = """
-read n;
-start:
-    r = [];
-    goto loop;
-loop:
-    n = n - 1;
-    r = n :: r;
-    goto check;
-check:
-    if n == 0 goto end else loop;
-end:
-    return r;
 """.trimIndent()
