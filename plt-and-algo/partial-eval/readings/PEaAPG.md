@@ -105,3 +105,49 @@ Granularity of BTA
 
 4.10 contains a size and time comparison for all PE combinations
 on this language.
+
+## Ch 5: PE on a first order recursive ULC
+
+### Language: Scheme0
+
+Applicative (pure) operators, no anonymous lambdas, no currying.
+Scheme-ish, has quote to support `value->expr` reification.
+
+### Division
+
+Multiple precision to choose from:
+- Monovariant: Every function has a mapping of `var -> division`. This is
+  roughly the pointwise division for flow chart lang.
+- Polyvariant: Every function has multiple mappings of `var -> division`.
+  Can be achieved by making multiple copies of the same monovariant
+  functions, prior to specialization.
+
+### Congruence
+
+Remember in flow chart lang, a var is static only if all of its assignments'
+rhs are static. In Scheme0, a var is created by function application, so an
+argument is static only if every value supplied to the call site is be static.
+
+### Specialized program point
+
+Naturally we treat `(function, static arguments)` as program points.
+It's also beneficial to add `if` branches as program points (see also:
+conditional constant propagation). We can preprocess ifs by moving
+each branch to a new function.
+
+### Transition compression
+
+AKA function inlining. Need to avoid infinite inlining (probably
+undecidable?). Several conservative ways exist, and the author choose
+to only inline functions with fully static arguments.
+
+### Binding-time analysis
+
+- Abstract interpretation on the domain of `{S, D}`
+- Type inference on constraints of binding time.
+
+### Division annotations
+
+Idea: Annotate the source with division information. Greatly simplifies
+the BTA. Scheme0 contains two variant for each AST: e.g. `call` and `calls`.
+(Feels like staged computation?)
