@@ -1,22 +1,20 @@
 package com.gh.om.iueoc
 
-import com.gh.om.iueoc.SexprGrammar.getValue
-import com.gh.om.iueoc.SexprGrammar.provideDelegate
 import com.github.h0tk3y.betterParse.combinators.map
 import com.github.h0tk3y.betterParse.combinators.oneOrMore
 import com.github.h0tk3y.betterParse.combinators.optional
 import com.github.h0tk3y.betterParse.combinators.or
 import com.github.h0tk3y.betterParse.combinators.times
 import com.github.h0tk3y.betterParse.combinators.unaryMinus
-import com.github.h0tk3y.betterParse.combinators.use
-import com.github.h0tk3y.betterParse.combinators.zeroOrMore
 import com.github.h0tk3y.betterParse.grammar.Grammar
 import com.github.h0tk3y.betterParse.grammar.parser
 import com.github.h0tk3y.betterParse.lexer.TokenMatch
 import com.github.h0tk3y.betterParse.lexer.literalToken
-import com.github.h0tk3y.betterParse.lexer.noneMatched
 import com.github.h0tk3y.betterParse.lexer.regexToken
 import com.github.h0tk3y.betterParse.parser.Parser
+import java.lang.RuntimeException
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.contract
 
 // Convert strings to sexprs, and also ~`!@#$%^&*_-+=<>,.'?/
 
@@ -47,12 +45,37 @@ sealed class Sexpr<out S> {
 
 data class Ann<out A, out B>(val ann: A, val unwrap: B)
 
+fun <A, B, C> Ann<A, B>.wrap(c: C): Ann<A, C> = Ann(ann, c)
+
+typealias AnnS<A> = Ann<SourceLoc, A>
 typealias AnnSexpr<A> = Ann<A, Sexpr<A>>
 typealias SexprWithLoc = AnnSexpr<SourceLoc>
 
+// col and row are 1-based.
 data class SourceLoc(val col: Int, val row: Int, val offset: Int)
 
-private fun TokenMatch.annotate(expr: Sexpr<SourceLoc>): SexprWithLoc = Ann(SourceLoc(column, row, offset), expr)
+class EocError(val where: SourceLoc, what: String) : RuntimeException(what) {
+    companion object {
+        @OptIn(ExperimentalContracts::class)
+        inline fun ensure(cond: Boolean, where: SourceLoc, what: () -> String) {
+            contract {
+                returns() implies cond
+            }
+            if (!cond) {
+                throw EocError(where, what())
+            }
+        }
+
+        // Hmm can't get this to show in intellij's To-do tool
+        fun todo(where: SourceLoc, what: String? = null): Nothing {
+            val msg = what?.let { "TODO: $it" } ?: "TODO"
+            throw EocError(where, msg)
+        }
+    }
+}
+
+fun TokenMatch.toSourceLoc() = SourceLoc(column, row, offset)
+private fun TokenMatch.annotate(expr: Sexpr<SourceLoc>): SexprWithLoc = Ann(toSourceLoc(), expr)
 private val TokenMatch.parenShape: Sexpr.ParenShape
     get() = when (text.first()) {
         '(' -> Sexpr.ParenShape.Round

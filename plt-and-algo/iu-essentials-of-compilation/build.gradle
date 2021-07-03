@@ -39,3 +39,7 @@ application {
     // Define the main class for the application.
     mainClassName = 'com.gh.om.iueoc.AppKt'
 }
+
+compileKotlin {
+    kotlinOptions.freeCompilerArgs += '-Xopt-in=kotlin.RequiresOptIn'
+}

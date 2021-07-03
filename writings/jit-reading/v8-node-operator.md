@@ -1,12 +1,28 @@
-### Operator
+# Operator
 
 - "Class" of nodes, potentially shared
 - Defines opcode, arithmetic properties (in a bitset), name, and number of value/effect/control inputs and outputs.
+  + Nodes always have that many input and outputs (unless during temporary edge modifications, but that state is only visible internally.)
 - Operator1 takes an additional parameter that's meaningful for its opcode.
 
-### Common operators
+## Common operators
 
 `common-operator.cc` defines generic operators such as Dead/Unreachable. This can be a good starting point for understanding v8's sea of nodes implementation.
+
+### Most basic ones
+
+- Start(n): o(EC; V ** n). n is the number of function arguments plus some extra runtime argument (closure ptr, argc, context).
+- End(n): i(C ** n). Consumes n C.
+
+- Parameter(ix, name): io(V). Input is the start node, ix is the parameter index.
+- Return(n): i(VEC; V ** n), o(C). Takes one more V than n, and still chains the C (to the end node I guess?)
+
+- Loop(n): i(C ** n), o(C). Need to revisit this.
+- Merge: Same as above.
+
+- Branch(hint, safetyCheck): i(VC), o(CC). Takes a V and a C, and goes to two branches.
+
+### Others
 
 COMMON_CACHED_OP_LIST defines:
 
@@ -25,20 +41,13 @@ COMMON_CACHED_OP_LIST defines:
 More in CommonOperatorBuilder:
 
 - DeadValue(machineRep): io(V). Is this simply for marking a value as dead?
-- End(n): i(C ** n). Consumes n C.
-- Branch(hint, safetyCheck): i(VC), o(CC). Takes a V and a C, and goes to two branches.
 - Switch(n): i(VC), o(C ** n). Takes a V and a C, and goes to n branches.
 - IfValue(value, order, hint) / IfDefault: io(C). Not sure about this.
 - Deoptimize(kind, reason, feedbackSource): i(VEC), o(C). Need to read more.
 - Deoptimize{If,Unless}(kind, reason, feedbackSource, safetyCheck):
   i(VVEC), o(EC). Additionally chains the E, and takes another V.
 - Trap{If,Unless}(id): i(VEC), o(C). Not sure about this.
-- Return(n): i(VEC; V ** n), o(C). Takes one more V than n, and still chains the C (to the end node I guess?)
 
-- Start(n): o(EC; V ** n). Is n the number of function arguments?
-- Loop(n): i(C ** n), o(C). Need to revisit this.
-- Merge: Same as above.
-- Parameter(ix, name): io(V).
 
 - OsrValue(ix): i(C), o(V). Converts C into a V, interesting.
 

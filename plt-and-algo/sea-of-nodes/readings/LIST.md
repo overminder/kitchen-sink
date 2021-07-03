@@ -6,12 +6,14 @@
 - OOP: http://manu.sridharan.net/files/aliasAnalysisChapter.pdf
 - Compositional Escape Analysis, Java: http://people.csail.mit.edu/rinard/paper/oopsla99.pdf
 
-### SSA: Dominator Construction
+### SSA: Construction / Destruction
 
-- http://ssabook.gforge.inria.fr/latest/book.pdf
-- http://compilers.cs.uni-saarland.de/papers/bbhlmz13cc.pdf
-- http://www-plan.cs.colorado.edu/diwan/7135/p1684-brandis.pdf
-- https://www.cs.princeton.edu/courses/archive/fall03/cs528/handouts/a%20fast%20algorithm%20for%20finding.pdf
+- [Inria's SSA Book](http://ssabook.gforge.inria.fr/latest/book.pdf)
+- [Simple and Efficient Construction of Static Single Assignment Form
+  ](http://compilers.cs.uni-saarland.de/papers/bbhlmz13cc.pdf)
+- [Single-pass generation of static single-assignment form for structured
+  languages](https://dl.acm.org/doi/10.1145/197320.197331)
+- [A fast algorithm for finding dominators in a flowgraph](https://www.cs.princeton.edu/courses/archive/fall03/cs528/handouts/a%20fast%20algorithm%20for%20finding.pdf)
 
 ### SSA: Sea of Nodes IR
 
