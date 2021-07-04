@@ -54,9 +54,9 @@ typealias SexprWithLoc = AnnSexpr<SourceLoc>
 // col and row are 1-based.
 data class SourceLoc(val col: Int, val row: Int, val offset: Int)
 
-class EocError(val where: SourceLoc, what: String) : RuntimeException(what) {
+class EocError(val where: SourceLoc?, what: String) : RuntimeException(what) {
+    @OptIn(ExperimentalContracts::class)
     companion object {
-        @OptIn(ExperimentalContracts::class)
         inline fun ensure(cond: Boolean, where: SourceLoc, what: () -> String) {
             contract {
                 returns() implies cond
@@ -70,6 +70,15 @@ class EocError(val where: SourceLoc, what: String) : RuntimeException(what) {
         fun todo(where: SourceLoc, what: String? = null): Nothing {
             val msg = what?.let { "TODO: $it" } ?: "TODO"
             throw EocError(where, msg)
+        }
+
+        inline fun ensure(cond: Boolean, what: () -> String) {
+            contract {
+                returns() implies cond
+            }
+            if (!cond) {
+                throw EocError(null, what())
+            }
         }
     }
 }

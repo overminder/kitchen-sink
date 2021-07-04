@@ -6,6 +6,9 @@ sealed class Value {
     data class Sym(val name: String) : Value()
 }
 
+val Value.asBoolean: Boolean
+    get() = this != Value.B(false)
+
 interface Interp {
     fun interp(eAnn: AnnExpr, env: Env = emptyList()): Trampoline<Value>
 }
@@ -58,7 +61,7 @@ open class InterpOp : InterpVar() {
     private fun interpInternal(e: ExprOp, sourceLoc: SourceLoc, env: Env): Trampoline<Value> = when (e) {
         is ExprOp.If -> {
             val cond = interp(e.cond, env).value()
-            val next = if (cond != Value.B(false)) {
+            val next = if (cond.asBoolean) {
                 e.ifT
             } else {
                 e.ifF
@@ -83,13 +86,14 @@ open class InterpOp : InterpVar() {
     }
 
     private fun <R> binaryIntOp(e: ExprOp.Op, argValues: List<Value>, func: (Int, Int) -> R): Trampoline<R> {
+        val symbol = e.op.unwrap.symbol
         val (lhs, rhs) = e.args
         val (lhsV, rhsV) = argValues
         EocError.ensure(lhsV is Value.I, lhs.ann) {
-            "#I.+ takes int value, not $lhsV"
+            "$symbol takes int value, not $lhsV"
         }
         EocError.ensure(rhsV is Value.I, rhs.ann) {
-            "#I.+ takes int value, not $rhsV"
+            "$symbol takes int value, not $rhsV"
         }
         return Tr.pure(func(lhsV.value, rhsV.value))
     }

@@ -1,5 +1,8 @@
 package com.gh.om.iueoc
 
+import com.gh.om.iueoc.son.GraphBuilder
+import com.gh.om.iueoc.son.GraphVerifier
+import com.gh.om.iueoc.son.interp
 import com.github.h0tk3y.betterParse.grammar.parseToEnd
 import com.github.h0tk3y.betterParse.parser.AlternativesFailure
 import com.github.h0tk3y.betterParse.parser.ErrorResult
@@ -9,6 +12,10 @@ import com.github.h0tk3y.betterParse.parser.ParseException
 import com.github.h0tk3y.betterParse.parser.UnexpectedEof
 import com.github.h0tk3y.betterParse.parser.UnparsedRemainder
 
+
+private const val INT_LIT = """
+    42
+"""
 
 private const val PROGRAM = """
     (let ([x 40]
@@ -21,9 +28,11 @@ private const val PROGRAM = """
 fun showEocError(e: EocError, source: String, header: String = "Error") {
     println("$header: ${e.message} at ${e.where}")
     // XXX Does lineSequence have the same implementation as better-parse?
-    val (line, pointer) = formatSourceWithLoc(source, e.where)
-    println(line)
-    println(pointer)
+    if (e.where != null) {
+        val (line, pointer) = formatSourceWithLoc(source, e.where)
+        println(line)
+        println(pointer)
+    }
 }
 
 private fun formatSourceWithLoc(source: String, loc: SourceLoc): Pair<String, String> {
@@ -79,22 +88,31 @@ fun runProgram(source: String): Value? {
         showParseError(e.errorResult, source)
         return null
     }
+
     val expr = try {
         SexprToExpr.toExpr(program)
     } catch (e: EocError) {
         showEocError(e, source, "SexprToExpr error")
         return null
     }
-    return try {
+
+    val exprInterpResult = try {
         InterpOp().interp(expr).value()
     } catch (e: EocError) {
         showEocError(e, source, "Interp error")
-        null
+        return null
     }
+
+    val gb = GraphBuilder()
+    gb.doFunctionBody(expr)
+    GraphVerifier(gb).verifyFullyBuilt()
+    val graphInterpResult = interp(gb.start, gb.nodes)
+    require(exprInterpResult == graphInterpResult)
+    return graphInterpResult
 }
 
 private fun main() {
-    runProgram(PROGRAM)?.let {
+    runProgram(INT_LIT)?.let {
         println("Ok: $it")
     }
 }
