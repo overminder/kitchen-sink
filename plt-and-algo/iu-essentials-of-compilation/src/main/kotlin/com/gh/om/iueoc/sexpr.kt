@@ -45,6 +45,7 @@ sealed class Sexpr<out S> {
 
 data class Ann<out A, out B>(val ann: A, val unwrap: B)
 
+fun <A> SourceLoc.wrap(a: A): AnnS<A> = Ann(this, a)
 fun <A, B, C> Ann<A, B>.wrap(c: C): Ann<A, C> = Ann(ann, c)
 
 typealias AnnS<A> = Ann<SourceLoc, A>

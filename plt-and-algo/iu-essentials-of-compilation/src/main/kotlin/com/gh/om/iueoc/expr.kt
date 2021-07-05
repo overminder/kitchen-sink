@@ -4,7 +4,7 @@ package com.gh.om.iueoc
 
 sealed class Expr
 
-typealias AnnExpr = Ann<SourceLoc, Expr>
+typealias AnnExpr = AnnS<Expr>
 
 sealed class ExprVar : Expr() {
     data class V(val name: String) : ExprVar()
@@ -15,14 +15,21 @@ sealed class ExprVar : Expr() {
 
 // Single inheritance, or a la carte?
 sealed class ExprOp : Expr() {
-    data class Let(val vs: List<String>, val es: List<AnnExpr>, val body: AnnExpr) : ExprOp()
+    data class Let(val vs: List<AnnS<String>>, val es: List<AnnExpr>, val body: AnnExpr) : ExprOp()
     data class If(val cond: AnnExpr, val ifT: AnnExpr, val ifF: AnnExpr) : ExprOp()
     data class Op(val op: AnnS<PrimOp>, val args: List<AnnExpr>) : ExprOp()
 }
 
+sealed class ExprLam : Expr() {
+    data class Lam(val args: List<AnnS<String>>, val body: List<AnnExpr>) : ExprLam()
+    data class Ap(val f: AnnExpr, val args: List<AnnExpr>) : ExprLam()
+}
+
 enum class PrimOp(val symbol: String) {
-    IntAdd("#I.+"),
-    IntLessThan("#I.<"),
+    // (Fx, Fx) -> Fx
+    FxAdd("#fx+"),
+    // (Fx, Fx) -> Bool
+    FxLessThan("#fx<"),
 }
 
 // Sexpr -> Expr
@@ -35,56 +42,12 @@ object SexprToExpr {
                 if (se.cdr != null) {
                     throw EocError(annSe.ann, "Unhandled dotted tail")
                 }
-                val annCar = se.cars.first()
+                val car = se.cars.first()
                 val rest = se.cars.drop(1)
-                val carSym = annCar.unwrap as? Sexpr.Sym
-                EocError.ensure(carSym != null, annCar.ann) {
-                    "Must be symbol"
-                }
-                when (val sym = carSym.name) {
-                    "if" -> {
-                        EocError.ensure(rest.size == 3, annSe.ann) {
-                            "If should take 3 arguments"
-                        }
-                        val (cond, ifT, ifF) = rest
-                        ExprOp.If(toExpr(cond), toExpr(ifT), toExpr(ifF))
-                    }
-                    "let" -> {
-                        EocError.ensure(rest.size == 2, annSe.ann) {
-                            "Let should take 2 arguments"
-                        }
-                        val (kvsAnn, bodyAnn) = rest
-                        val kvs = kvsAnn.unwrap
-                        EocError.ensure(kvs is Sexpr.Cons && kvs.cdr == null, kvsAnn.ann) {
-                            "Let bindings should be a list"
-                        }
-                        val (vs, es) = kvs.cars.map { bindingAnn ->
-                            val binding = bindingAnn.unwrap
-                            EocError.ensure(
-                                binding is Sexpr.Cons && binding.cdr == null && binding.cars.size == 2,
-                                bindingAnn.ann
-                            ) {
-                                "Let binding should be in the form of [k v]"
-                            }
-                            val (kAnn, vAnn) = binding.cars
-                            val k = kAnn.unwrap
-                            EocError.ensure(k is Sexpr.Sym, kAnn.ann) {
-                                "In let binding [k v], k should be a sym"
-                            }
-                            k.name to toExpr(vAnn)
-                        }.unzip()
-                        ExprOp.Let(vs, es, toExpr(bodyAnn))
-                    }
-                    else -> {
-                        primDescrs.firstNotNullOfOrNull { pd ->
-                            if (sym == pd.symbol && rest.size == pd.argc) {
-                                ExprOp.Op(annCar.wrap(pd.op), rest.map(::toExpr))
-                            } else {
-                                null
-                            }
-                        } ?: throw EocError(annSe.ann, "Unknown application")
-                    }
-                }
+                val carSym = car.unwrap as? Sexpr.Sym
+                carSym?.let {
+                    trySpecialForm(it.name, car.ann, rest, annSe)
+                } ?: toApply(car, rest)
             }
             is Sexpr.Flo -> throw EocError(annSe.ann, "Flonum not implemented yet")
             is Sexpr.Fx -> ExprVar.I(se.value)
@@ -114,9 +77,85 @@ object SexprToExpr {
         return annSe.wrap(e)
     }
 
+    private fun trySpecialForm(
+        carSym: String,
+        carAnn: SourceLoc,
+        cdrs: List<AnnSexpr<SourceLoc>>,
+        root: SexprWithLoc,
+    ): Expr? = when (carSym) {
+        "if" -> {
+            EocError.ensure(cdrs.size == 3, root.ann) {
+                "If should take 3 arguments"
+            }
+            val (cond, ifT, ifF) = cdrs
+            ExprOp.If(toExpr(cond), toExpr(ifT), toExpr(ifF))
+        }
+        "let" -> {
+            EocError.ensure(cdrs.size == 2, root.ann) {
+                "Let should take 2 arguments"
+            }
+            val (kvsAnn, bodyAnn) = cdrs
+            val kvs = kvsAnn.unwrap
+            EocError.ensure(kvs is Sexpr.Cons && kvs.cdr == null, kvsAnn.ann) {
+                "Let bindings should be a list"
+            }
+            val (vs, es) = kvs.cars.map { bindingAnn ->
+                val binding = bindingAnn.unwrap
+                EocError.ensure(
+                    binding is Sexpr.Cons && binding.cdr == null && binding.cars.size == 2,
+                    bindingAnn.ann
+                ) {
+                    "Let binding should be in the form of [k v]"
+                }
+                val (kAnn, vAnn) = binding.cars
+                val k = kAnn.unwrap
+                EocError.ensure(k is Sexpr.Sym, kAnn.ann) {
+                    "In let binding [k v], k should be a sym"
+                }
+                bindingAnn.wrap(k.name) to toExpr(vAnn)
+            }.unzip()
+            ExprOp.Let(vs, es, toExpr(bodyAnn))
+        }
+        "lambda" -> {
+            EocError.ensure(cdrs.size >= 2, root.ann) {
+                "Lambda should be in the form of (lambda args body...)"
+            }
+
+            val (argsAnn, args) = cdrs.first()
+            // Varargs not implemented for now.
+            EocError.ensure(args is Sexpr.Cons && args.cdr == null, argsAnn) {
+                "Lambda args should be list"
+            }
+            val argNames = args.cars.map {
+                EocError.ensure(it.unwrap is Sexpr.Sym, it.ann) {
+                    "Lambda arg should be symbol"
+                }
+                it.wrap(it.unwrap.name)
+            }
+
+            val bodyE = cdrs.drop(1).map(::toExpr)
+            ExprLam.Lam(argNames, bodyE)
+        }
+        else -> {
+            primDescrs.firstNotNullOfOrNull { pd ->
+                if (carSym == pd.symbol && cdrs.size == pd.argc) {
+                    ExprOp.Op(carAnn.wrap(pd.op), cdrs.map(::toExpr))
+                } else {
+                    null
+                }
+            }
+        }
+    }
+
+    private fun toApply(f: SexprWithLoc, args: List<SexprWithLoc>): Expr {
+        val fE = toExpr(f)
+        val argsE = args.map(::toExpr)
+        return ExprLam.Ap(fE, argsE)
+    }
+
     private class PrimDescr(val op: PrimOp, val argc: Int, val symbol: String = op.symbol)
     private val primDescrs = listOf(
-        PrimDescr(PrimOp.IntAdd, 2),
-        PrimDescr(PrimOp.IntLessThan, 2),
+        PrimDescr(PrimOp.FxAdd, 2),
+        PrimDescr(PrimOp.FxLessThan, 2),
     )
 }

@@ -2,50 +2,66 @@ package com.gh.om.iueoc.son
 
 // Version 1.
 
-enum class OpCode {
+enum class OpCode(val klass: OpCodeClass) {
     // Start node is the start of the graph
     // TODO: Start has argc output values (parameters).
     // o(C)
-    Start,
+    Start(OpCodeClass.Anchor),
 
     // End node is the end of the graph
     // i(C)
-    End,
+    End(OpCodeClass.Anchor),
 
     // Region nodes mark the start of a block
     // i(C ** n): n predecessors, can be jump or start
     // o(C; C ** n): 1 jump node + n phis.
     // Each phi's value input corresponds to the control input on the same index in this region.
-    Region,
+    Region(OpCodeClass.Anchor),
 
     // Jump nodes mark the end of a block
     // i(VC): 1 return value, 1 region input. o(C): 1 end node output.
-    Return,
-
+    Return(OpCodeClass.Jump),
     // i(VC): 1 return value, 1 region input. o(CC): 2 projection outputs
-    CondJump,
+    CondJump(OpCodeClass.Jump),
+    // io(C): Jump from region to region
+    Jump(OpCodeClass.Jump),
 
     // Projection nodes
     // io(C): 1 CondJump input, 1 region output
-    IfT,
-    IfF,
+    // Scm-prefixed to check for not #f and #f.
+    ScmIfT(OpCodeClass.Projection),
+    ScmIfF(OpCodeClass.Projection),
 
     // Value nodes
     // Phi in v8 takes a single control input (Merge). A Region is roughly a Merge.
     // i(C; V ** n): The region that contains the phi (just like phis appearing in a basic block's header),
     // and the value nodes to choose from. Each value input corresponds to the region's control input on the
     // same index.
-    Phi,
+    Phi(OpCodeClass.Phi),
 
-    // Int values
-    IntLit,
-    IntAdd,
-    IntLessThan,
+    // Literals
+    ScmBoolLit(OpCodeClass.Value),
+    ScmSymbolLit(OpCodeClass.Value),
+    ScmFxLit(OpCodeClass.Value),
+
+    // Int operations
+    ScmFxAdd(OpCodeClass.Value),
+    ScmFxLessThan(OpCodeClass.Value),
+}
+
+enum class OpCodeClass {
+    // Start/End/Region
+    Anchor,
+    // End of basic blocks
+    Jump,
+    Projection,
+    Phi,
+    Value,
 }
 
 val OpCode.isPure: Boolean
     get() = when (this) {
-        OpCode.IntLit, OpCode.IntAdd, OpCode.IntLessThan -> true
+        OpCode.ScmFxLit, OpCode.ScmFxAdd, OpCode.ScmFxLessThan -> true
         else -> false
     }
 
@@ -67,18 +83,21 @@ object Operators {
     fun start() = make(OpCode.Start, nControlOut = 1)
     fun end(nRetNodes: Int = 1) = make(OpCode.End, nControlIn = nRetNodes)
 
-    fun region(nPhis: Int) = make(OpCode.Region, nControlIn = 1, nControlOut = 1 + nPhis)
+    fun region(nPreds: Int, nPhis: Int) = make(OpCode.Region, nControlIn = nPreds, nControlOut = 1 + nPhis)
 
     fun ret() = make(OpCode.Return, nValueIn = 1, nControlIn = 1, nControlOut = 1)
     fun condJump() = make(OpCode.CondJump, nValueIn = 1, nControlIn = 1, nControlOut = 2)
+    fun jump() = make(OpCode.Jump, nControlIn = 1, nControlOut = 1)
 
-    fun ifT() = make(OpCode.IfT, nControlIn = 1, nControlOut = 1)
-    fun ifF() = make(OpCode.IfF, nControlIn = 1, nControlOut = 1)
+    fun ifT() = make(OpCode.ScmIfT, nControlIn = 1, nControlOut = 1)
+    fun ifF() = make(OpCode.ScmIfF, nControlIn = 1, nControlOut = 1)
 
     fun phi(nRegions: Int) = make(OpCode.Phi, nValueIn = nRegions, nControlIn = 1)
-    fun int(value: Int) = make1(OpCode.IntLit, parameter = value)
-    fun intAdd() = make(OpCode.IntAdd, nValueIn = 2)
-    fun intLessThan() = make(OpCode.IntLessThan, nValueIn = 2)
+    fun boolLit(value: Boolean) = make1(OpCode.ScmBoolLit, parameter = value)
+    fun symbolLit(value: String) = make1(OpCode.ScmSymbolLit, parameter = value)
+    fun intLit(value: Int) = make1(OpCode.ScmFxLit, parameter = value)
+    fun intAdd() = make(OpCode.ScmFxAdd, nValueIn = 2)
+    fun intLessThan() = make(OpCode.ScmFxLessThan, nValueIn = 2)
 
     private fun make1(
         op: OpCode,
@@ -112,6 +131,12 @@ object Operators {
         nControlOut = nControlOut,
         parameter = Unit
     )
+
+    fun isSchemeIfProjections(operators: Collection<Operator>): Boolean {
+        return operators.count() == 2 &&
+            operators.count { it.op == OpCode.ScmIfT } == 1 &&
+            operators.count { it.op == OpCode.ScmIfF } == 1
+    }
 }
 
 typealias NodeId = Int
@@ -250,16 +275,19 @@ object Nodes {
     fun start() = Node.fresh(Operators.start())
     fun end() = Node.fresh(Operators.end())
 
-    fun region(nPhis: Int) = Node.fresh(Operators.region(nPhis))
+    fun region(nPreds: Int, nPhis: Int) = Node.fresh(Operators.region(nPreds = nPreds, nPhis = nPhis))
 
     fun ret() = Node.fresh(Operators.ret())
     fun condJump() = Node.fresh(Operators.condJump())
+    fun jump() = Node.fresh(Operators.jump())
 
     fun ifT() = Node.fresh(Operators.ifT())
     fun ifF() = Node.fresh(Operators.ifF())
 
     fun phi(nRegions: Int) = Node.fresh(Operators.phi(nRegions))
-    fun int(value: Int) = Node.fresh(Operators.int(value))
+    fun symbolLit(value: String) = Node.fresh(Operators.symbolLit(value))
+    fun boolLit(value: Boolean) = Node.fresh(Operators.boolLit(value))
+    fun intLit(value: Int) = Node.fresh(Operators.intLit(value))
     fun intAdd() = Node.fresh(Operators.intAdd())
     fun intLessThan() = Node.fresh(Operators.intLessThan())
 }

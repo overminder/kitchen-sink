@@ -4,13 +4,18 @@ sealed class Value {
     data class I(val value: Int) : Value()
     data class B(val value: Boolean) : Value()
     data class Sym(val name: String) : Value()
+    data class Lam(val env: Env, val args: List<AnnS<String>>, val body: List<AnnExpr>) : Value()
 }
 
 val Value.asBoolean: Boolean
     get() = this != Value.B(false)
 
 interface Interp {
-    fun interp(eAnn: AnnExpr, env: Env = emptyList()): Trampoline<Value>
+    fun interp(eAnn: AnnExpr, env: Env): Trampoline<Value>
+}
+
+fun Interp.interpToplevel(eAnn: AnnExpr): Value {
+    return interp(eAnn, emptyList()).value()
 }
 
 typealias Env = List<Pair<String, Value>>
@@ -66,20 +71,20 @@ open class InterpOp : InterpVar() {
             } else {
                 e.ifF
             }
-            Tr.more { interp(next) }
+            Tr.more { interp(next, env) }
         }
         is ExprOp.Let -> {
             val vs = e.es.map { interp(it, env).value() }
-            val newEnv = e.vs.zip(vs) + env
+            val newEnv = e.vs.map { it.unwrap }.zip(vs) + env
             Tr.more { interp(e.body, newEnv) }
         }
         is ExprOp.Op -> {
             val op = e.op.unwrap
             val values = e.args.map { interp(it, env).value() }
             when (op) {
-                PrimOp.IntAdd ->
+                PrimOp.FxAdd ->
                     binaryIntOp(e, values) { x, y -> Value.I(x + y) }
-                PrimOp.IntLessThan ->
+                PrimOp.FxLessThan ->
                     binaryIntOp(e, values) { x, y -> Value.B(x < y) }
             }
         }
@@ -96,5 +101,42 @@ open class InterpOp : InterpVar() {
             "$symbol takes int value, not $rhsV"
         }
         return Tr.pure(func(lhsV.value, rhsV.value))
+    }
+}
+
+open class InterpLam : InterpOp() {
+    override fun interp(eAnn: AnnExpr, env: Env): Trampoline<Value> {
+        val eop = eAnn.unwrap
+        return if (eop is ExprLam) {
+            interpInternal(eop, eAnn.ann, env)
+        } else {
+            super.interp(eAnn, env)
+        }
+    }
+
+    private fun interpInternal(e: ExprLam, sourceLoc: SourceLoc, env: Env): Trampoline<Value> = when (e) {
+        is ExprLam.Ap -> {
+            val f = interp(e.f, env).value()
+            EocError.ensure(f is Value.Lam, e.f.ann) {
+                "Not a function: $f"
+            }
+            // Evaluate from left to right.
+            val argValues = e.args.map { interp(it, env).value() }
+            EocError.ensure(f.args.size == argValues.size, sourceLoc) {
+                "Argument count mismatch: expecting ${f.args.size}, got ${argValues.size}"
+            }
+            val newEnv = f.args.map { it.unwrap }.zip(argValues) + f.env
+            val bodySize = f.body.size
+            Tr.more {
+                // Throw away values
+                f.body.take(bodySize - 1).forEach {
+                    interp(it, newEnv).value()
+                }
+                interp(f.body.last(), newEnv)
+            }
+        }
+        is ExprLam.Lam -> {
+            Tr.pure(Value.Lam(env, e.args, e.body))
+        }
     }
 }

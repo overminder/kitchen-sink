@@ -2,6 +2,7 @@ package com.gh.om.iueoc
 
 import com.gh.om.iueoc.son.GraphBuilder
 import com.gh.om.iueoc.son.GraphVerifier
+import com.gh.om.iueoc.son.graphToDot
 import com.gh.om.iueoc.son.interp
 import com.github.h0tk3y.betterParse.grammar.parseToEnd
 import com.github.h0tk3y.betterParse.parser.AlternativesFailure
@@ -11,18 +12,27 @@ import com.github.h0tk3y.betterParse.parser.NoMatchingToken
 import com.github.h0tk3y.betterParse.parser.ParseException
 import com.github.h0tk3y.betterParse.parser.UnexpectedEof
 import com.github.h0tk3y.betterParse.parser.UnparsedRemainder
+import java.io.FileWriter
 
-
-private const val INT_LIT = """
-    42
+private const val LET_ADD = """
+(let ([x 41]
+      [y 1])
+  (let ([z (#fx+ x y)]
+        [zz (#fx< (#fx+ x y) (#fx+ x y))])
+    zz))
 """
 
-private const val PROGRAM = """
-    (let ([x 40]
-          [y 8])
-      (if (#I.< x y)
-          0
-          1))
+private const val LAM_AP = """
+(let ([add1 (lambda [x] (#fx+ x 1))])
+  (add1 41))
+"""
+
+private const val LET_IF = """
+(let ([x 40]
+      [y 8])
+  (if (#fx< x y)
+      1
+      2))
 """
 
 fun showEocError(e: EocError, source: String, header: String = "Error") {
@@ -81,38 +91,45 @@ private fun formatParseError(e: ErrorResult, remainingDepth: Int): List<Pair<Sou
     return listOf(res)
 }
 
-fun runProgram(source: String): Value? {
+fun runProgram(source: String): Value {
     val program = try {
         SexprGrammar.parseToEnd(source)
     } catch (e: ParseException) {
         showParseError(e.errorResult, source)
-        return null
+        throw e
     }
 
     val expr = try {
         SexprToExpr.toExpr(program)
     } catch (e: EocError) {
         showEocError(e, source, "SexprToExpr error")
-        return null
+        throw e
     }
 
     val exprInterpResult = try {
-        InterpOp().interp(expr).value()
+        InterpLam().interpToplevel(expr)
     } catch (e: EocError) {
         showEocError(e, source, "Interp error")
-        return null
+        throw e
     }
 
     val gb = GraphBuilder()
-    gb.doFunctionBody(expr)
-    GraphVerifier(gb).verifyFullyBuilt()
+    try {
+        gb.doFunctionBody(expr)
+        GraphVerifier(gb).verifyFullyBuilt()
+    } catch (e: EocError) {
+        showEocError(e, source, "GraphBuilder error")
+        throw e
+    }
+    FileWriter("tools/out.dot").use {
+        graphToDot(gb, it)
+    }
     val graphInterpResult = interp(gb.start, gb.nodes)
     require(exprInterpResult == graphInterpResult)
     return graphInterpResult
 }
 
 private fun main() {
-    runProgram(INT_LIT)?.let {
-        println("Ok: $it")
-    }
+    val result = runProgram(LET_IF)
+    println("Ok: $result")
 }
