@@ -1,8 +1,7 @@
 package com.gh.om.iueoc
 
-import com.gh.om.iueoc.son.GraphBuilder
-import com.gh.om.iueoc.son.GraphVerifier
-import com.gh.om.iueoc.son.graphToDot
+import com.gh.om.iueoc.son.MultiGraphBuilder
+import com.gh.om.iueoc.son.graphsToDot
 import com.gh.om.iueoc.son.interp
 import com.github.h0tk3y.betterParse.grammar.parseToEnd
 import com.github.h0tk3y.betterParse.parser.AlternativesFailure
@@ -22,9 +21,20 @@ private const val LET_ADD = """
     zz))
 """
 
+private const val LET_SEQ = """
+(let* ([x 1]
+       [y 2]
+       [z (#fx+ x y)]
+       [x (#fx+ x z)]
+       [y (#fx+ y x)])
+  y)
+"""
+
 private const val LAM_AP = """
-(let ([add1 (lambda [x] (#fx+ x 1))])
-  (add1 41))
+(let*
+  ([add1 (lambda [x] (#fx+ x 1))]
+   [add2 (lambda [x] add1)])
+  add2)
 """
 
 private const val LET_IF = """
@@ -33,6 +43,14 @@ private const val LET_IF = """
   (if (#fx< x y)
       1
       2))
+"""
+
+private const val BOX_IF = """
+(let* ([b (#box 42)]
+       [_ (if b
+              (#box-set! b 1)
+              (#box-set! b 0))])
+  (#box-get b))
 """
 
 fun showEocError(e: EocError, source: String, header: String = "Error") {
@@ -113,16 +131,15 @@ fun runProgram(source: String): Value {
         throw e
     }
 
-    val gb = GraphBuilder()
-    try {
-        gb.doFunctionBody(expr)
-        GraphVerifier(gb).verifyFullyBuilt()
+    val gs = MultiGraphBuilder()
+    val gb = try {
+        gs.build(null, "<main>", emptyList(), listOf(expr), expr.ann)
     } catch (e: EocError) {
         showEocError(e, source, "GraphBuilder error")
         throw e
     }
     FileWriter("tools/out.dot").use {
-        graphToDot(gb, it)
+        graphsToDot(gs, it)
     }
     val graphInterpResult = interp(gb.start, gb.nodes)
     require(exprInterpResult == graphInterpResult)
@@ -130,6 +147,6 @@ fun runProgram(source: String): Value {
 }
 
 private fun main() {
-    val result = runProgram(LET_IF)
+    val result = runProgram(BOX_IF)
     println("Ok: $result")
 }

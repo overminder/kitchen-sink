@@ -5,6 +5,7 @@ sealed class Value {
     data class B(val value: Boolean) : Value()
     data class Sym(val name: String) : Value()
     data class Lam(val env: Env, val args: List<AnnS<String>>, val body: List<AnnExpr>) : Value()
+    data class Box(var value: Value): Value()
 }
 
 val Value.asBoolean: Boolean
@@ -18,7 +19,7 @@ fun Interp.interpToplevel(eAnn: AnnExpr): Value {
     return interp(eAnn, emptyList()).value()
 }
 
-typealias Env = List<Pair<String, Value>>
+private typealias Env = List<Pair<String, Value>>
 
 private fun Env.assocv(key: String): Value? {
     for ((k, v) in this) {
@@ -74,8 +75,23 @@ open class InterpOp : InterpVar() {
             Tr.more { interp(next, env) }
         }
         is ExprOp.Let -> {
-            val vs = e.es.map { interp(it, env).value() }
-            val newEnv = e.vs.map { it.unwrap }.zip(vs) + env
+            val newEnv = when (e.kind) {
+                LetKind.Basic -> {
+                    val vs = e.es.map { interp(it, env).value() }
+                    e.vs.map { it.unwrap }.zip(vs) + env
+                }
+                LetKind.Seq -> {
+                    e.vs.zip(e.es).fold(env) { currentEnv, ve ->
+                        val (k, rhs) = ve
+                        val value = interp(rhs, currentEnv).value()
+                        // Quadratic
+                        listOf(k.unwrap to value) + currentEnv
+                    }
+                }
+                LetKind.Rec -> {
+                    EocError.todo(sourceLoc, "letrec not yet implemented")
+                }
+            }
             Tr.more { interp(e.body, newEnv) }
         }
         is ExprOp.Op -> {
@@ -86,6 +102,24 @@ open class InterpOp : InterpVar() {
                     binaryIntOp(e, values) { x, y -> Value.I(x + y) }
                 PrimOp.FxLessThan ->
                     binaryIntOp(e, values) { x, y -> Value.B(x < y) }
+                PrimOp.BoxMk ->
+                    Tr.pure(Value.Box(values.first()))
+                PrimOp.BoxGet -> {
+                    val box = values.first()
+                    EocError.ensure(box is Value.Box, sourceLoc) {
+                        "Not a box: $box"
+                    }
+                    Tr.pure(box.value)
+                }
+                PrimOp.BoxSet -> {
+                    val (box, newValue) = values
+                    EocError.ensure(box is Value.Box, sourceLoc) {
+                        "Not a box: $box"
+                    }
+                    val oldValue = box.value
+                    box.value = newValue
+                    Tr.pure(oldValue)
+                }
             }
         }
     }

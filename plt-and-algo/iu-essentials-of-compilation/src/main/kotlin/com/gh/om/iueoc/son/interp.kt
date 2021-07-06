@@ -16,20 +16,24 @@ fun interp(nid: NodeId, nodes: NodeMap, env: Env = mutableMapOf()): Value {
     fun goValue(nid: NodeId): Value {
         val n = get(nid)
         return when (val op = n.operator.op) {
-            OpCode.Phi -> {
+            OpCode.Memory -> {
+                TODO()
+            }
+            OpCode.Phi,
+            OpCode.MemoryPhi -> {
                 requireNotNull(env[nid])
             }
             OpCode.ScmBoolLit -> {
-                val value = n.operator.parameter as Boolean
+                val value = n.operator.extra as Boolean
                 Value.B(value)
             }
             OpCode.ScmSymbolLit -> {
-                val value = n.operator.parameter as String
+                val value = n.operator.extra as String
                 Value.Sym(value)
             }
             OpCode.ScmFxLit -> {
                 // Hmm ideally we want type safety on operator
-                val value = n.operator.parameter as Int
+                val value = n.operator.extra as Int
                 Value.I(value)
             }
             OpCode.ScmFxAdd -> {
@@ -88,7 +92,9 @@ fun interp(nid: NodeId, nodes: NodeMap, env: Env = mutableMapOf()): Value {
                 error("Not reachable")
             }
             OpCode.Return -> {
-                goValue(n.singleValueInput)
+                val (memory, value) = n.valueInputs
+                goValue(memory)
+                goValue(value)
             }
             OpCode.CondJump -> {
                 val couts = n.controlOutputs.map(::get)

@@ -15,13 +15,20 @@ sealed class ExprVar : Expr() {
 
 // Single inheritance, or a la carte?
 sealed class ExprOp : Expr() {
-    data class Let(val vs: List<AnnS<String>>, val es: List<AnnExpr>, val body: AnnExpr) : ExprOp()
+    data class Let(val vs: List<AnnS<String>>, val es: List<AnnExpr>, val body: AnnExpr, val kind: LetKind) : ExprOp()
     data class If(val cond: AnnExpr, val ifT: AnnExpr, val ifF: AnnExpr) : ExprOp()
     data class Op(val op: AnnS<PrimOp>, val args: List<AnnExpr>) : ExprOp()
 }
 
+enum class LetKind {
+    Basic,
+    Seq,
+    Rec,
+}
+
 sealed class ExprLam : Expr() {
-    data class Lam(val args: List<AnnS<String>>, val body: List<AnnExpr>) : ExprLam()
+    // Name can be inferred during sexpr->expr
+    data class Lam(val name: String? = null, val args: List<AnnS<String>>, val body: List<AnnExpr>) : ExprLam()
     data class Ap(val f: AnnExpr, val args: List<AnnExpr>) : ExprLam()
 }
 
@@ -30,6 +37,11 @@ enum class PrimOp(val symbol: String) {
     FxAdd("#fx+"),
     // (Fx, Fx) -> Bool
     FxLessThan("#fx<"),
+
+    // any -> Box
+    BoxMk("#box"),
+    BoxGet("#box-get"),
+    BoxSet("#box-set!"),
 }
 
 // Sexpr -> Expr
@@ -90,7 +102,13 @@ object SexprToExpr {
             val (cond, ifT, ifF) = cdrs
             ExprOp.If(toExpr(cond), toExpr(ifT), toExpr(ifF))
         }
-        "let" -> {
+        "let", "let*", "letrec" -> {
+            val kind = when (carSym) {
+                "let" -> LetKind.Basic
+                "let*" -> LetKind.Seq
+                "letrec" -> LetKind.Seq
+                else -> error("Not reachable")
+            }
             EocError.ensure(cdrs.size == 2, root.ann) {
                 "Let should take 2 arguments"
             }
@@ -112,9 +130,9 @@ object SexprToExpr {
                 EocError.ensure(k is Sexpr.Sym, kAnn.ann) {
                     "In let binding [k v], k should be a sym"
                 }
-                bindingAnn.wrap(k.name) to toExpr(vAnn)
+                bindingAnn.wrap(k.name) to tryAssignName(k.name, toExpr(vAnn))
             }.unzip()
-            ExprOp.Let(vs, es, toExpr(bodyAnn))
+            ExprOp.Let(vs, es, toExpr(bodyAnn), kind)
         }
         "lambda" -> {
             EocError.ensure(cdrs.size >= 2, root.ann) {
@@ -134,7 +152,7 @@ object SexprToExpr {
             }
 
             val bodyE = cdrs.drop(1).map(::toExpr)
-            ExprLam.Lam(argNames, bodyE)
+            ExprLam.Lam(null, argNames, bodyE)
         }
         else -> {
             primDescrs.firstNotNullOfOrNull { pd ->
@@ -153,9 +171,20 @@ object SexprToExpr {
         return ExprLam.Ap(fE, argsE)
     }
 
+    private fun tryAssignName(name: String, annE: AnnExpr): AnnExpr {
+        return if (annE.unwrap is ExprLam.Lam) {
+            annE.wrap(annE.unwrap.copy(name = name))
+        } else {
+            annE
+        }
+    }
+
     private class PrimDescr(val op: PrimOp, val argc: Int, val symbol: String = op.symbol)
     private val primDescrs = listOf(
         PrimDescr(PrimOp.FxAdd, 2),
         PrimDescr(PrimOp.FxLessThan, 2),
+        PrimDescr(PrimOp.BoxMk, 1),
+        PrimDescr(PrimOp.BoxGet, 1),
+        PrimDescr(PrimOp.BoxSet, 2),
     )
 }
