@@ -4,25 +4,25 @@ package com.gh.om.iueoc.son
 
 enum class OpCode(val klass: OpCodeClass) {
     // Start node is the start of the graph
-    // o(C; V; V ** |args|; V ** |upvals|): One control output to the entry region, one memory output,
-    // and a bunch of upvals and parameters.
+    // o(C:entryRegion, V:effect, V:Argument ** |args|, V:FreeVar ** |upvals|)
     Start(OpCodeClass.Anchor),
 
     // End node is the end of the graph
     // i(C): One (or more) control input (from return)
     End(OpCodeClass.Anchor),
 
-    // Region nodes mark the start of a block
-    // i(C ** n): n predecessors, can be jump or start
-    // o(C; C ** n): 1 jump node + n phis.
+    // Region nodes mark the start of a block.
+    // This can also be a join point for multiple incoming blocks (merge node in v8)
+    // i(C:jumpOrStart ** |preds|): n predecessors, can be jump or start
+    // o(C:jump; C:phi ** |preds|): 1 jump node + n phis.
     // Each phi's value input corresponds to the control input on the same index in this region.
     Region(OpCodeClass.Anchor),
 
     // Jump nodes mark the end of a block
-    // i(V:memory, V:retVal, C:region), o(C:end)
+    // i(V:effect, V:retVal, C:region), o(C:end)
     Return(OpCodeClass.Jump),
 
-    // i(V:cond C:currentRegion), o(C:ifT, C:ifF): 2 projection outputs
+    // i(V:cond, C:currentRegion), o(C:ifT, C:ifF): 2 projection outputs
     CondJump(OpCodeClass.Jump),
 
     // io(C): Jump from region to region
@@ -40,9 +40,9 @@ enum class OpCode(val klass: OpCodeClass) {
     Argument(OpCodeClass.Projection),
     // Closure lifted free var (upvalue). i(V): start; p(FreeVarOpExtra): name and nth free var
     FreeVar(OpCodeClass.Projection),
-    // io(V): The memory effect of an operation. This is created by Start and threaded by memory writes (e.g. box-set!).
-    // Memory reads (box-get) also need an input of this.
-    Memory(OpCodeClass.Projection),
+    // io(V): The effect of an operation. This is created by Start and threaded by effectful nodes
+    // (e.g. alloc and memory read/write).
+    Effect(OpCodeClass.Projection),
 
     // Value nodes
     // Phi in v8 takes a single control input (Merge). A Region is roughly a Merge.
@@ -50,20 +50,21 @@ enum class OpCode(val klass: OpCodeClass) {
     // and the value nodes to choose from. Each value input corresponds to the region's control input on the
     // same index.
     Phi(OpCodeClass.Phi),
-    MemoryPhi(OpCodeClass.Phi),
+    EffectPhi(OpCodeClass.Phi),
 
     // Literals
     ScmBoolLit(OpCodeClass.Value),
-    // i(V:box)
+    // i(V:effect, V:toBox)
     ScmBoxLit(OpCodeClass.Value),
     ScmFxLit(OpCodeClass.Value),
+    // i(V:effect, V:freeVar ** |freeVars|)
     ScmLambdaLit(OpCodeClass.Value),
     ScmSymbolLit(OpCodeClass.Value),
 
     // Box operations
-    // i(V:memory V:box)
+    // i(V:effect V:box)
     ScmBoxGet(OpCodeClass.Value),
-    // i(V:memory, V:box, V:newValue)
+    // i(V:effect, V:box, V:newValue)
     ScmBoxSet(OpCodeClass.Value),
 
     // Int operations
@@ -143,16 +144,16 @@ object Operators {
     fun ifF() = make(OpCode.ScmIfF, nControlIn = 1, nControlOut = 1)
     fun argument(extra: ArgumentOpExtra) = make1(OpCode.Argument, nValueIn = 1, parameter = extra)
     fun freeVar(extra: FreeVarOpExtra) = make1(OpCode.FreeVar, nValueIn = 1, parameter = extra)
-    fun memory() = make(OpCode.Memory, nValueIn = 1)
+    fun effect() = make(OpCode.Effect, nValueIn = 1)
 
     fun phi(nRegions: Int) = make(OpCode.Phi, nValueIn = nRegions, nControlIn = 1)
-    fun memoryPhi(nRegions: Int) = make(OpCode.MemoryPhi, nValueIn = nRegions, nControlIn = 1)
+    fun effectPhi(nRegions: Int) = make(OpCode.EffectPhi, nValueIn = nRegions, nControlIn = 1)
 
     // Many of the literal nodes allocate, but are still pure from schemes' semantics.
     fun boolLit(value: Boolean) = make1(OpCode.ScmBoolLit, parameter = value)
-    fun boxLit() = make(OpCode.ScmBoxLit, nValueIn = 1)
+    fun boxLit() = make(OpCode.ScmBoxLit, nValueIn = 2)
     fun fxLit(value: Int) = make1(OpCode.ScmFxLit, parameter = value)
-    fun lambdaLit(graphId: GraphId) = make1(OpCode.ScmLambdaLit, parameter = graphId)
+    fun lambdaLit(nFreeVars: Int, graphId: GraphId) = make1(OpCode.ScmLambdaLit, nValueIn = 1 + nFreeVars, parameter = graphId)
     fun symbolLit(value: String) = make1(OpCode.ScmSymbolLit, parameter = value)
 
     fun boxGet() = make(OpCode.ScmBoxGet, nValueIn = 2)
@@ -203,7 +204,8 @@ object Operators {
     }
 }
 
-typealias NodeId = Int
+@JvmInline
+value class NodeId(val v: Int)
 typealias NodeIdList = List<NodeId>
 typealias MutNodeIdList = MutableList<NodeId>
 typealias MutNodeMap = MutableMap<NodeId, Node>
@@ -369,15 +371,15 @@ object Nodes {
     fun ifF() = Node.fresh(Operators.ifF())
     fun argument(extra: ArgumentOpExtra) = Node.fresh(Operators.argument(extra))
     fun freeVar(extra: FreeVarOpExtra) = Node.fresh(Operators.freeVar(extra))
-    fun memory() = Node.fresh(Operators.memory())
+    fun effect() = Node.fresh(Operators.effect())
 
     fun phi(nRegions: Int) = Node.fresh(Operators.phi(nRegions))
-    fun memoryPhi(nRegions: Int) = Node.fresh(Operators.memoryPhi(nRegions))
+    fun effectPhi(nRegions: Int) = Node.fresh(Operators.effectPhi(nRegions))
 
     fun boolLit(value: Boolean) = Node.fresh(Operators.boolLit(value))
     fun boxLit() = Node.fresh(Operators.boxLit())
     fun intLit(value: Int) = Node.fresh(Operators.fxLit(value))
-    fun lambdaLit(graphId: Int) = Node.fresh(Operators.lambdaLit(graphId))
+    fun lambdaLit(nFreeVars: Int, graphId: GraphId) = Node.fresh(Operators.lambdaLit(nFreeVars, graphId))
     fun symbolLit(value: String) = Node.fresh(Operators.symbolLit(value))
 
     fun fxAdd() = Node.fresh(Operators.fxAdd())
@@ -390,14 +392,14 @@ object Nodes {
 
 object NodeIds {
     // Inputs / outputs
-    const val UNPOPULATED_ID = -2
+    val UNPOPULATED_ID = NodeId(-2)
 
     // Fresh node
-    const val FRESH_ID = -1
-    const val FIRST_ID_IN_GRAPH = 1
+    val FRESH_ID = NodeId(-1)
+    val FIRST_ID_IN_GRAPH = NodeId(1)
 
     fun isValid(id: NodeId): Boolean {
-        return id >= FIRST_ID_IN_GRAPH
+        return id.v >= FIRST_ID_IN_GRAPH.v
     }
 }
 

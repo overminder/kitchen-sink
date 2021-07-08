@@ -106,7 +106,7 @@ object SexprToExpr {
             val kind = when (carSym) {
                 "let" -> LetKind.Basic
                 "let*" -> LetKind.Seq
-                "letrec" -> LetKind.Seq
+                "letrec" -> LetKind.Rec
                 else -> error("Not reachable")
             }
             EocError.ensure(cdrs.size == 2, root.ann) {

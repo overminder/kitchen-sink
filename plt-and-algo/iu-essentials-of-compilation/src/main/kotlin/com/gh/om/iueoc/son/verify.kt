@@ -74,15 +74,18 @@ class GraphVerifier(private val g: Graph) {
         else -> false
     }
 
-    private fun isMemory(op: OpCode): Boolean = when (op) {
-        OpCode.Memory,
-        OpCode.MemoryPhi -> true
+    private fun isEffect(op: OpCode): Boolean = when (op) {
+        OpCode.Effect,
+        OpCode.EffectPhi -> true
         else -> false
     }
 
-    private fun canProjectMemoryOut(op: OpCode): Boolean = when (op) {
+    private fun canProjectEffectOut(op: OpCode): Boolean = when (op) {
         OpCode.Start,
-        OpCode.ScmBoxSet -> true
+        OpCode.ScmBoxLit,
+        OpCode.ScmLambdaLit,
+        OpCode.ScmBoxSet,
+        OpCode.ScmBoxGet -> true
         else -> false
     }
 
@@ -112,7 +115,7 @@ class GraphVerifier(private val g: Graph) {
             OpCode.Start -> {
                 // Checks on value outputs are likely not needed...
                 val valueOutputs = n.valueOutputs.map(::getOp)
-                require(valueOutputs.first() == OpCode.Memory)
+                require(valueOutputs.first() == OpCode.Effect)
                 valueOutputs.drop(1).forEach {
                     require(it == OpCode.Argument || it == OpCode.FreeVar)
                 }
@@ -123,11 +126,11 @@ class GraphVerifier(private val g: Graph) {
             }
             OpCode.Region -> {
                 n.controlOutputs.map(::getOp).forEach {
-                    require(it == OpCode.Phi || it == OpCode.MemoryPhi || isJump(it))
+                    require(it == OpCode.Phi || it == OpCode.EffectPhi || isJump(it))
                 }
             }
             OpCode.Return -> {
-                checkInputBy(n, 0, EdgeKind.Value) { isMemory(it) }
+                checkInputBy(n, 0, EdgeKind.Value) { isEffect(it) }
                 checkInputBy(n, 1, EdgeKind.Value) { isValue(it) }
                 checkInputBy(n, 0, EdgeKind.Control) { it == OpCode.Region }
                 require(getOp(n.singleControlOutput) == OpCode.End)
@@ -153,11 +156,11 @@ class GraphVerifier(private val g: Graph) {
             OpCode.FreeVar -> {
                 checkInputBy(n, 0, EdgeKind.Value) { it == OpCode.Start }
             }
-            OpCode.Memory -> {
-                checkInputBy(n, 0, EdgeKind.Value) { canProjectMemoryOut(it) }
+            OpCode.Effect -> {
+                checkInputBy(n, 0, EdgeKind.Value) { canProjectEffectOut(it) }
             }
             OpCode.Phi,
-            OpCode.MemoryPhi -> {
+            OpCode.EffectPhi -> {
                 checkInputBy(n, 0, EdgeKind.Control) { it == OpCode.Region }
                 val region = g[n.singleControlInput]
                 require(n.valueInputs.size == region.controlInputs.size)
@@ -166,7 +169,7 @@ class GraphVerifier(private val g: Graph) {
                     if (nodeOp == OpCode.Phi) {
                         require(isValue(inputOp))
                     } else {
-                        require(isMemory(inputOp))
+                        require(isEffect(inputOp))
                     }
                 }
             }
@@ -177,16 +180,17 @@ class GraphVerifier(private val g: Graph) {
             }
             OpCode.ScmBoxLit,
             OpCode.ScmLambdaLit -> {
-                n.valueInputs.map(::getOp).forEach {
+                checkInputBy(n, 0, EdgeKind.Value) { isEffect(it) }
+                n.valueInputs.drop(1).map(::getOp).forEach {
                     require(isValue(it))
                 }
             }
             OpCode.ScmBoxGet -> {
-                checkInputBy(n, 0, EdgeKind.Value) { isMemory(it) }
+                checkInputBy(n, 0, EdgeKind.Value) { isEffect(it) }
                 checkInputBy(n, 1, EdgeKind.Value) { isValue(it) }
             }
             OpCode.ScmBoxSet -> {
-                checkInputBy(n, 0, EdgeKind.Value) { isMemory(it) }
+                checkInputBy(n, 0, EdgeKind.Value) { isEffect(it) }
                 checkInputBy(n, 1, EdgeKind.Value) { isValue(it) }
                 checkInputBy(n, 2, EdgeKind.Value) { isValue(it) }
             }

@@ -35,7 +35,8 @@ COMMON_CACHED_OP_LIST defines:
 - LoopExit: i(CC), o(C). Why two C? I remember that a loop header usually has two C inputs (from before the loop, from end of the loop) and two outputs (to start of the loop, to outside of the loop).
 - LoopExitEffect: i(EC), o(E), ps=noThrow. Chaining the E and consuming the C. Not sure about this.
 - Checkpoint: Same as above, just ps=Kontrol.
-- FinishRegion: i(VE), o(VE). Is this a block exit, or for memory alloc region?
+- BeginRegion(jsObservability): io(E). Looks like memory region.
+- FinishRegion: i(VE), o(VE). Paired with above.
 - Retain: i(VE), o(E). This one makes sense -- Keep a V alive until the E is chained.
 
 More in CommonOperatorBuilder:
@@ -58,7 +59,6 @@ More in CommonOperatorBuilder:
 - EffectPhi(n > 0): i(C; E ** n), o(E). Same as above.
 - InductionVariablePhi(n >= 4): i(C; V ** n), o(V). Looks like a bounded loop phi -- Doc says the value inputs are the entry, backedge, increment, and at least one bound.
 - LoopExitValue(machineRep): i(VC), o(V). Consumes the loop exit C to pull the final value out?
-- BeginRegion(jsObservability): io(E). Looks like memory region.
 - StateValues(n, bitmask): i(V ** n), o(V). Is this the same as graal's state (for deopt)? Are the inputs all SomeStates?
 - TypedStateValues(types, bitmask): Same as above, just typed.
 - ArgumentsElementsState(argStateType): o(V). Kind of related to how js arguments is created, but not too sure.

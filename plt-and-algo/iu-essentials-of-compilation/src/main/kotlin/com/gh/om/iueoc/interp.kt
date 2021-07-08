@@ -1,5 +1,9 @@
 package com.gh.om.iueoc
 
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.putAll
+
 sealed class Value {
     data class I(val value: Int) : Value()
     data class B(val value: Boolean) : Value()
@@ -16,19 +20,10 @@ interface Interp {
 }
 
 fun Interp.interpToplevel(eAnn: AnnExpr): Value {
-    return interp(eAnn, emptyList()).value()
+    return interp(eAnn, persistentMapOf()).value()
 }
 
-private typealias Env = List<Pair<String, Value>>
-
-private fun Env.assocv(key: String): Value? {
-    for ((k, v) in this) {
-        if (k == key) {
-            return v
-        }
-    }
-    return null
-}
+private typealias Env = PersistentMap<String, Value>
 
 // Open to allow extension
 open class InterpVar : Interp {
@@ -43,9 +38,9 @@ open class InterpVar : Interp {
     private fun interpInternal(e: ExprVar, sourceLoc: SourceLoc, env: Env): Value = when (e) {
         is ExprVar.I -> Value.I(e.value)
         is ExprVar.V -> {
-            val value = env.assocv(e.name)
+            val value = env[e.name]
             EocError.ensure(value != null, sourceLoc) {
-                "Unbound variable: ${e.name}"
+                "Unbound variable: ${e.name}, all vars: ${env.keys}"
             }
             value
         }
@@ -78,14 +73,13 @@ open class InterpOp : InterpVar() {
             val newEnv = when (e.kind) {
                 LetKind.Basic -> {
                     val vs = e.es.map { interp(it, env).value() }
-                    e.vs.map { it.unwrap }.zip(vs) + env
+                    env.putAll(e.vs.map { it.unwrap }.zip(vs))
                 }
                 LetKind.Seq -> {
                     e.vs.zip(e.es).fold(env) { currentEnv, ve ->
                         val (k, rhs) = ve
                         val value = interp(rhs, currentEnv).value()
-                        // Quadratic
-                        listOf(k.unwrap to value) + currentEnv
+                        currentEnv.put(k.unwrap, value)
                     }
                 }
                 LetKind.Rec -> {
@@ -159,7 +153,7 @@ open class InterpLam : InterpOp() {
             EocError.ensure(f.args.size == argValues.size, sourceLoc) {
                 "Argument count mismatch: expecting ${f.args.size}, got ${argValues.size}"
             }
-            val newEnv = f.args.map { it.unwrap }.zip(argValues) + f.env
+            val newEnv = f.env.putAll(f.args.map { it.unwrap }.zip(argValues))
             val bodySize = f.body.size
             Tr.more {
                 // Throw away values

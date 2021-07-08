@@ -10,6 +10,10 @@ import com.gh.om.iueoc.LetKind
 import com.gh.om.iueoc.PrimOp
 import com.gh.om.iueoc.SourceLoc
 import com.gh.om.iueoc.wrap
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.putAll
+import kotlinx.collections.immutable.toPersistentMap
 
 // Data class for hashcode and equals
 private data class ValueNodeEqWrapper(
@@ -20,7 +24,7 @@ private data class ValueNodeEqWrapper(
     val inputs: List<NodeId>
 )
 
-typealias NodeEnv = MutableMap<String, NodeId>
+typealias NodeEnv = PersistentMap<String, NodeId>
 
 // Freshly created nodes are not inserted into the graph yet:
 // - No valid id
@@ -31,7 +35,7 @@ typealias NodeEnv = MutableMap<String, NodeId>
 // 2. For control nodes: (partially) populate its inputs and outputs, and we are good.
 
 class EnvChain(
-    private val bindings: NodeEnv = mutableMapOf(),
+    private val bindings: NodeEnv = persistentMapOf(),
     private val parent: EnvChain? = null
 ) {
 
@@ -41,11 +45,11 @@ class EnvChain(
 
     // Useful for determining the available free vars when making closures
     fun flatten(): NodeEnv {
-        val out: NodeEnv = mutableMapOf()
+        var out: NodeEnv = persistentMapOf()
         tailrec fun go(e: EnvChain) {
             e.bindings.forEach { (key, value) ->
                 if (key !in out) {
-                    out[key] = value
+                    out = out.put(key, value)
                 }
             }
             if (e.parent != null) {
@@ -84,8 +88,12 @@ class MultiGraphBuilder : MultiGraph {
     override val graphs
         get() = _graphs
 
-    private var idGen: Int = FIRST_ID
-    fun nextId(): Int = idGen++
+    private var idGen = FIRST_ID
+    fun nextId(): GraphId {
+        val ret = idGen
+        idGen = GraphId(idGen.v + 1)
+        return ret
+    }
     private val _graphs = mutableMapOf<GraphId, AnnS<GraphBuilder>>()
 
     private operator fun get(id: GraphId): GraphBuilder {
@@ -132,19 +140,24 @@ class MultiGraphBuilder : MultiGraph {
     }
 
     companion object {
-        const val FIRST_ID = 1
-        const val FRESH_ID = -2
+        val FRESH_ID = GraphId(-2)
+        val FIRST_ID = GraphId(1)
         fun isValidId(graphId: GraphId): Boolean {
-            return graphId >= FIRST_ID
+            return graphId.v >= FIRST_ID.v
         }
     }
 }
 
-typealias GraphId = Int
+// @JvmInline value class GraphId(val v: Int)
+data class GraphId(val v: Int)
 
 class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override val name: String?) : Graph {
-    private var idGen: Int = NodeIds.FIRST_ID_IN_GRAPH
-    private fun nextId(): Int = idGen++
+    private var idGen = NodeIds.FIRST_ID_IN_GRAPH
+    private fun nextId(): NodeId {
+        val ret = idGen
+        idGen = NodeId(idGen.v + 1)
+        return ret
+    }
 
     override val nodes: MutNodeMap = mutableMapOf()
 
@@ -159,15 +172,15 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
     private val gvnCache = mutableMapOf<ValueNodeEqWrapper, NodeId>()
 
     private var currentRegion: NodeId? = null
-    private var currentMemory: NodeId
+    private var currentEffect: NodeId
 
     init {
         start = assignId(Nodes.start()).id
         end = assignId(Nodes.end()).id
         dead = assignId(Nodes.dead()).id
-        currentMemory = assignId(Nodes.memory()).id
+        currentEffect = assignId(Nodes.effect()).id
 
-        get(currentMemory).addInput(get(start), EdgeKind.Value, populating = true)
+        get(currentEffect).addInput(get(start), EdgeKind.Value, populating = true)
     }
 
     private fun startRegion(nPreds: Int = 1, nPhis: Int = 0): Node {
@@ -181,28 +194,31 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         return requireNotNull(currentRegion)
     }
 
-    private fun projectMemoryFrom(node: Node) {
-        val updatedMemory = assignId(Nodes.memory())
-        updatedMemory.addInput(node, EdgeKind.Value, populating = true)
-        currentMemory = updatedMemory.id
+    private fun projectEffectFrom(node: Node): Node {
+        val updatedEffect = assignId(Nodes.effect())
+        updatedEffect.addInput(node, EdgeKind.Value, populating = true)
+        currentEffect = updatedEffect.id
+        return node
     }
 
     fun populateArgs(args: Collection<AnnS<String>>, freeVars: Collection<String>): EnvChain {
-        val env: NodeEnv = mutableMapOf()
+        var env: NodeEnv = persistentMapOf()
 
-        freeVars.withIndex().associateTo(env) { (index, freeVar) ->
+        val freeVarNodes = freeVars.mapIndexed { index, freeVar ->
             val extra = FreeVarOpExtra(freeVar, index)
-            val node = assignId(Nodes.freeVar(extra))
-            node.addInput(get(start), EdgeKind.Value, populating = true)
-            freeVar to node.id
+            freeVar to Nodes.freeVar(extra)
         }
 
-        args.withIndex().associateTo(env) { (index, arg) ->
+        val argNodes = args.mapIndexed { index, arg ->
             val extra = ArgumentOpExtra(arg.unwrap, index)
-            val node = assignId(Nodes.argument(extra))
-            node.addInput(get(start), EdgeKind.Value, populating = true)
-            arg.unwrap to node.id
+            arg.unwrap to Nodes.argument(extra)
         }
+
+        env = env.putAll((freeVarNodes + argNodes).map { (name, node) ->
+            assignId(node)
+            node.addInput(get(start), EdgeKind.Value, populating = true)
+            name to node.id
+        })
 
         return EnvChain(env)
     }
@@ -221,7 +237,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         val exitRegion = get(assertCurrentRegion())
 
         val returnNode = assignId(Nodes.ret())
-        returnNode.addInput(get(currentMemory), EdgeKind.Value, populating = true)
+        returnNode.addInput(get(currentEffect), EdgeKind.Value, populating = true)
         returnNode.addInput(returnValue, EdgeKind.Value, populating = true)
         returnNode.addInput(exitRegion, EdgeKind.Control, populating = true)
 
@@ -243,23 +259,29 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
                 ifT.addInput(condJump, EdgeKind.Control, populating = true)
                 ifF.addInput(condJump, EdgeKind.Control, populating = true)
 
+                // Save the effect state before branching.
+                val originalEffect = currentEffect
+
                 // True branch
                 startRegion().addInput(ifT, EdgeKind.Control, populating = true)
                 val tValue = doExpr(e.ifT, env)
                 val tValueRegion = assertCurrentRegion()
-                val tMemory = currentMemory
+                val tEffect = currentEffect
                 val tJump = assignId(Nodes.jump())
                 tJump.addInput(get(tValueRegion), EdgeKind.Control, populating = true)
+
+                // Restore the effect state before branching.
+                currentEffect = originalEffect
 
                 // False branch
                 startRegion().addInput(ifF, EdgeKind.Control, populating = true)
                 val fValue = doExpr(e.ifF, env)
                 val fValueRegion = assertCurrentRegion()
-                val fMemory = currentMemory
+                val fEffect = currentEffect
                 val fJump = assignId(Nodes.jump())
                 fJump.addInput(get(fValueRegion), EdgeKind.Control, populating = true)
 
-                joinControlFlow(tValue, tMemory, fValue, fMemory, tJump, fJump)
+                joinControlFlow(tValue, tEffect, fValue, fEffect, tJump, fJump)
             }
             is ExprOp.Let -> {
                 val newEnv = when (e.kind) {
@@ -267,21 +289,33 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
                         val newBindings = e.vs.zip(e.es).associateTo(mutableMapOf()) { (name, rhs) ->
                             val value = doExpr(rhs, env)
                             name.unwrap to value
-                        }
+                        }.toPersistentMap()
                         env.extend(newBindings)
                     }
                     LetKind.Seq -> {
-                        val newBindings: NodeEnv = mutableMapOf()
-                        val newEnv = env.extend(newBindings)
-                        // Mutate the current env on the go.
-                        e.vs.zip(e.es).associateTo(newBindings) { (name, rhs) ->
+                        var newBindings: NodeEnv = persistentMapOf()
+                        // "Mutate" the current env on the go.
+                        e.vs.zip(e.es).forEach { (name, rhs) ->
+                            val newEnv = env.extend(newBindings)
                             val value = doExpr(rhs, newEnv)
-                            name.unwrap to value
+                            newBindings = newBindings.put(name.unwrap, value)
                         }
-                        newEnv
+                        env.extend(newBindings)
                     }
                     LetKind.Rec -> {
                         EocError.todo(annE.ann, "letrec not yet implemented")
+                        /*
+                        val newBindings = e.vs.associate {
+                            val boxNode = makeBoxLit(makeSymbolLit("#letrec-hole"))
+                            it.unwrap to boxNode
+                        }.toPersistentMap()
+                        val newEnv = env.extend(newBindings)
+                        // Mutate the current env on the go.
+                        e.vs.zip(e.es).forEach { (name, rhs) ->
+                            val value = doExpr(rhs, newEnv)
+                            name.unwrap to value
+                        }
+                         */
                     }
                 }
                 doExpr(e.body, newEnv)
@@ -297,25 +331,15 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
                     }
                     PrimOp.BoxMk -> {
                         val valueToBox = values.first()
-                        val boxNode = assignId(Nodes.boxLit())
-                        boxNode.addInput(get(valueToBox), EdgeKind.Value, populating = true)
-                        boxNode.id
+                        makeEffectfulValueNode(Nodes.boxLit(), listOf(valueToBox)).id
                     }
                     PrimOp.BoxGet -> {
                         val boxValue = values.first()
-                        val getter = assignId(Nodes.boxGet())
-                        getter.addInput(get(currentMemory), EdgeKind.Value, populating = true)
-                        getter.addInput(get(boxValue), EdgeKind.Value, populating = true)
-                        getter.id
+                        makeEffectfulValueNode(Nodes.boxGet(), listOf(boxValue)).id
                     }
                     PrimOp.BoxSet -> {
                         val (boxValue, newValue) = values
-                        val setter = assignId(Nodes.boxSet())
-                        setter.addInput(get(currentMemory), EdgeKind.Value, populating = true)
-                        setter.addInput(get(boxValue), EdgeKind.Value, populating = true)
-                        setter.addInput(get(newValue), EdgeKind.Value, populating = true)
-                        projectMemoryFrom(setter)
-                        setter.id
+                        makeEffectfulValueNode(Nodes.boxSet(), listOf(boxValue, newValue)).id
                     }
                 }
             }
@@ -326,7 +350,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
                 tryGvn(Nodes.intLit(e.value))
             }
             is ExprVar.Sym -> {
-                tryGvn(Nodes.symbolLit(e.name))
+                makeSymbolLit(e.name)
             }
             is ExprVar.V -> env[e.name, annE.ann]
             is ExprLam.Ap -> {
@@ -334,41 +358,40 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
             }
             is ExprLam.Lam -> {
                 val (gid, freeVarNames) = multiGraphBuilder.buildLam(env, e, annE.ann)
-                val lambdaNode = assignId(Nodes.lambdaLit(gid))
-                val inputs = freeVarNames.map {
+                val freeVars = freeVarNames.map {
                     // This should never fail, as the checking was done earlier in buildLam.
                     env[it, annE.ann]
                 }
-                inputs.forEach {
-                    lambdaNode.addInput(get(it), EdgeKind.Value)
-                }
-                lambdaNode.id
+                makeEffectfulValueNode(Nodes.lambdaLit(freeVars.size, gid), freeVars).id
             }
         }
     }
 
+    private fun makeSymbolLit(name: String): NodeId {
+        return tryGvn(Nodes.symbolLit(name))
+    }
+
     private fun joinControlFlow(
         tValue: NodeId,
-        tMemory: NodeId,
+        tEffect: NodeId,
         fValue: NodeId,
-        fMemory: NodeId,
+        fEffect: NodeId,
         tJump: Node,
         fJump: Node
     ): NodeId {
         val needPhi = tValue != fValue
-        val needMemoryPhi = tMemory != fMemory
+        val needEffectPhi = tEffect != fEffect
         // Make a region as a join point
-        // v8/hotspot's Merge node may be able to simplify the structure.
         // Both branches may be returning the same thing. In that case we don't need a phi.
-        val joinRegion = startRegion(nPreds = 2, nPhis = needPhi.b2i + needMemoryPhi.b2i)
+        val joinRegion = startRegion(nPreds = 2, nPhis = needPhi.b2i + needEffectPhi.b2i)
         joinRegion.addInput(tJump, EdgeKind.Control, populating = true)
         joinRegion.addInput(fJump, EdgeKind.Control, populating = true)
-        if (needMemoryPhi) {
-            val memoryPhi = assignId(Nodes.memoryPhi(2))
-            memoryPhi.addInput(joinRegion, EdgeKind.Control, populating = true)
-            memoryPhi.addInput(get(tMemory), EdgeKind.Value, populating = true)
-            memoryPhi.addInput(get(fMemory), EdgeKind.Value, populating = true)
-            currentMemory = memoryPhi.id
+        if (needEffectPhi) {
+            val effectPhi = assignId(Nodes.effectPhi(2))
+            effectPhi.addInput(joinRegion, EdgeKind.Control, populating = true)
+            effectPhi.addInput(get(tEffect), EdgeKind.Value, populating = true)
+            effectPhi.addInput(get(fEffect), EdgeKind.Value, populating = true)
+            currentEffect = effectPhi.id
         }
         return if (needPhi) {
             val phi = assignId(Nodes.phi(2))
@@ -407,6 +430,16 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         } else {
             cached
         }
+    }
+
+    private fun makeEffectfulValueNode(n: Node, valueInputs: List<NodeId> = emptyList()): Node {
+        assignId(n)
+        n.addInput(get(currentEffect), EdgeKind.Value, populating = true)
+        valueInputs.forEach {
+            n.addInput(get(it), EdgeKind.Value, populating = true)
+        }
+        projectEffectFrom(n)
+        return n
     }
 
     /**

@@ -14,14 +14,14 @@ fun graphsToDot(gs: MultiGraph, out: Writer) {
         val namePart = g.unwrap.name?.let {
             "$it "
         } ?: ""
-        graphToDot(g.unwrap, out, "\"G:$gid ${namePart}at line ${ann.row}\"")
+        graphToDot(g.unwrap, out, "\"G:${gid.v} ${namePart}at line ${ann.row}\"")
     }
     out.appendLine("}")
 }
 
 private fun graphToDot(g: Graph, out: Writer, name: String? = null) {
     // Header
-    out.appendLine("subgraph cluster_${g.id} {")
+    out.appendLine("subgraph cluster_${g.id.v} {")
     name?.let {
         out.appendLine("  label = $name")
         out.appendLine("  labelloc = top")
@@ -37,7 +37,7 @@ private class GraphToDot(val g: Graph, val out: Writer) {
     val visitedEdges = mutableSetOf<Edge>()
 
     private fun nodeName(id: NodeId): String {
-        return "\"${g.id}_$id\""
+        return "\"${g.id.v}_${id.v}\""
     }
 
     fun visitEdge(edge: Edge, onlyOneEdge: Boolean) {

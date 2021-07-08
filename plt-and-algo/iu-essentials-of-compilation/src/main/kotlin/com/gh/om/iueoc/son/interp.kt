@@ -4,9 +4,43 @@ import com.gh.om.iueoc.EocError
 import com.gh.om.iueoc.Value
 import com.gh.om.iueoc.asBoolean
 
+/*
+sealed class Value {
+    data class I(val value: Int) : Value()
+    data class B(val value: Boolean) : Value()
+    data class Sym(val name: String) : Value()
+    data class Clo(val code: GraphId, val freeVars: List<Value>) : Value()
+    data class Box(val ptr: HeapPtr) : Value()
+}
+@JvmInline
+value class HeapPtr(val value: Int) {
+    fun bump() = HeapPtr(value + 1)
+}
+
+class Heap(
+    val store: PersistentMap<HeapPtr, Value> = persistentMapOf(),
+    private val allocPtr: HeapPtr = HeapPtr(1)
+) {
+
+    private fun allocate(v: Value): Pair<HeapPtr, Heap> {
+        val newPtr = allocPtr.bump()
+        val newStore = store.put(newPtr, v)
+        return newPtr to Heap(newStore, newPtr)
+    }
+
+    fun box(v: Value): Value.Box {
+    }
+}
+
+ */
+
 typealias Env = MutableMap<NodeId, Value>
 
 fun interp(nid: NodeId, nodes: NodeMap, env: Env = mutableMapOf()): Value {
+    return Interp(nodes, env).goControl(nid)
+}
+
+private class Interp(private val nodes: NodeMap, private val env: Env) {
     fun get(id: NodeId): Node {
         return requireNotNull(nodes[id]) {
             "NodeId $id not found"
@@ -16,11 +50,11 @@ fun interp(nid: NodeId, nodes: NodeMap, env: Env = mutableMapOf()): Value {
     fun goValue(nid: NodeId): Value {
         val n = get(nid)
         return when (val op = n.operator.op) {
-            OpCode.Memory -> {
+            OpCode.Effect -> {
                 TODO()
             }
             OpCode.Phi,
-            OpCode.MemoryPhi -> {
+            OpCode.EffectPhi -> {
                 requireNotNull(env[nid])
             }
             OpCode.ScmBoolLit -> {
@@ -92,8 +126,8 @@ fun interp(nid: NodeId, nodes: NodeMap, env: Env = mutableMapOf()): Value {
                 error("Not reachable")
             }
             OpCode.Return -> {
-                val (memory, value) = n.valueInputs
-                goValue(memory)
+                val (effect, value) = n.valueInputs
+                goValue(effect)
                 goValue(value)
             }
             OpCode.CondJump -> {
@@ -127,12 +161,6 @@ fun interp(nid: NodeId, nodes: NodeMap, env: Env = mutableMapOf()): Value {
             }
         }
     }
-
-    return goControl(nid)
-}
-
-private fun populatePhis() {
-
 }
 
 private fun <R> binaryIntOp(e: OpCode, argValues: List<Value>, func: (Int, Int) -> R): R {

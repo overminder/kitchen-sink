@@ -53,6 +53,14 @@ private const val BOX_IF = """
   (#box-get b))
 """
 
+private const val BOX_SEMANTICS = """
+(lambda [b x]
+  (let ([b0 (#box-get b)]
+        [_ (#box-set! b 1)]
+        [b1 (#box-get b)])
+    (#fx+ b0 b1)))
+"""
+
 fun showEocError(e: EocError, source: String, header: String = "Error") {
     println("$header: ${e.message} at ${e.where}")
     // XXX Does lineSequence have the same implementation as better-parse?
@@ -130,6 +138,7 @@ fun runProgram(source: String): Value {
         showEocError(e, source, "Interp error")
         throw e
     }
+    println("Interp -> $exprInterpResult")
 
     val gs = MultiGraphBuilder()
     val gb = try {
