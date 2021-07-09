@@ -61,6 +61,66 @@ private const val BOX_SEMANTICS = """
     (#fx+ b0 b1)))
 """
 
+private object EffectTests {
+    // Only one branch updates effect, and the join point needs an effect phi.
+    // (#box 0) is evaluated by the effectPhi at the join point.
+    const val CASE_1 = """
+    (let* ([b (#box 0)])
+      (if #t
+          (#box-set! b 1)
+          0)
+      (#box-get b))
+    """
+
+    // b is used before the control split. Here the value->effect dependence causes the effect to be evaluated.
+    const val CASE_2 = """
+    (let* ([b (#box 0)])
+      (if b
+          (#box-set! b 1)
+          0)
+      (#box-get b))
+    """
+
+    // Although b is unused, its effect is consumed by the return node, and b must be evaluated.
+    const val CASE_4 = """
+    (let* ([b (#box 0)])
+      0)
+    """
+
+    // Assuming that there's a while expr. This one seems hard...
+    // start: B-1:
+    //   start -> e0
+    //   (e1, b) <- #box e0 0
+    //   J B-2
+    // B-2:
+    //   e2 <- effectPhi e1 e5
+    //   (cond, e3) <- (#box-get e2 b)
+    //   CondJump cond [ifT -> B-3, ifF -> B-4]
+    // B-3:
+    //   bv, e4 <- #box-get e3 b
+    //   _, e5 <- #box-set! e4 b (+ bv 1)
+    //   J B-2
+    // B-4:
+    //   e6, bv <- #box-get e3 b
+    //   ret (e5, bv)
+    //
+    // Note that e3 dominates both B-3 and B-4, so that there's an effect split.
+    // This illustrates that effect propagation also needs to be demand-based (call-by-need).
+    const val WHILE_1 = """
+    (let* ([b (#box 0)])
+      (while (#fx< (#box-get b) 10)
+             (#box-set! b (#fx+ (#box-get b) 1)))
+      (#box-get b))
+    """
+
+    const val WHILE_2 = """
+    (let* ([b 0])
+      (while (#fx< 0 b)
+             0)
+      b)
+    """
+}
+
 fun showEocError(e: EocError, source: String, header: String = "Error") {
     println("$header: ${e.message} at ${e.where}")
     // XXX Does lineSequence have the same implementation as better-parse?
@@ -133,7 +193,7 @@ fun runProgram(source: String): Value {
     }
 
     val exprInterpResult = try {
-        InterpLam().interpToplevel(expr)
+        InterpImp().interpToplevel(expr)
     } catch (e: EocError) {
         showEocError(e, source, "Interp error")
         throw e
@@ -150,12 +210,12 @@ fun runProgram(source: String): Value {
     FileWriter("tools/out.dot").use {
         graphsToDot(gs, it)
     }
-    val graphInterpResult = interp(gb.start, gb.nodes)
+    val graphInterpResult = interp(gb)
     require(exprInterpResult == graphInterpResult)
     return graphInterpResult
 }
 
 private fun main() {
-    val result = runProgram(BOX_IF)
+    val result = runProgram(EffectTests.WHILE_1)
     println("Ok: $result")
 }

@@ -36,25 +36,98 @@ class Heap(
 
 typealias Env = MutableMap<NodeId, Value>
 
-fun interp(nid: NodeId, nodes: NodeMap, env: Env = mutableMapOf()): Value {
-    return Interp(nodes, env).goControl(nid)
+fun interp(g: Graph, env: Env = mutableMapOf()): Value {
+    return Interp(g, env).start()
 }
 
-private class Interp(private val nodes: NodeMap, private val env: Env) {
-    fun get(id: NodeId): Node {
-        return requireNotNull(nodes[id]) {
-            "NodeId $id not found"
+private class Interp(
+    private val graph: Graph,
+    // Maps phi nodes to values
+    private val env: Env
+) {
+    private var evaluatedEffects = mutableSetOf<NodeId>()
+    private var evaluatedEffectfulNodes = mutableMapOf<NodeId, Value>()
+
+    fun start(): Value {
+        val startingEffect = get(graph.start).valueOutputs.first {
+            get(it).operator.op == OpCode.Effect
         }
+        evaluatedEffects += startingEffect
+        return goControl(graph.start)
+    }
+
+    fun get(id: NodeId) = graph[id]
+
+    fun goEffect(n: Node) {
+        val nid = n.id
+        when (n.opCode) {
+            OpCode.Effect -> {
+                if (nid !in evaluatedEffects) {
+                    goEffectfulValue(get(n.singleValueInput))
+                }
+            }
+            OpCode.EffectPhi -> {
+                // Assigned when entering a join region
+                require(nid in evaluatedEffects)
+            }
+            else -> {
+                error("${n.opCode}")
+            }
+        }
+    }
+
+    fun goEffectfulValue(n: Node): Value {
+        val nid = n.id
+        // Start is a special effectful value that only has effect output.
+        require(n.opCode == OpCode.Start || n.opCode.isEffectfulValue)
+
+        // If already evaluated: return that.
+        evaluatedEffectfulNodes[nid]?.let {
+            return it
+        }
+
+        // Invariant: effectful values all have first input as the effect.
+        goEffect(get(n.valueInputs.first()))
+
+        val values = n.valueInputs.drop(1).map(::goValue)
+        val result = when (n.opCode) {
+            OpCode.ScmLambdaLit -> {
+                TODO()
+            }
+            OpCode.ScmBoxLit -> {
+                val toBox = values.first()
+                Value.Box(toBox)
+            }
+            OpCode.ScmBoxGet -> {
+                val box = values.first() as Value.Box
+                box.value
+            }
+            OpCode.ScmBoxSet -> {
+                val (box0, newValue) = values
+                val box = box0 as Value.Box
+                val oldValue = box.value
+                box.value = newValue
+                oldValue
+            }
+            else -> {
+                error("${n.operator}: Not an effectful node")
+            }
+        }
+        val effectOut = n.valueOutputs.first()
+        require(get(effectOut).opCode == OpCode.Effect)
+        // Make sure it's only added once.
+        require(evaluatedEffects.add(effectOut))
+        require(evaluatedEffectfulNodes.put(n.id, result) == null)
+        return result
     }
 
     fun goValue(nid: NodeId): Value {
         val n = get(nid)
+        if (n.opCode.isEffectfulValue) {
+            return goEffectfulValue(n)
+        }
         return when (val op = n.operator.op) {
-            OpCode.Effect -> {
-                TODO()
-            }
-            OpCode.Phi,
-            OpCode.EffectPhi -> {
+            OpCode.Phi -> {
                 requireNotNull(env[nid])
             }
             OpCode.ScmBoolLit -> {
@@ -86,27 +159,72 @@ private class Interp(private val nodes: NodeMap, private val env: Env) {
 
     /**
      * Before jumping a target region, resolve phis that come from the current region.
+     * This does different things given the graph semantics:
+     * - When everything is pure (no memory/io etc), everything is call-by-value: only need to evaluate
+     * each phi, and put such mapping {phi: value} into env.
+     * - When there are effectful nodes (memory write etc): Since the effectul operations aren't idempotent,
+     * they need to be done in a call-by-need way. A change in phi and memory phi values need to
+     * invalidate all dependent effectful values.
      */
     fun populatePhis(jump: Node, targetRegion: Node) {
         // The phis have control input from thisRegion.
         val thisRegion = jump.singleControlInput
 
         val phisInTarget = targetRegion.controlOutputs.map(::get).filter {
-            it.operator.op == OpCode.Phi
+            it.opCode == OpCode.Phi
         }
-        if (phisInTarget.isNotEmpty()) {
-            // When there are phis:
-            // Find the {control,value}inputIx to choose the correct input value in the phis
-            val inputIx = targetRegion.controlInputs.indexOfFirst { jumpToTarget ->
-                get(jumpToTarget).singleControlInput == thisRegion
+        val effectPhi = targetRegion.controlOutputs.map(::get).firstOrNull {
+            it.opCode == OpCode.EffectPhi
+        }
+        if (phisInTarget.isEmpty() && effectPhi == null) {
+            return
+        }
+        // When there are phis:
+        // Find the {control,value}inputIx to choose the correct input value in the phis
+        val inputIx = targetRegion.controlInputs.indexOfFirst { jumpToTarget ->
+            get(jumpToTarget).singleControlInput == thisRegion
+        }
+        require(inputIx != -1)
+
+        // Evaluate in parallel
+        val phiValues = phisInTarget.map { phi ->
+            val vi = phi.valueInputs[inputIx]
+            phi.id to goValue(vi)
+        }
+        effectPhi?.let { phi ->
+            val vi = phi.valueInputs[inputIx]
+
+            // Force the effect input.
+            goEffect(get(vi))
+
+            // 2. Invalidate things dominated by it.
+            invalidateEffects(get(phi.singleValueOutput))
+            evaluatedEffects += phi.id
+        }
+        // And write back value phis (effect is already written back)
+        env += phiValues
+    }
+
+    private tailrec fun invalidateEffects(from: Node) {
+        if (from.opCode.isEffectfulValue) {
+            evaluatedEffectfulNodes.remove(from.id)
+            invalidateEffects(get(from.valueOutputs.first()))
+        } else if (from.opCode.isEffect) {
+            when (from.opCode) {
+                OpCode.EffectPhi -> {
+                    // Done -- Don't invalidate across another phi, as the original phi doesn't strictly dominate that.
+                }
+                OpCode.Effect -> {
+                    evaluatedEffects.remove(from.id)
+                    val lastOutput = from.valueOutputs.last()
+                    from.valueOutputs.take(from.valueOutputs.size - 1).forEach {
+                        @Suppress("NON_TAIL_RECURSIVE_CALL")
+                        invalidateEffects(get(it))
+                    }
+                    invalidateEffects(get(lastOutput))
+                }
+                else -> error("Not an effect: ${from.opCode}")
             }
-            require(inputIx != -1)
-            // Evaluate in parallel
-            val evaluated = phisInTarget.map { phi ->
-                val vi = phi.valueInputs[inputIx]
-                phi.id to goValue(vi)
-            }
-            env += evaluated
         }
     }
 
@@ -118,7 +236,7 @@ private class Interp(private val nodes: NodeMap, private val env: Env) {
             }
             OpCode.Region -> {
                 val jumpNode = n.controlOutputs.find { co ->
-                    get(co).operator.op != OpCode.Phi
+                    get(co).opCode.isJump
                 }
                 goControl(requireNotNull(jumpNode))
             }
@@ -127,7 +245,7 @@ private class Interp(private val nodes: NodeMap, private val env: Env) {
             }
             OpCode.Return -> {
                 val (effect, value) = n.valueInputs
-                goValue(effect)
+                goEffect(get(effect))
                 goValue(value)
             }
             OpCode.CondJump -> {
@@ -157,7 +275,7 @@ private class Interp(private val nodes: NodeMap, private val env: Env) {
                 error("${n.operator}: should be handled by CondJump ")
             }
             else -> {
-                error("${n.operator}: valueNode to be handled by goValue ")
+                error("${n.operator}: not a control")
             }
         }
     }

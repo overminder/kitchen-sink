@@ -157,6 +157,9 @@ class GraphVerifier(private val g: Graph) {
                 checkInputBy(n, 0, EdgeKind.Value) { it == OpCode.Start }
             }
             OpCode.Effect -> {
+                require(n.valueInputs.size == 1)
+                // Can actually have multiple value outputs (effect split due to control split)
+                require(n.valueOutputs.isNotEmpty())
                 checkInputBy(n, 0, EdgeKind.Value) { canProjectEffectOut(it) }
             }
             OpCode.Phi,
@@ -171,6 +174,9 @@ class GraphVerifier(private val g: Graph) {
                     } else {
                         require(isEffect(inputOp))
                     }
+                }
+                if (n.opCode == OpCode.EffectPhi) {
+                    require(n.valueOutputs.size == 1)
                 }
             }
             OpCode.ScmBoolLit,

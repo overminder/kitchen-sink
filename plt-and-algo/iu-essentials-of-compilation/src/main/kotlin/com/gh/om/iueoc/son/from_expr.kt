@@ -3,6 +3,7 @@ package com.gh.om.iueoc.son
 import com.gh.om.iueoc.AnnExpr
 import com.gh.om.iueoc.AnnS
 import com.gh.om.iueoc.EocError
+import com.gh.om.iueoc.ExprImp
 import com.gh.om.iueoc.ExprLam
 import com.gh.om.iueoc.ExprOp
 import com.gh.om.iueoc.ExprVar
@@ -169,7 +170,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         private set
 
     // Although nodes are mutable, we don't mutate value nodes during graph building.
-    private val gvnCache = mutableMapOf<ValueNodeEqWrapper, NodeId>()
+    private val pureValueCache = mutableMapOf<ValueNodeEqWrapper, NodeId>()
 
     private var currentRegion: NodeId? = null
     private var currentEffect: NodeId
@@ -180,7 +181,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         dead = assignId(Nodes.dead()).id
         currentEffect = assignId(Nodes.effect()).id
 
-        get(currentEffect).addInput(get(start), EdgeKind.Value, populating = true)
+        get(currentEffect).populateInput(get(start), EdgeKind.Value)
     }
 
     private fun startRegion(nPreds: Int = 1, nPhis: Int = 0): Node {
@@ -196,7 +197,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
 
     private fun projectEffectFrom(node: Node): Node {
         val updatedEffect = assignId(Nodes.effect())
-        updatedEffect.addInput(node, EdgeKind.Value, populating = true)
+        updatedEffect.populateInput(node, EdgeKind.Value)
         currentEffect = updatedEffect.id
         return node
     }
@@ -216,143 +217,59 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
 
         env = env.putAll((freeVarNodes + argNodes).map { (name, node) ->
             assignId(node)
-            node.addInput(get(start), EdgeKind.Value, populating = true)
+            node.populateInput(get(start), EdgeKind.Value)
             name to node.id
         })
 
         return EnvChain(env)
     }
 
+    private fun doSeq(es: List<AnnExpr>, env: EnvChain): Node {
+        // Evaluate and throw away result values for body[:-1]
+        es.take(es.size - 1).forEach {
+            doExpr(it, env)
+        }
+        return get(doExpr(es.last(), env))
+    }
+
     fun doFunctionBody(graphId: GraphId, body: List<AnnExpr>, env: EnvChain) {
         require(id == MultiGraphBuilder.FRESH_ID)
         id = graphId
 
-        startRegion().addInput(get(start), EdgeKind.Control, populating = true)
+        startRegion().populateInput(get(start), EdgeKind.Control)
 
-        // Evaluate and throw away result values for body[:-1]
-        body.take(body.size - 1).forEach {
-            doExpr(it, env)
-        }
-        val returnValue = get(doExpr(body.last(), env))
+        val returnValue = doSeq(body, env)
         val exitRegion = get(assertCurrentRegion())
 
         val returnNode = assignId(Nodes.ret())
-        returnNode.addInput(get(currentEffect), EdgeKind.Value, populating = true)
-        returnNode.addInput(returnValue, EdgeKind.Value, populating = true)
-        returnNode.addInput(exitRegion, EdgeKind.Control, populating = true)
+        returnNode.populateInput(get(currentEffect), EdgeKind.Value)
+        returnNode.populateInput(returnValue, EdgeKind.Value)
+        returnNode.populateInput(exitRegion, EdgeKind.Control)
 
-        get(end).addInput(returnNode, EdgeKind.Control, populating = true)
+        get(end).populateInput(returnNode, EdgeKind.Control)
     }
 
     fun doExpr(annE: AnnExpr, env: EnvChain): NodeId {
         return when (val e = annE.unwrap) {
-            is ExprOp.If -> {
-                // Evaluate condValue, set up condJump
-                val condValue = doExpr(e.cond, env)
-                val condJump = assignId(Nodes.condJump())
-                condJump.addInput(get(condValue), EdgeKind.Value, populating = true)
-                condJump.addInput(get(assertCurrentRegion()), EdgeKind.Control, populating = true)
-
-                // Make projections
-                val ifT = assignId(Nodes.ifT())
-                val ifF = assignId(Nodes.ifF())
-                ifT.addInput(condJump, EdgeKind.Control, populating = true)
-                ifF.addInput(condJump, EdgeKind.Control, populating = true)
-
-                // Save the effect state before branching.
-                val originalEffect = currentEffect
-
-                // True branch
-                startRegion().addInput(ifT, EdgeKind.Control, populating = true)
-                val tValue = doExpr(e.ifT, env)
-                val tValueRegion = assertCurrentRegion()
-                val tEffect = currentEffect
-                val tJump = assignId(Nodes.jump())
-                tJump.addInput(get(tValueRegion), EdgeKind.Control, populating = true)
-
-                // Restore the effect state before branching.
-                currentEffect = originalEffect
-
-                // False branch
-                startRegion().addInput(ifF, EdgeKind.Control, populating = true)
-                val fValue = doExpr(e.ifF, env)
-                val fValueRegion = assertCurrentRegion()
-                val fEffect = currentEffect
-                val fJump = assignId(Nodes.jump())
-                fJump.addInput(get(fValueRegion), EdgeKind.Control, populating = true)
-
-                joinControlFlow(tValue, tEffect, fValue, fEffect, tJump, fJump)
-            }
-            is ExprOp.Let -> {
-                val newEnv = when (e.kind) {
-                    LetKind.Basic -> {
-                        val newBindings = e.vs.zip(e.es).associateTo(mutableMapOf()) { (name, rhs) ->
-                            val value = doExpr(rhs, env)
-                            name.unwrap to value
-                        }.toPersistentMap()
-                        env.extend(newBindings)
-                    }
-                    LetKind.Seq -> {
-                        var newBindings: NodeEnv = persistentMapOf()
-                        // "Mutate" the current env on the go.
-                        e.vs.zip(e.es).forEach { (name, rhs) ->
-                            val newEnv = env.extend(newBindings)
-                            val value = doExpr(rhs, newEnv)
-                            newBindings = newBindings.put(name.unwrap, value)
-                        }
-                        env.extend(newBindings)
-                    }
-                    LetKind.Rec -> {
-                        EocError.todo(annE.ann, "letrec not yet implemented")
-                        /*
-                        val newBindings = e.vs.associate {
-                            val boxNode = makeBoxLit(makeSymbolLit("#letrec-hole"))
-                            it.unwrap to boxNode
-                        }.toPersistentMap()
-                        val newEnv = env.extend(newBindings)
-                        // Mutate the current env on the go.
-                        e.vs.zip(e.es).forEach { (name, rhs) ->
-                            val value = doExpr(rhs, newEnv)
-                            name.unwrap to value
-                        }
-                         */
-                    }
-                }
-                doExpr(e.body, newEnv)
-            }
-            is ExprOp.Op -> {
-                val values = e.args.map { doExpr(it, env) }
-                when (e.op.unwrap) {
-                    PrimOp.FxAdd -> {
-                        tryGvn(Nodes.fxAdd(), values)
-                    }
-                    PrimOp.FxLessThan -> {
-                        tryGvn(Nodes.fxLessThan(), values)
-                    }
-                    PrimOp.BoxMk -> {
-                        val valueToBox = values.first()
-                        makeEffectfulValueNode(Nodes.boxLit(), listOf(valueToBox)).id
-                    }
-                    PrimOp.BoxGet -> {
-                        val boxValue = values.first()
-                        makeEffectfulValueNode(Nodes.boxGet(), listOf(boxValue)).id
-                    }
-                    PrimOp.BoxSet -> {
-                        val (boxValue, newValue) = values
-                        makeEffectfulValueNode(Nodes.boxSet(), listOf(boxValue, newValue)).id
-                    }
-                }
-            }
             is ExprVar.B -> {
-                tryGvn(Nodes.boolLit(e.value))
+                makeUniqueValueNode(Nodes.boolLit(e.value))
             }
             is ExprVar.I -> {
-                tryGvn(Nodes.intLit(e.value))
+                makeUniqueValueNode(Nodes.intLit(e.value))
             }
             is ExprVar.Sym -> {
                 makeSymbolLit(e.name)
             }
             is ExprVar.V -> env[e.name, annE.ann]
+            is ExprOp.If -> {
+                doIf(e, env)
+            }
+            is ExprOp.Let -> {
+                doLet(e, annE.ann, env)
+            }
+            is ExprOp.Op -> {
+                doOp(e, env)
+            }
             is ExprLam.Ap -> {
                 EocError.todo(annE.ann, "Not implemented: $e")
             }
@@ -364,11 +281,178 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
                 }
                 makeEffectfulValueNode(Nodes.lambdaLit(freeVars.size, gid), freeVars).id
             }
+            is ExprImp.While -> {
+                doWhile(e, env)
+            }
         }
     }
 
+    private fun doOp(e: ExprOp.Op, env: EnvChain): NodeId {
+        val values = e.args.map { doExpr(it, env) }
+        return when (e.op.unwrap) {
+            PrimOp.FxAdd -> {
+                makeUniqueValueNode(Nodes.fxAdd(), values)
+            }
+            PrimOp.FxLessThan -> {
+                makeUniqueValueNode(Nodes.fxLessThan(), values)
+            }
+            PrimOp.BoxMk -> {
+                val valueToBox = values.first()
+                makeEffectfulValueNode(Nodes.boxLit(), listOf(valueToBox)).id
+            }
+            PrimOp.BoxGet -> {
+                val boxValue = values.first()
+                makeEffectfulValueNode(Nodes.boxGet(), listOf(boxValue)).id
+            }
+            PrimOp.BoxSet -> {
+                val (boxValue, newValue) = values
+                makeEffectfulValueNode(Nodes.boxSet(), listOf(boxValue, newValue)).id
+            }
+        }
+    }
+
+    private fun doLet(
+        e: ExprOp.Let,
+        ann: SourceLoc,
+        env: EnvChain,
+    ): NodeId {
+        val newEnv = when (e.kind) {
+            LetKind.Basic -> {
+                val newBindings = e.vs.zip(e.es).associateTo(mutableMapOf()) { (name, rhs) ->
+                    val value = doExpr(rhs, env)
+                    name.unwrap to value
+                }.toPersistentMap()
+                env.extend(newBindings)
+            }
+            LetKind.Seq -> {
+                var newBindings: NodeEnv = persistentMapOf()
+                // "Mutate" the current env on the go.
+                e.vs.zip(e.es).forEach { (name, rhs) ->
+                    val newEnv = env.extend(newBindings)
+                    val value = doExpr(rhs, newEnv)
+                    newBindings = newBindings.put(name.unwrap, value)
+                }
+                env.extend(newBindings)
+            }
+            LetKind.Rec -> {
+                EocError.todo(ann, "letrec not yet implemented")
+                /*
+                        val newBindings = e.vs.associate {
+                            val boxNode = makeBoxLit(makeSymbolLit("#letrec-hole"))
+                            it.unwrap to boxNode
+                        }.toPersistentMap()
+                        val newEnv = env.extend(newBindings)
+                        // Mutate the current env on the go.
+                        e.vs.zip(e.es).forEach { (name, rhs) ->
+                            val value = doExpr(rhs, newEnv)
+                            name.unwrap to value
+                        }
+                         */
+            }
+        }
+        return doSeq(e.body, newEnv).id
+    }
+
+    private fun makeCondJump(e: AnnExpr, env: EnvChain): Pair<Node, Node> {
+        // Close out current region by condJump
+        val condValue = doExpr(e, env)
+        val condJump = assignId(Nodes.condJump())
+        condJump.populateInput(get(condValue), EdgeKind.Value)
+        condJump.populateInput(get(assertCurrentRegion()), EdgeKind.Control)
+
+        // Make projections
+        val ifT = assignId(Nodes.ifT())
+        val ifF = assignId(Nodes.ifF())
+        ifT.populateInput(condJump, EdgeKind.Control)
+        ifF.populateInput(condJump, EdgeKind.Control)
+
+        return ifT to ifF
+    }
+
+    private fun doIf(e: ExprOp.If, env: EnvChain): NodeId {
+        // Evaluate condValue, set up condJump
+        val (ifT, ifF) = makeCondJump(e.cond, env)
+
+        // Save the effect state before branching.
+        val originalEffect = currentEffect
+
+        // True branch
+        startRegion().populateInput(ifT, EdgeKind.Control)
+        val tValue = doExpr(e.ifT, env)
+        val tValueRegion = assertCurrentRegion()
+        val tEffect = currentEffect
+        val tJump = assignId(Nodes.jump())
+        tJump.populateInput(get(tValueRegion), EdgeKind.Control)
+
+        // Restore the effect state before branching.
+        currentEffect = originalEffect
+
+        // False branch
+        startRegion().populateInput(ifF, EdgeKind.Control)
+        val fValue = doExpr(e.ifF, env)
+        val fValueRegion = assertCurrentRegion()
+        val fEffect = currentEffect
+        val fJump = assignId(Nodes.jump())
+        fJump.populateInput(get(fValueRegion), EdgeKind.Control)
+
+        return joinControlFlow(tValue, tEffect, fValue, fEffect, tJump, fJump)
+    }
+
+    private fun doWhile(e: ExprImp.While, env: EnvChain): NodeId {
+        // ... beforeLoop -> Jump -(effect phi)> condRegion
+        // condRegion -> (...) -> CondJump -ifT> loopRegion -ifF> endRegion
+        // loopRegion -> Jump -(effect phi)> condRegion
+        // endRegion ...
+        val effectFromBeforeLoop = currentEffect
+        val jumpFromBeforeLoop = assignId(Nodes.jump())
+        jumpFromBeforeLoop.populateInput(get(assertCurrentRegion()), EdgeKind.Control)
+
+        val condRegion = startRegion(nPreds = 2, nPhis = 1)
+        condRegion.populateInput(jumpFromBeforeLoop, EdgeKind.Control)
+
+        // Pessimistically make an effect phi -- we can try to eliminate it later.
+        val effectPhi = assignId(Nodes.effectPhi(2))
+        effectPhi.populateInput(condRegion, EdgeKind.Control)
+        // Value inputs added later.
+        currentEffect = effectPhi.id
+
+        // Evaluating e.cond may involve additional regions.
+        val (ifT, ifF) = makeCondJump(e.cond, env)
+        var effectAfterCondJump = currentEffect
+
+        val loopRegion = startRegion()
+        loopRegion.populateInput(ifT, EdgeKind.Control)
+        // Result of while is ignored
+        doSeq(e.body, env)
+        val effectFromLoopEnd = currentEffect
+        val jumpFromLoopEnd = assignId(Nodes.jump())
+        jumpFromLoopEnd.populateInput(get(assertCurrentRegion()), EdgeKind.Control)
+        condRegion.populateInput(jumpFromLoopEnd, EdgeKind.Control)
+
+        // Try to eliminate redundant effect phis.
+        // Hmm this is kind of complicated...
+        if (effectPhi.id != effectFromLoopEnd) {
+            // ^ effectPhi merges effectFromLoopEnd and effectFromBeforeLoop,
+            // and effectFromLoopEnd comes from effectPhi. So if there's no effect in the loop,
+            // effectFromLoopEnd will stay the same as effectPhi.
+            effectPhi.populateInput(get(effectFromBeforeLoop), EdgeKind.Value)
+            effectPhi.populateInput(get(effectFromLoopEnd), EdgeKind.Value)
+        } else {
+            effectPhi.becomeValueNode(get(effectFromBeforeLoop), this)
+            // This implies that the cond node evaluation is also not effectful.
+            require(effectAfterCondJump == effectPhi.id)
+            effectAfterCondJump = effectFromBeforeLoop
+            effectPhi.removeInput(get(effectPhi.singleControlInput), EdgeKind.Control)
+        }
+
+        val endRegion = startRegion()
+        endRegion.populateInput(ifF, EdgeKind.Control)
+        currentEffect = effectAfterCondJump
+        return makeUniqueValueNode(Nodes.symbolLit("#undefined"))
+    }
+
     private fun makeSymbolLit(name: String): NodeId {
-        return tryGvn(Nodes.symbolLit(name))
+        return makeUniqueValueNode(Nodes.symbolLit(name))
     }
 
     private fun joinControlFlow(
@@ -384,20 +468,20 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         // Make a region as a join point
         // Both branches may be returning the same thing. In that case we don't need a phi.
         val joinRegion = startRegion(nPreds = 2, nPhis = needPhi.b2i + needEffectPhi.b2i)
-        joinRegion.addInput(tJump, EdgeKind.Control, populating = true)
-        joinRegion.addInput(fJump, EdgeKind.Control, populating = true)
+        joinRegion.populateInput(tJump, EdgeKind.Control)
+        joinRegion.populateInput(fJump, EdgeKind.Control)
         if (needEffectPhi) {
             val effectPhi = assignId(Nodes.effectPhi(2))
-            effectPhi.addInput(joinRegion, EdgeKind.Control, populating = true)
-            effectPhi.addInput(get(tEffect), EdgeKind.Value, populating = true)
-            effectPhi.addInput(get(fEffect), EdgeKind.Value, populating = true)
+            effectPhi.populateInput(joinRegion, EdgeKind.Control)
+            effectPhi.populateInput(get(tEffect), EdgeKind.Value)
+            effectPhi.populateInput(get(fEffect), EdgeKind.Value)
             currentEffect = effectPhi.id
         }
         return if (needPhi) {
             val phi = assignId(Nodes.phi(2))
-            phi.addInput(joinRegion, EdgeKind.Control, populating = true)
-            phi.addInput(get(tValue), EdgeKind.Value, populating = true)
-            phi.addInput(get(fValue), EdgeKind.Value, populating = true)
+            phi.populateInput(joinRegion, EdgeKind.Control)
+            phi.populateInput(get(tValue), EdgeKind.Value)
+            phi.populateInput(get(fValue), EdgeKind.Value)
             phi.id
         } else {
             tValue
@@ -414,17 +498,17 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
      * Try to use an existing value node from the graph. The value node should be pure.
      * [n] should be fresh, and its [valueInputs] are inserted to [n] by this function.
      */
-    private fun tryGvn(n: Node, valueInputs: List<NodeId> = emptyList()): NodeId {
+    private fun makeUniqueValueNode(n: Node, valueInputs: List<NodeId> = emptyList()): NodeId {
         val rator = n.operator
         require(rator.op.isPure)
         val key = ValueNodeEqWrapper(rator.op, rator.extra, valueInputs)
-        val cached = gvnCache[key]
+        val cached = pureValueCache[key]
         return if (cached == null) {
             // Save to cache.
-            gvnCache[key] = assignId(n).id
+            pureValueCache[key] = assignId(n).id
             // Populate edges
             valueInputs.forEach {
-                n.addInput(get(it), EdgeKind.Value, populating = true)
+                n.populateInput(get(it), EdgeKind.Value)
             }
             n.id
         } else {
@@ -434,9 +518,9 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
 
     private fun makeEffectfulValueNode(n: Node, valueInputs: List<NodeId> = emptyList()): Node {
         assignId(n)
-        n.addInput(get(currentEffect), EdgeKind.Value, populating = true)
+        n.populateInput(get(currentEffect), EdgeKind.Value)
         valueInputs.forEach {
-            n.addInput(get(it), EdgeKind.Value, populating = true)
+            n.populateInput(get(it), EdgeKind.Value)
         }
         projectEffectFrom(n)
         return n

@@ -36,7 +36,8 @@ private class GraphToDot(val g: Graph, val out: Writer) {
     val visitedNodes = mutableSetOf<NodeId>()
     val visitedEdges = mutableSetOf<Edge>()
 
-    private fun nodeName(id: NodeId): String {
+    // Id as in the identifier in the dot language.
+    private fun ident(id: NodeId): String {
         return "\"${g.id.v}_${id.v}\""
     }
 
@@ -62,7 +63,7 @@ private class GraphToDot(val g: Graph, val out: Writer) {
             EdgeKind.Value -> "style=dotted $labelPart arrowhead=onormal"
             EdgeKind.Control -> "style=solid $labelPart"
         }
-        out.appendLine("  ${nodeName(edge.from)} -> ${nodeName(edge.to)} [$args]")
+        out.appendLine("  ${ident(edge.from)} -> ${ident(edge.to)} [$args]")
     }
 
     fun visitNode(id: NodeId) {
@@ -75,9 +76,9 @@ private class GraphToDot(val g: Graph, val out: Writer) {
         val op = n.operator.op
         val param = n.operator.extra
         val label = if (param != null && param != Unit) {
-            "\"$op $param\""
+            "\"${id.v} $op $param\""
         } else {
-            "$op"
+            "\"${id.v} $op\""
         }
         val shapePart = when (op.klass) {
             OpCodeClass.Anchor -> "shape=box"
@@ -87,7 +88,7 @@ private class GraphToDot(val g: Graph, val out: Writer) {
             OpCodeClass.Value -> "shape=oval style=dotted"
             OpCodeClass.Misc -> "shape=box style=dotted"
         }
-        out.appendLine("  ${nodeName(id)} [label=$label $shapePart]")
+        out.appendLine("  ${ident(id)} [label=$label $shapePart]")
 
         n.valueInputs.forEachIndexed { index, input ->
             visitEdge(Edge(input, id, EdgeKind.Value, index), n.valueInputs.size == 1)

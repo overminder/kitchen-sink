@@ -25,6 +25,13 @@ fun Interp.interpToplevel(eAnn: AnnExpr): Value {
 
 private typealias Env = PersistentMap<String, Value>
 
+private fun Interp.seq(es: List<AnnExpr>, env: Env): Trampoline<Value> {
+    for (e in es.take(es.size - 1)) {
+        interp(e, env).value()
+    }
+    return interp(es.last(), env)
+}
+
 // Open to allow extension
 open class InterpVar : Interp {
     override fun interp(eAnn: AnnExpr, env: Env): Trampoline<Value> {
@@ -86,7 +93,7 @@ open class InterpOp : InterpVar() {
                     EocError.todo(sourceLoc, "letrec not yet implemented")
                 }
             }
-            Tr.more { interp(e.body, newEnv) }
+            seq(e.body, newEnv)
         }
         is ExprOp.Op -> {
             val op = e.op.unwrap
@@ -165,6 +172,26 @@ open class InterpLam : InterpOp() {
         }
         is ExprLam.Lam -> {
             Tr.pure(Value.Lam(env, e.args, e.body))
+        }
+    }
+}
+
+open class InterpImp : InterpOp() {
+    override fun interp(eAnn: AnnExpr, env: Env): Trampoline<Value> {
+        val eop = eAnn.unwrap
+        return if (eop is ExprImp) {
+            interpInternal(eop, eAnn.ann, env)
+        } else {
+            super.interp(eAnn, env)
+        }
+    }
+
+    private fun interpInternal(e: ExprImp, sourceLoc: SourceLoc, env: Env): Trampoline<Value> = when (e) {
+        is ExprImp.While -> {
+            while (interp(e.cond, env).value().asBoolean) {
+                seq(e.body, env).value()
+            }
+            Tr.pure(Value.Sym("#undefined"))
         }
     }
 }

@@ -15,9 +15,14 @@ sealed class ExprVar : Expr() {
 
 // Single inheritance, or a la carte?
 sealed class ExprOp : Expr() {
-    data class Let(val vs: List<AnnS<String>>, val es: List<AnnExpr>, val body: AnnExpr, val kind: LetKind) : ExprOp()
+    data class Let(val vs: List<AnnS<String>>, val es: List<AnnExpr>, val body: List<AnnExpr>, val kind: LetKind) : ExprOp()
     data class If(val cond: AnnExpr, val ifT: AnnExpr, val ifF: AnnExpr) : ExprOp()
     data class Op(val op: AnnS<PrimOp>, val args: List<AnnExpr>) : ExprOp()
+}
+
+sealed class ExprImp : Expr() {
+    data class While(val cond: AnnExpr, val body: List<AnnExpr>) : ExprImp()
+    // data class Set(val name: AnnS<String>, val value: AnnExpr) : ExprImp()
 }
 
 enum class LetKind {
@@ -109,10 +114,11 @@ object SexprToExpr {
                 "letrec" -> LetKind.Rec
                 else -> error("Not reachable")
             }
-            EocError.ensure(cdrs.size == 2, root.ann) {
-                "Let should take 2 arguments"
+            EocError.ensure(cdrs.size >= 2, root.ann) {
+                "Let should be in the form of (let (bindings...) body...)"
             }
-            val (kvsAnn, bodyAnn) = cdrs
+            val kvsAnn = cdrs.first()
+            val body = cdrs.drop(1)
             val kvs = kvsAnn.unwrap
             EocError.ensure(kvs is Sexpr.Cons && kvs.cdr == null, kvsAnn.ann) {
                 "Let bindings should be a list"
@@ -132,7 +138,7 @@ object SexprToExpr {
                 }
                 bindingAnn.wrap(k.name) to tryAssignName(k.name, toExpr(vAnn))
             }.unzip()
-            ExprOp.Let(vs, es, toExpr(bodyAnn), kind)
+            ExprOp.Let(vs, es, body.map(::toExpr), kind)
         }
         "lambda" -> {
             EocError.ensure(cdrs.size >= 2, root.ann) {
@@ -154,6 +160,27 @@ object SexprToExpr {
             val bodyE = cdrs.drop(1).map(::toExpr)
             ExprLam.Lam(null, argNames, bodyE)
         }
+        "while" -> {
+            EocError.ensure(cdrs.size >= 2, root.ann) {
+                "While should be in the form of (while cond body...)"
+            }
+
+            val cond = toExpr(cdrs.first())
+            val body = cdrs.drop(1).map(::toExpr)
+            ExprImp.While(cond, body)
+        }
+        /*
+        "set!" -> {
+            EocError.ensure(cdrs.size == 2, root.ann) {
+                "Set! should be in the form of (set! name expr)"
+            }
+            val (name, value) = cdrs
+            EocError.ensure(name.unwrap is Sexpr.Sym, name.ann) {
+                "Set! var name must be a symbol"
+            }
+            ExprImp.Set(name.wrap(name.unwrap.name), toExpr(value))
+        }
+         */
         else -> {
             primDescrs.firstNotNullOfOrNull { pd ->
                 if (carSym == pd.symbol && cdrs.size == pd.argc) {
