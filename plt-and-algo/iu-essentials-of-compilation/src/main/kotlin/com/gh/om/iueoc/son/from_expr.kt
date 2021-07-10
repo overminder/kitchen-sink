@@ -271,7 +271,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
                 doOp(e, env)
             }
             is ExprLam.Ap -> {
-                EocError.todo(annE.ann, "Not implemented: $e")
+                doAp(e, env)
             }
             is ExprLam.Lam -> {
                 val (gid, freeVarNames) = multiGraphBuilder.buildLam(env, e, annE.ann)
@@ -284,6 +284,9 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
             is ExprImp.While -> {
                 doWhile(e, env)
             }
+            is ExprImp.Set -> {
+                EocError.todo(annE.ann, "Not implemented: $e")
+            }
         }
     }
 
@@ -292,6 +295,9 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         return when (e.op.unwrap) {
             PrimOp.FxAdd -> {
                 makeUniqueValueNode(Nodes.fxAdd(), values)
+            }
+            PrimOp.FxSub -> {
+                makeUniqueValueNode(Nodes.fxSub(), values)
             }
             PrimOp.FxLessThan -> {
                 makeUniqueValueNode(Nodes.fxLessThan(), values)
@@ -309,6 +315,12 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
                 makeEffectfulValueNode(Nodes.boxSet(), listOf(boxValue, newValue)).id
             }
         }
+    }
+
+    private fun doAp(e: ExprLam.Ap, env: EnvChain): NodeId {
+        val f = doExpr(e.f, env)
+        val args = e.args.map { doExpr(it, env) }
+        return makeEffectfulValueNode(Nodes.call(args.size), listOf(f) + args).id
     }
 
     private fun doLet(

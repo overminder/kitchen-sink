@@ -214,6 +214,8 @@ object Nodes {
     fun phi(nRegions: Int) = Node.fresh(Operators.phi(nRegions))
     fun effectPhi(nRegions: Int) = Node.fresh(Operators.effectPhi(nRegions))
 
+    fun call(nArgs: Int) = Node.fresh(Operators.call(nArgs))
+
     fun boolLit(value: Boolean) = Node.fresh(Operators.boolLit(value))
     fun boxLit() = Node.fresh(Operators.boxLit())
     fun intLit(value: Int) = Node.fresh(Operators.fxLit(value))
@@ -221,6 +223,7 @@ object Nodes {
     fun symbolLit(value: String) = Node.fresh(Operators.symbolLit(value))
 
     fun fxAdd() = Node.fresh(Operators.fxAdd())
+    fun fxSub() = Node.fresh(Operators.fxSub())
     fun fxLessThan() = Node.fresh(Operators.fxLessThan())
     fun boxGet() = Node.fresh(Operators.boxGet())
     fun boxSet() = Node.fresh(Operators.boxSet())

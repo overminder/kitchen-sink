@@ -3,6 +3,7 @@ package com.gh.om.iueoc.son
 import com.gh.om.iueoc.EocError
 import com.gh.om.iueoc.Value
 import com.gh.om.iueoc.asBoolean
+import kotlinx.collections.immutable.persistentMapOf
 
 /*
 sealed class Value {
@@ -36,15 +37,20 @@ class Heap(
 
 typealias Env = MutableMap<NodeId, Value>
 
-fun interp(g: Graph, env: Env = mutableMapOf()): Value {
-    return Interp(g, env).start()
+fun interp(gs: MultiGraph, entry: GraphId, env: Env = mutableMapOf()): Value {
+    return Interp(gs, entry, env, emptyList(), emptyList()).start()
 }
 
 private class Interp(
-    private val graph: Graph,
+    private val gs: MultiGraph,
+    private val gid: GraphId,
     // Maps phi nodes to values
-    private val env: Env
+    private val env: Env,
+    private val args: List<Value>,
+    private val freeVars: List<Value>,
 ) {
+    private val graph = requireNotNull(gs.graphs[gid]).unwrap
+
     private var evaluatedEffects = mutableSetOf<NodeId>()
     private var evaluatedEffectfulNodes = mutableMapOf<NodeId, Value>()
 
@@ -78,8 +84,7 @@ private class Interp(
 
     fun goEffectfulValue(n: Node): Value {
         val nid = n.id
-        // Start is a special effectful value that only has effect output.
-        require(n.opCode == OpCode.Start || n.opCode.isEffectfulValue)
+        require(n.opCode.isEffectfulValue)
 
         // If already evaluated: return that.
         evaluatedEffectfulNodes[nid]?.let {
@@ -91,8 +96,14 @@ private class Interp(
 
         val values = n.valueInputs.drop(1).map(::goValue)
         val result = when (n.opCode) {
+            OpCode.Call -> {
+                val f = values.first() as Value.LamG
+                val args = values.drop(1)
+                interpCall(f.graphId, args, f.freeVars)
+            }
             OpCode.ScmLambdaLit -> {
-                TODO()
+                val gid = n.operator.extra as GraphId
+                Value.LamG(gid, values)
             }
             OpCode.ScmBoxLit -> {
                 val toBox = values.first()
@@ -127,6 +138,14 @@ private class Interp(
             return goEffectfulValue(n)
         }
         return when (val op = n.operator.op) {
+            OpCode.Argument -> {
+                val extra = n.operator.extra as ArgumentOpExtra
+                return args[extra.index]
+            }
+            OpCode.FreeVar -> {
+                val extra = n.operator.extra as FreeVarOpExtra
+                return args[extra.index]
+            }
             OpCode.Phi -> {
                 requireNotNull(env[nid])
             }
@@ -146,6 +165,11 @@ private class Interp(
             OpCode.ScmFxAdd -> {
                 binaryIntOp(op, n.valueInputs.map(::goValue)) { x, y ->
                     Value.I(x + y)
+                }
+            }
+            OpCode.ScmFxSub -> {
+                binaryIntOp(op, n.valueInputs.map(::goValue)) { x, y ->
+                    Value.I(x - y)
                 }
             }
             OpCode.ScmFxLessThan -> {
@@ -278,6 +302,28 @@ private class Interp(
                 error("${n.operator}: not a control")
             }
         }
+    }
+
+    private fun interpCall(target: GraphId, args: List<Value>, freeVars: List<Value>): Value {
+        val (ann, tg) = requireNotNull(gs.graphs[target])
+        val env: MutNodeMap = mutableMapOf()
+        // Sanity check
+        val startVouts = tg[tg.start].valueOutputs
+        val expectedArgCount = startVouts.count {
+            val n = tg[it]
+            n.opCode == OpCode.Argument
+        }
+        val expectedFreeVarCounts = startVouts.count {
+            val n = tg[it]
+            n.opCode == OpCode.FreeVar
+        }
+        EocError.ensure(args.size == expectedArgCount, ann) {
+            "Arg count mismatch: expecting $expectedArgCount, got ${args.size}"
+        }
+        EocError.ensure(freeVars.size == expectedFreeVarCounts, ann) {
+            "freeVar count mismatch: expecting $expectedFreeVarCounts, got ${freeVars.size}"
+        }
+        return Interp(gs, target, mutableMapOf(), args, freeVars).start()
     }
 }
 

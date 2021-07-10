@@ -1,5 +1,6 @@
 package com.gh.om.iueoc
 
+import com.gh.om.iueoc.son.GraphId
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.putAll
@@ -8,22 +9,27 @@ sealed class Value {
     data class I(val value: Int) : Value()
     data class B(val value: Boolean) : Value()
     data class Sym(val name: String) : Value()
+    // Used by the expr interpreter.
     data class Lam(val env: Env, val args: List<AnnS<String>>, val body: List<AnnExpr>) : Value()
+    // Used by the graph interpreter.
+    data class LamG(val graphId: GraphId, val freeVars: List<Value>) : Value()
     data class Box(var value: Value): Value()
 }
 
 val Value.asBoolean: Boolean
     get() = this != Value.B(false)
 
-interface Interp {
+private interface Interp {
     fun interp(eAnn: AnnExpr, env: Env): Trampoline<Value>
 }
 
-fun Interp.interpToplevel(eAnn: AnnExpr): Value {
-    return interp(eAnn, persistentMapOf()).value()
+fun interpToplevel(eAnn: AnnExpr): Value {
+    return InterpImp().interp(eAnn, persistentMapOf()).value()
 }
 
-private typealias Env = PersistentMap<String, Value>
+// Simple treatment of mutability in the expr interpreter.
+data class Cell(var value: Value)
+private typealias Env = PersistentMap<String, Cell>
 
 private fun Interp.seq(es: List<AnnExpr>, env: Env): Trampoline<Value> {
     for (e in es.take(es.size - 1)) {
@@ -45,11 +51,11 @@ open class InterpVar : Interp {
     private fun interpInternal(e: ExprVar, sourceLoc: SourceLoc, env: Env): Value = when (e) {
         is ExprVar.I -> Value.I(e.value)
         is ExprVar.V -> {
-            val value = env[e.name]
-            EocError.ensure(value != null, sourceLoc) {
+            val cell = env[e.name]
+            EocError.ensure(cell != null, sourceLoc) {
                 "Unbound variable: ${e.name}, all vars: ${env.keys}"
             }
-            value
+            cell.value
         }
         is ExprVar.B -> Value.B(e.value)
         is ExprVar.Sym -> Value.Sym(e.name)
@@ -79,14 +85,14 @@ open class InterpOp : InterpVar() {
         is ExprOp.Let -> {
             val newEnv = when (e.kind) {
                 LetKind.Basic -> {
-                    val vs = e.es.map { interp(it, env).value() }
+                    val vs = e.es.map { Cell(interp(it, env).value()) }
                     env.putAll(e.vs.map { it.unwrap }.zip(vs))
                 }
                 LetKind.Seq -> {
                     e.vs.zip(e.es).fold(env) { currentEnv, ve ->
                         val (k, rhs) = ve
                         val value = interp(rhs, currentEnv).value()
-                        currentEnv.put(k.unwrap, value)
+                        currentEnv.put(k.unwrap, Cell(value))
                     }
                 }
                 LetKind.Rec -> {
@@ -101,6 +107,8 @@ open class InterpOp : InterpVar() {
             when (op) {
                 PrimOp.FxAdd ->
                     binaryIntOp(e, values) { x, y -> Value.I(x + y) }
+                PrimOp.FxSub ->
+                    binaryIntOp(e, values) { x, y -> Value.I(x - y) }
                 PrimOp.FxLessThan ->
                     binaryIntOp(e, values) { x, y -> Value.B(x < y) }
                 PrimOp.BoxMk ->
@@ -156,7 +164,7 @@ open class InterpLam : InterpOp() {
                 "Not a function: $f"
             }
             // Evaluate from left to right.
-            val argValues = e.args.map { interp(it, env).value() }
+            val argValues = e.args.map { Cell(interp(it, env).value()) }
             EocError.ensure(f.args.size == argValues.size, sourceLoc) {
                 "Argument count mismatch: expecting ${f.args.size}, got ${argValues.size}"
             }
@@ -176,7 +184,7 @@ open class InterpLam : InterpOp() {
     }
 }
 
-open class InterpImp : InterpOp() {
+open class InterpImp : InterpLam() {
     override fun interp(eAnn: AnnExpr, env: Env): Trampoline<Value> {
         val eop = eAnn.unwrap
         return if (eop is ExprImp) {
@@ -191,7 +199,17 @@ open class InterpImp : InterpOp() {
             while (interp(e.cond, env).value().asBoolean) {
                 seq(e.body, env).value()
             }
-            Tr.pure(Value.Sym("#undefined"))
+            Tr.pure(UNDEFINED)
+        }
+        is ExprImp.Set -> {
+            val cell = env[e.name.unwrap]
+            EocError.ensure(cell != null, e.name.ann) {
+                "Unbound variable: ${e.name.unwrap}"
+            }
+            cell.value = interp(e.value, env).value()
+            Tr.pure(UNDEFINED)
         }
     }
 }
+
+private val UNDEFINED = Value.Sym("#undefined")

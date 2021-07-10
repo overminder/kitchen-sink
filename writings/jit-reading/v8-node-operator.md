@@ -17,8 +17,7 @@
 - Parameter(ix, name): io(V). Input is the start node, ix is the parameter index.
 - Return(n): i(VEC; V ** n), o(C). Takes one more V than n, and still chains the C (to the end node I guess?)
 
-- Loop(n): i(C ** n), o(C). Need to revisit this.
-- Merge: Same as above.
+- Merge: Hmm
 
 - Branch(hint, safetyCheck): i(VC), o(CC). Takes a V and a C, and goes to two branches.
 
@@ -32,12 +31,17 @@ COMMON_CACHED_OP_LIST defines:
 - IfSuccess: Same as above.
 - IfException: everything except for i(V). I can at least understand the need for chaining E and C.. For o(V) -- Maybe it's holding the value being thrown?
 - Throw/Terminate: i(EC), o(C). Chaining the C makes sense, and the E is consumed.
-- LoopExit: i(CC), o(C). Why two C? I remember that a loop header usually has two C inputs (from before the loop, from end of the loop) and two outputs (to start of the loop, to outside of the loop).
-- LoopExitEffect: i(EC), o(E), ps=noThrow. Chaining the E and consuming the C. Not sure about this.
 - Checkpoint: Same as above, just ps=Kontrol.
 - BeginRegion(jsObservability): io(E). Looks like memory region.
 - FinishRegion: i(VE), o(VE). Paired with above.
 - Retain: i(VE), o(E). This one makes sense -- Keep a V alive until the E is chained.
+
+- Loop(n): i(C ** n), o(C). Need to revisit this.
+  + BytecodeGraphBuilder says this is a loop header with 1 input.
+- LoopExit: i(CC), o(C). Why two C? I remember that a loop header usually has two C inputs (from before the loop, from end of the loop) and two outputs (to start of the loop, to outside of the loop).
+  + BytecodeGraphBuilder creates this with two inputs: the current control input, and a loop node
+- LoopExitEffect: i(EC), o(E), ps=noThrow. Chaining the E and consuming the C. Not sure about this.
+- LoopExitValue(machineRep): i(VC), o(V). Consumes the loop exit C to pull the final value out?
 
 More in CommonOperatorBuilder:
 
@@ -58,7 +62,6 @@ More in CommonOperatorBuilder:
 - Phi(machineRep, n > 0): i(C; V ** n), o(V). So this takes only one C.
 - EffectPhi(n > 0): i(C; E ** n), o(E). Same as above.
 - InductionVariablePhi(n >= 4): i(C; V ** n), o(V). Looks like a bounded loop phi -- Doc says the value inputs are the entry, backedge, increment, and at least one bound.
-- LoopExitValue(machineRep): i(VC), o(V). Consumes the loop exit C to pull the final value out?
 - StateValues(n, bitmask): i(V ** n), o(V). Is this the same as graal's state (for deopt)? Are the inputs all SomeStates?
 - TypedStateValues(types, bitmask): Same as above, just typed.
 - ArgumentsElementsState(argStateType): o(V). Kind of related to how js arguments is created, but not too sure.

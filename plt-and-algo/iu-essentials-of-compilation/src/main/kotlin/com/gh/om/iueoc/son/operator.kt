@@ -36,8 +36,10 @@ enum class OpCode(val klass: OpCodeClass) {
     // Value projections
     // Function argument. i(V): start; p(ArgumentOpExtra): name and nth argument
     Argument(OpCodeClass.Projection),
+
     // Closure lifted free var (upvalue). i(V): start; p(FreeVarOpExtra): name and nth free var
     FreeVar(OpCodeClass.Projection),
+
     // io(V): The effect of an operation. This is created by Start and threaded by effectful nodes
     // (e.g. alloc and memory read/write).
     Effect(OpCodeClass.Projection),
@@ -50,11 +52,18 @@ enum class OpCode(val klass: OpCodeClass) {
     Phi(OpCodeClass.Phi),
     EffectPhi(OpCodeClass.Phi),
 
+    // i(V:memory, V:target, V:args) o(V:memory, V:result)
+    // In v8, call nodes are associated with lot of complicated information in v8.
+    // And they may need control in/out as well.
+    Call(OpCodeClass.Value),
+
     // Literals
     ScmBoolLit(OpCodeClass.Value),
+
     // i(V:effect, V:toBox)
     ScmBoxLit(OpCodeClass.Value),
     ScmFxLit(OpCodeClass.Value),
+
     // i(V:effect, V:freeVar ** |freeVars|)
     ScmLambdaLit(OpCodeClass.Value),
     ScmSymbolLit(OpCodeClass.Value),
@@ -62,11 +71,13 @@ enum class OpCode(val klass: OpCodeClass) {
     // Box operations
     // i(V:effect V:box)
     ScmBoxGet(OpCodeClass.Value),
+
     // i(V:effect, V:box, V:newValue)
     ScmBoxSet(OpCodeClass.Value),
 
     // Int operations
     ScmFxAdd(OpCodeClass.Value),
+    ScmFxSub(OpCodeClass.Value),
     ScmFxLessThan(OpCodeClass.Value),
 
     Dead(OpCodeClass.Misc),
@@ -94,12 +105,15 @@ val OpCode.isPure: Boolean
         OpCode.ScmSymbolLit,
 
         OpCode.ScmFxAdd,
+        OpCode.ScmFxSub,
         OpCode.ScmFxLessThan -> true
         else -> false
     }
 
 val OpCode.isEffectfulValue: Boolean
     get() = when (this) {
+        OpCode.Call,
+
         OpCode.ScmBoxLit,
         OpCode.ScmBoxSet,
         OpCode.ScmBoxGet,
@@ -120,6 +134,25 @@ val OpCode.isJump: Boolean
         OpCode.Jump,
         OpCode.CondJump,
         OpCode.Return -> true
+        else -> false
+    }
+
+val OpCode.isValue: Boolean
+    get() = when (this) {
+        OpCode.Argument,
+        OpCode.FreeVar,
+        OpCode.Phi,
+        OpCode.Call,
+        OpCode.ScmBoolLit,
+        OpCode.ScmFxLit,
+        OpCode.ScmLambdaLit,
+        OpCode.ScmSymbolLit,
+        OpCode.ScmFxAdd,
+        OpCode.ScmFxSub,
+        OpCode.ScmFxLessThan,
+        OpCode.ScmBoxLit,
+        OpCode.ScmBoxGet,
+        OpCode.ScmBoxSet -> true
         else -> false
     }
 
@@ -169,17 +202,22 @@ object Operators {
     fun phi(nRegions: Int) = make(OpCode.Phi, nValueIn = nRegions, nControlIn = 1)
     fun effectPhi(nRegions: Int) = make(OpCode.EffectPhi, nValueIn = nRegions, nControlIn = 1)
 
+    fun call(nArgs: Int) = make(OpCode.Call, nValueIn = 2 + nArgs)
+
     // Many of the literal nodes allocate, but are still pure from schemes' semantics.
     fun boolLit(value: Boolean) = make1(OpCode.ScmBoolLit, parameter = value)
     fun boxLit() = make(OpCode.ScmBoxLit, nValueIn = 2)
     fun fxLit(value: Int) = make1(OpCode.ScmFxLit, parameter = value)
-    fun lambdaLit(nFreeVars: Int, graphId: GraphId) = make1(OpCode.ScmLambdaLit, nValueIn = 1 + nFreeVars, parameter = graphId)
+    fun lambdaLit(nFreeVars: Int, graphId: GraphId) =
+        make1(OpCode.ScmLambdaLit, nValueIn = 1 + nFreeVars, parameter = graphId)
+
     fun symbolLit(value: String) = make1(OpCode.ScmSymbolLit, parameter = value)
 
     fun boxGet() = make(OpCode.ScmBoxGet, nValueIn = 2)
     fun boxSet() = make(OpCode.ScmBoxSet, nValueIn = 3)
 
     fun fxAdd() = make(OpCode.ScmFxAdd, nValueIn = 2)
+    fun fxSub() = make(OpCode.ScmFxSub, nValueIn = 2)
     fun fxLessThan() = make(OpCode.ScmFxLessThan, nValueIn = 2)
 
     fun dead() = make(OpCode.Dead)

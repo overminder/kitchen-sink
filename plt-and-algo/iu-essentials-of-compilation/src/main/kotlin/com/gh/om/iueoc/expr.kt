@@ -20,9 +20,15 @@ sealed class ExprOp : Expr() {
     data class Op(val op: AnnS<PrimOp>, val args: List<AnnExpr>) : ExprOp()
 }
 
+sealed class ExprLam : Expr() {
+    // Name can be inferred during sexpr->expr
+    data class Lam(val name: String? = null, val args: List<AnnS<String>>, val body: List<AnnExpr>) : ExprLam()
+    data class Ap(val f: AnnExpr, val args: List<AnnExpr>) : ExprLam()
+}
+
 sealed class ExprImp : Expr() {
     data class While(val cond: AnnExpr, val body: List<AnnExpr>) : ExprImp()
-    // data class Set(val name: AnnS<String>, val value: AnnExpr) : ExprImp()
+    data class Set(val name: AnnS<String>, val value: AnnExpr) : ExprImp()
 }
 
 enum class LetKind {
@@ -31,15 +37,10 @@ enum class LetKind {
     Rec,
 }
 
-sealed class ExprLam : Expr() {
-    // Name can be inferred during sexpr->expr
-    data class Lam(val name: String? = null, val args: List<AnnS<String>>, val body: List<AnnExpr>) : ExprLam()
-    data class Ap(val f: AnnExpr, val args: List<AnnExpr>) : ExprLam()
-}
-
 enum class PrimOp(val symbol: String) {
     // (Fx, Fx) -> Fx
     FxAdd("#fx+"),
+    FxSub("#fx-"),
     // (Fx, Fx) -> Bool
     FxLessThan("#fx<"),
 
@@ -169,7 +170,6 @@ object SexprToExpr {
             val body = cdrs.drop(1).map(::toExpr)
             ExprImp.While(cond, body)
         }
-        /*
         "set!" -> {
             EocError.ensure(cdrs.size == 2, root.ann) {
                 "Set! should be in the form of (set! name expr)"
@@ -180,7 +180,6 @@ object SexprToExpr {
             }
             ExprImp.Set(name.wrap(name.unwrap.name), toExpr(value))
         }
-         */
         else -> {
             primDescrs.firstNotNullOfOrNull { pd ->
                 if (carSym == pd.symbol && cdrs.size == pd.argc) {
@@ -209,6 +208,7 @@ object SexprToExpr {
     private class PrimDescr(val op: PrimOp, val argc: Int, val symbol: String = op.symbol)
     private val primDescrs = listOf(
         PrimDescr(PrimOp.FxAdd, 2),
+        PrimDescr(PrimOp.FxSub, 2),
         PrimDescr(PrimOp.FxLessThan, 2),
         PrimDescr(PrimOp.BoxMk, 1),
         PrimDescr(PrimOp.BoxGet, 1),

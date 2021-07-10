@@ -82,7 +82,7 @@ private object EffectTests {
     """
 
     // Although b is unused, its effect is consumed by the return node, and b must be evaluated.
-    const val CASE_4 = """
+    const val CASE_3 = """
     (let* ([b (#box 0)])
       0)
     """
@@ -118,6 +118,44 @@ private object EffectTests {
       (while (#fx< 0 b)
              0)
       b)
+    """
+
+    // Sum from 1 to n. The graph starts to get too big to be viewed...
+    const val WHILE_3 = """
+    (let* ([s (#box 0)]
+           [n (#box 10)])
+      (while (#fx< 0 (#box-get n))
+        (#box-set! s (#fx+ (#box-get s) (#box-get n)))
+        (#box-set! n (#fx- (#box-get n) 1)))
+      (#box-get s))
+    """
+
+    // Sum from 1 to n. The graph starts to get too big to be viewed...
+    const val WHILE_4 = """
+    (let* ([s 0]
+           [n 10])
+      (while (#fx< 0 n)
+        (set! s (#fx+ s n))
+        (set! n (#fx- n 1)))
+      s)
+    """
+}
+
+private object LambdaTests {
+    const val ID = """
+    (let* ([id (lambda (x) x)])
+      (id 0))
+    """
+
+    const val SUM = """
+    (let ([loop
+            (lambda (n s loop)
+              (if (#fx< 0 n)
+                (loop (#fx- n 1)
+                      (#fx+ n s)
+                      loop)
+                s))])
+      (loop 10 0 loop))          
     """
 }
 
@@ -193,7 +231,7 @@ fun runProgram(source: String): Value {
     }
 
     val exprInterpResult = try {
-        InterpImp().interpToplevel(expr)
+        interpToplevel(expr)
     } catch (e: EocError) {
         showEocError(e, source, "Interp error")
         throw e
@@ -210,12 +248,15 @@ fun runProgram(source: String): Value {
     FileWriter("tools/out.dot").use {
         graphsToDot(gs, it)
     }
-    val graphInterpResult = interp(gb)
-    require(exprInterpResult == graphInterpResult)
+    val graphInterpResult = interp(gs, gb.id)
+    println("Graph -> $graphInterpResult")
+    require(exprInterpResult == graphInterpResult) {
+        "Expr and graph results differ"
+    }
     return graphInterpResult
 }
 
 private fun main() {
-    val result = runProgram(EffectTests.WHILE_1)
+    val result = runProgram(LambdaTests.SUM)
     println("Ok: $result")
 }

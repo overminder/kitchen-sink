@@ -50,44 +50,7 @@ class GraphVerifier(private val g: Graph) {
         }
     }
 
-    private fun isValue(op: OpCode): Boolean = when (op) {
-        OpCode.Argument,
-        OpCode.FreeVar,
-        OpCode.Phi,
-        OpCode.ScmBoolLit,
-        OpCode.ScmFxLit,
-        OpCode.ScmLambdaLit,
-        OpCode.ScmSymbolLit,
-        OpCode.ScmFxAdd,
-        OpCode.ScmFxLessThan,
-        OpCode.ScmBoxLit,
-        OpCode.ScmBoxGet,
-        OpCode.ScmBoxSet -> true
-        else -> false
-    }
-
-    private fun isJump(op: OpCode): Boolean = when (op) {
-        OpCode.Return,
-        OpCode.CondJump,
-        OpCode.Jump,
-        -> true
-        else -> false
-    }
-
-    private fun isEffect(op: OpCode): Boolean = when (op) {
-        OpCode.Effect,
-        OpCode.EffectPhi -> true
-        else -> false
-    }
-
-    private fun canProjectEffectOut(op: OpCode): Boolean = when (op) {
-        OpCode.Start,
-        OpCode.ScmBoxLit,
-        OpCode.ScmLambdaLit,
-        OpCode.ScmBoxSet,
-        OpCode.ScmBoxGet -> true
-        else -> false
-    }
+    private fun canProjectEffectOut(op: OpCode) = op.isEffectfulValue || op == OpCode.Start
 
     /**
      * @param [index] A null index means everything.
@@ -126,17 +89,17 @@ class GraphVerifier(private val g: Graph) {
             }
             OpCode.Region -> {
                 n.controlOutputs.map(::getOp).forEach {
-                    require(it == OpCode.Phi || it == OpCode.EffectPhi || isJump(it))
+                    require(it == OpCode.Phi || it == OpCode.EffectPhi || it.isJump)
                 }
             }
             OpCode.Return -> {
-                checkInputBy(n, 0, EdgeKind.Value) { isEffect(it) }
-                checkInputBy(n, 1, EdgeKind.Value) { isValue(it) }
+                checkInputBy(n, 0, EdgeKind.Value) { it.isEffect }
+                checkInputBy(n, 1, EdgeKind.Value) { it.isValue }
                 checkInputBy(n, 0, EdgeKind.Control) { it == OpCode.Region }
                 require(getOp(n.singleControlOutput) == OpCode.End)
             }
             OpCode.CondJump -> {
-                checkInputBy(n, 0, EdgeKind.Value) { isValue(it) }
+                checkInputBy(n, 0, EdgeKind.Value) { it.isValue }
                 checkInputBy(n, 0, EdgeKind.Control) { it == OpCode.Region }
                 require(n.controlOutputs.size == 2)
                 n.controlOutputs.map(::getOp).forEach {
@@ -170,9 +133,9 @@ class GraphVerifier(private val g: Graph) {
                 n.valueInputs.forEach {
                     val inputOp = getOp(it)
                     if (nodeOp == OpCode.Phi) {
-                        require(isValue(inputOp))
+                        require(inputOp.isValue)
                     } else {
-                        require(isEffect(inputOp))
+                        require(inputOp.isEffect)
                     }
                 }
                 if (n.opCode == OpCode.EffectPhi) {
@@ -186,24 +149,25 @@ class GraphVerifier(private val g: Graph) {
             }
             OpCode.ScmBoxLit,
             OpCode.ScmLambdaLit -> {
-                checkInputBy(n, 0, EdgeKind.Value) { isEffect(it) }
+                checkInputBy(n, 0, EdgeKind.Value) { it.isEffect }
                 n.valueInputs.drop(1).map(::getOp).forEach {
-                    require(isValue(it))
+                    require(it.isValue)
                 }
             }
             OpCode.ScmBoxGet -> {
-                checkInputBy(n, 0, EdgeKind.Value) { isEffect(it) }
-                checkInputBy(n, 1, EdgeKind.Value) { isValue(it) }
+                checkInputBy(n, 0, EdgeKind.Value) { it.isEffect }
+                checkInputBy(n, 1, EdgeKind.Value) { it.isValue }
             }
             OpCode.ScmBoxSet -> {
-                checkInputBy(n, 0, EdgeKind.Value) { isEffect(it) }
-                checkInputBy(n, 1, EdgeKind.Value) { isValue(it) }
-                checkInputBy(n, 2, EdgeKind.Value) { isValue(it) }
+                checkInputBy(n, 0, EdgeKind.Value) { it.isEffect }
+                checkInputBy(n, 1, EdgeKind.Value) { it.isValue }
+                checkInputBy(n, 2, EdgeKind.Value) { it.isValue }
             }
             OpCode.ScmFxAdd,
+            OpCode.ScmFxSub,
             OpCode.ScmFxLessThan -> {
                 n.valueInputs.map(::getOp)
-                checkInputBy(n, null, EdgeKind.Value) { isValue(it) }
+                checkInputBy(n, null, EdgeKind.Value) { it.isValue }
             }
             OpCode.Dead -> {
                 error("Shouldn't be connected to the graph?")
