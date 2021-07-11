@@ -3,7 +3,6 @@ package com.gh.om.iueoc.son
 import com.gh.om.iueoc.EocError
 import com.gh.om.iueoc.Value
 import com.gh.om.iueoc.asBoolean
-import kotlinx.collections.immutable.persistentMapOf
 
 /*
 sealed class Value {
@@ -69,7 +68,14 @@ private class Interp(
         when (n.opCode) {
             OpCode.Effect -> {
                 if (nid !in evaluatedEffects) {
-                    goEffectfulValue(get(n.singleValueInput))
+                    val vin = get(n.singleValueInput)
+                    if (vin.opCode.isEffectfulValue) {
+                        goEffectfulValue(vin)
+                    } else {
+                        // Artifact from transformations.
+                        require(vin.opCode.isEffect)
+                        goEffect(vin)
+                    }
                 }
             }
             OpCode.EffectPhi -> {
@@ -139,12 +145,12 @@ private class Interp(
         }
         return when (val op = n.operator.op) {
             OpCode.Argument -> {
-                val extra = n.operator.extra as ArgumentOpExtra
+                val extra = GetOperatorExtra(n).asArgument
                 return args[extra.index]
             }
             OpCode.FreeVar -> {
-                val extra = n.operator.extra as FreeVarOpExtra
-                return args[extra.index]
+                val extra = GetOperatorExtra(n).asFreeVar
+                return freeVars[extra.index]
             }
             OpCode.Phi -> {
                 requireNotNull(env[nid])
@@ -259,10 +265,11 @@ private class Interp(
                 goControl(n.singleControlOutput)
             }
             OpCode.Region -> {
-                val jumpNode = n.controlOutputs.find { co ->
-                    get(co).opCode.isJump
+                val nextNode = n.controlOutputs.find { co ->
+                    val op = get(co).opCode
+                    op.isJump || op.isFixedWithNext
                 }
-                goControl(requireNotNull(jumpNode))
+                goControl(requireNotNull(nextNode))
             }
             OpCode.End -> {
                 error("Not reachable")
@@ -297,6 +304,10 @@ private class Interp(
             OpCode.ScmIfT,
             OpCode.ScmIfF -> {
                 error("${n.operator}: should be handled by CondJump ")
+            }
+            OpCode.Call -> {
+                goValue(nid)
+                goControl(n.singleControlOutput)
             }
             else -> {
                 error("${n.operator}: not a control")

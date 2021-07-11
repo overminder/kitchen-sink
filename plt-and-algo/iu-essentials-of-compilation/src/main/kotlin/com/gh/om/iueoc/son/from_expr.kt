@@ -80,14 +80,22 @@ class EnvChain(
 
 interface MultiGraph {
     val graphs: Map<GraphId, AnnS<Graph>>
+
+    fun deepCopy(graphId: GraphId): Graph
+    fun remove(id: GraphId)
+}
+
+operator fun MultiGraph.get(graphId: GraphId): Graph {
+    return requireNotNull(graphs[graphId]) {
+        "$graphId not found. All ids: ${graphs.keys}"
+    }.unwrap
 }
 
 /**
  * Do closure conversion by collecting nested lambdas.
  */
 class MultiGraphBuilder : MultiGraph {
-    override val graphs
-        get() = _graphs
+    override val graphs = mutableMapOf<GraphId, AnnS<Graph>>()
 
     private var idGen = FIRST_ID
     fun nextId(): GraphId {
@@ -95,12 +103,34 @@ class MultiGraphBuilder : MultiGraph {
         idGen = GraphId(idGen.v + 1)
         return ret
     }
-    private val _graphs = mutableMapOf<GraphId, AnnS<GraphBuilder>>()
 
-    private operator fun get(id: GraphId): GraphBuilder {
-        return requireNotNull(_graphs[id]) {
-            "$id not found. All ids: ${_graphs.keys}"
+    /*
+    operator fun get(graphId: GraphId): GraphBuilder {
+        return requireNotNull(graphs[graphId]) {
+            "$graphId not found. All ids: ${graphs.keys}"
         }.unwrap
+    }
+
+     */
+
+    override fun deepCopy(graphId: GraphId): Graph {
+        val (ann, from) = requireNotNull(graphs[graphId])
+        val nodes: MutNodeMap = mutableMapOf()
+        for (n0 in NodeTraversal(from).liveNodes) {
+            val n = n0.deepCopy()
+            nodes[n.id] = n
+        }
+        val cg = CopiedGraph(this, from.name, nodes, from.start, from.end, nextId())
+        GraphVerifier(cg).verifyFullyBuilt()
+        graphs[cg.id] = ann.wrap(cg)
+        return cg
+    }
+
+    override fun remove(id: GraphId) {
+        requireNotNull(graphs.remove(id))
+        if (id.v == idGen.v - 1) {
+            idGen = id
+        }
     }
 
     /**
@@ -120,7 +150,7 @@ class MultiGraphBuilder : MultiGraph {
 
         val gb = GraphBuilder(this, name)
         val gid = nextId()
-        _graphs[gid] = rootAnn.wrap(gb)
+        graphs[gid] = rootAnn.wrap(gb)
 
         val env = gb.populateArgs(args, outerFlatEnv.keys)
         gb.doFunctionBody(gid, body, env)
@@ -149,6 +179,15 @@ class MultiGraphBuilder : MultiGraph {
     }
 }
 
+class CopiedGraph(
+    override val multiGraph: MultiGraph,
+    override val name: String?,
+    override val nodes: NodeMap,
+    override val start: NodeId,
+    override val end: NodeId,
+    override val id: GraphId
+) : Graph
+
 // @JvmInline value class GraphId(val v: Int)
 data class GraphId(val v: Int)
 
@@ -159,6 +198,9 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         idGen = NodeId(idGen.v + 1)
         return ret
     }
+
+    override val multiGraph: MultiGraph
+        get() = multiGraphBuilder
 
     override val nodes: MutNodeMap = mutableMapOf()
 
@@ -172,7 +214,8 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
     // Although nodes are mutable, we don't mutate value nodes during graph building.
     private val pureValueCache = mutableMapOf<ValueNodeEqWrapper, NodeId>()
 
-    private var currentRegion: NodeId? = null
+    // A region or a fixed node (e.g. call)
+    private var currentControlDep: NodeId? = null
     private var currentEffect: NodeId
 
     init {
@@ -184,21 +227,28 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         get(currentEffect).populateInput(get(start), EdgeKind.Value)
     }
 
-    private fun startRegion(nPreds: Int = 1, nPhis: Int = 0): Node {
+    private fun startRegion(nPreds: Int = 1, nPhis: Int = 0, kind: RegionKind = RegionKind.Basic): Node {
         // require(currentRegion == null)
-        val region = Nodes.region(nPreds = nPreds, nPhis = nPhis)
-        currentRegion = assignId(region).id
+        val region = Nodes.region(nPreds = nPreds, nPhis = nPhis, kind = kind)
+        currentControlDep = assignId(region).id
         return region
     }
 
-    private fun assertCurrentRegion(): NodeId {
-        return requireNotNull(currentRegion)
+    private fun assertCurrentControlDep(): NodeId {
+        return requireNotNull(currentControlDep)
     }
 
     private fun projectEffectFrom(node: Node): Node {
         val updatedEffect = assignId(Nodes.effect())
         updatedEffect.populateInput(node, EdgeKind.Value)
         currentEffect = updatedEffect.id
+        return node
+    }
+
+    private fun threadControlFrom(node: Node): Node {
+        require(node.opCode.isFixedWithNext)
+        node.populateInput(get(assertCurrentControlDep()), EdgeKind.Control)
+        currentControlDep = node.id
         return node
     }
 
@@ -239,7 +289,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         startRegion().populateInput(get(start), EdgeKind.Control)
 
         val returnValue = doSeq(body, env)
-        val exitRegion = get(assertCurrentRegion())
+        val exitRegion = get(assertCurrentControlDep())
 
         val returnNode = assignId(Nodes.ret())
         returnNode.populateInput(get(currentEffect), EdgeKind.Value)
@@ -320,7 +370,8 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
     private fun doAp(e: ExprLam.Ap, env: EnvChain): NodeId {
         val f = doExpr(e.f, env)
         val args = e.args.map { doExpr(it, env) }
-        return makeEffectfulValueNode(Nodes.call(args.size), listOf(f) + args).id
+        val callNode = makeEffectfulValueNode(Nodes.call(args.size), listOf(f) + args)
+        return threadControlFrom(callNode).id
     }
 
     private fun doLet(
@@ -370,7 +421,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         val condValue = doExpr(e, env)
         val condJump = assignId(Nodes.condJump())
         condJump.populateInput(get(condValue), EdgeKind.Value)
-        condJump.populateInput(get(assertCurrentRegion()), EdgeKind.Control)
+        condJump.populateInput(get(assertCurrentControlDep()), EdgeKind.Control)
 
         // Make projections
         val ifT = assignId(Nodes.ifT())
@@ -391,7 +442,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         // True branch
         startRegion().populateInput(ifT, EdgeKind.Control)
         val tValue = doExpr(e.ifT, env)
-        val tValueRegion = assertCurrentRegion()
+        val tValueRegion = assertCurrentControlDep()
         val tEffect = currentEffect
         val tJump = assignId(Nodes.jump())
         tJump.populateInput(get(tValueRegion), EdgeKind.Control)
@@ -402,7 +453,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         // False branch
         startRegion().populateInput(ifF, EdgeKind.Control)
         val fValue = doExpr(e.ifF, env)
-        val fValueRegion = assertCurrentRegion()
+        val fValueRegion = assertCurrentControlDep()
         val fEffect = currentEffect
         val fJump = assignId(Nodes.jump())
         fJump.populateInput(get(fValueRegion), EdgeKind.Control)
@@ -417,9 +468,9 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         // endRegion ...
         val effectFromBeforeLoop = currentEffect
         val jumpFromBeforeLoop = assignId(Nodes.jump())
-        jumpFromBeforeLoop.populateInput(get(assertCurrentRegion()), EdgeKind.Control)
+        jumpFromBeforeLoop.populateInput(get(assertCurrentControlDep()), EdgeKind.Control)
 
-        val condRegion = startRegion(nPreds = 2, nPhis = 1)
+        val condRegion = startRegion(nPreds = 2, nPhis = 1, kind = RegionKind.LoopHeader)
         condRegion.populateInput(jumpFromBeforeLoop, EdgeKind.Control)
 
         // Pessimistically make an effect phi -- we can try to eliminate it later.
@@ -438,7 +489,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         doSeq(e.body, env)
         val effectFromLoopEnd = currentEffect
         val jumpFromLoopEnd = assignId(Nodes.jump())
-        jumpFromLoopEnd.populateInput(get(assertCurrentRegion()), EdgeKind.Control)
+        jumpFromLoopEnd.populateInput(get(assertCurrentControlDep()), EdgeKind.Control)
         condRegion.populateInput(jumpFromLoopEnd, EdgeKind.Control)
 
         // Try to eliminate redundant effect phis.
@@ -479,7 +530,7 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
         val needEffectPhi = tEffect != fEffect
         // Make a region as a join point
         // Both branches may be returning the same thing. In that case we don't need a phi.
-        val joinRegion = startRegion(nPreds = 2, nPhis = needPhi.b2i + needEffectPhi.b2i)
+        val joinRegion = startRegion(nPreds = 2, nPhis = needPhi.b2i + needEffectPhi.b2i, kind = RegionKind.Merge)
         joinRegion.populateInput(tJump, EdgeKind.Control)
         joinRegion.populateInput(fJump, EdgeKind.Control)
         if (needEffectPhi) {
@@ -571,6 +622,17 @@ class GraphBuilder(private val multiGraphBuilder: MultiGraphBuilder, override va
             val extra = it.operator.extra as FreeVarOpExtra
             extra.name
         }
+    }
+
+    // Use a map to keep track of copied node. This is usually used for merging two graphs.
+    fun makeCopy(n: Node, idMap: MutableMap<NodeId, NodeId>, insert: Boolean = true): Node {
+        val copy = n.deepCopyMapped {
+            idMap.getOrPut(it, ::nextId)
+        }
+        if (insert) {
+            nodes[copy.id] = copy
+        }
+        return copy
     }
 }
 

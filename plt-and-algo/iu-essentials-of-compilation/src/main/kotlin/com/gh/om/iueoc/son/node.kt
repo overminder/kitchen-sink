@@ -14,6 +14,10 @@ class Node(operator: Operator) {
     val opCode: OpCode
         get() = operator.op
 
+    // Must be assigned before adding edges.
+    var id: NodeId = NodeIds.FRESH_ID
+        private set
+
     val valueInputs: NodeIdList get() = _valueInputs
     val controlInputs: NodeIdList get() = _controlInputs
     val valueOutputs: NodeIdList get() = _valueOutputs
@@ -24,6 +28,18 @@ class Node(operator: Operator) {
     private val _valueOutputs: MutNodeIdList = mutableListOf()
     private val _controlOutputs: MutNodeIdList = mutableListOf()
 
+    fun deepCopy() = deepCopyMapped { it }
+
+    fun deepCopyMapped(convertId: (NodeId) -> NodeId): Node {
+        val n = Node(operator)
+        n._valueInputs += _valueInputs.map(convertId)
+        n._controlInputs += _controlInputs.map(convertId)
+        n._valueOutputs += _valueOutputs.map(convertId)
+        n._controlOutputs += _controlOutputs.map(convertId)
+        n.id = convertId(id)
+        return n
+    }
+
     override fun toString(): String {
         val extraPart = if (operator.extra == null || operator.extra == Unit) {
             ""
@@ -33,10 +49,6 @@ class Node(operator: Operator) {
         val hex = System.identityHashCode(this).and(0xffff).toString(16)
         return "<Node ${id.v} ${operator.op}$extraPart 0x$hex>"
     }
-
-    // Only assigned after GVN.
-    var id: NodeId = NodeIds.FRESH_ID
-        private set
 
     fun assignId(id: NodeId) {
         require(this.id == NodeIds.FRESH_ID)
@@ -57,6 +69,11 @@ class Node(operator: Operator) {
         vouts.forEach {
             it.replaceInput(this, newValue, EdgeKind.Value)
         }
+    }
+
+    fun becomeControlNode(newValue: Node, graph: Graph) {
+        require(valueOutputs.isEmpty())
+        graph[singleControlOutput].replaceInput(this, newValue, EdgeKind.Control)
     }
 
     /**
@@ -195,11 +212,31 @@ val Node.singleControlOutput: NodeId
         return controlOutputs.first()
     }
 
+fun Node.removeEdges(
+    g: Graph,
+    direction: EdgeDirection = EdgeDirection.Both,
+    edgeKinds: Array<EdgeKind> = EdgeKind.ALL
+) {
+    for (edgeKind in edgeKinds) {
+        if (direction.input) {
+            inputsByKind(edgeKind).map(g::get).forEach {
+                removeInput(it, edgeKind)
+            }
+        }
+        if (direction.output) {
+            outputsByKind(edgeKind).map(g::get).forEach {
+                it.removeInput(this, edgeKind)
+            }
+        }
+    }
+}
+
 object Nodes {
     fun start() = Node.fresh(Operators.start())
     fun end() = Node.fresh(Operators.end())
 
-    fun region(nPreds: Int, nPhis: Int) = Node.fresh(Operators.region(nPreds = nPreds, nPhis = nPhis))
+    fun region(nPreds: Int, nPhis: Int, kind: RegionKind) =
+        Node.fresh(Operators.region(nPreds = nPreds, nPhis = nPhis, kind = kind))
 
     fun ret() = Node.fresh(Operators.ret())
     fun condJump() = Node.fresh(Operators.condJump())
@@ -233,7 +270,6 @@ object Nodes {
 
 object NodeIds {
     // Inputs / outputs
-    val DEAD_ID = NodeId(-3)
     val UNPOPULATED_ID = NodeId(-2)
 
     // Fresh node
@@ -247,7 +283,13 @@ object NodeIds {
 
 enum class EdgeKind {
     Value,
-    Control,
+    Control;
+
+    companion object {
+        val ALL = values()
+        val VALUE = arrayOf(Value)
+        val CONTROL = arrayOf(Control)
+    }
 }
 
 enum class EdgeDirection(val bitset: Int) {
@@ -270,6 +312,7 @@ enum class EdgeDirection(val bitset: Int) {
 data class Edge(val from: NodeId, val to: NodeId, val kind: EdgeKind, val nthInput: Int)
 
 interface Graph {
+    val multiGraph: MultiGraph
     val nodes: NodeMap
     val start: NodeId
     val end: NodeId

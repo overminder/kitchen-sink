@@ -40,8 +40,9 @@ enum class OpCode(val klass: OpCodeClass) {
     // Closure lifted free var (upvalue). i(V): start; p(FreeVarOpExtra): name and nth free var
     FreeVar(OpCodeClass.Projection),
 
-    // io(V): The effect of an operation. This is created by Start and threaded by effectful nodes
-    // (e.g. alloc and memory read/write).
+    // i(V:effectfulNode): The effect of an operation. This is created by Start and threaded by effectful nodes
+    // (e.g. alloc and memory read/write). Note that this can be consumed by multiple nodes, when the control
+    // is split (e.g. (if _ (write-1) (write-2))).
     Effect(OpCodeClass.Projection),
 
     // Value nodes
@@ -52,7 +53,7 @@ enum class OpCode(val klass: OpCodeClass) {
     Phi(OpCodeClass.Phi),
     EffectPhi(OpCodeClass.Phi),
 
-    // i(V:memory, V:target, V:args) o(V:memory, V:result)
+    // i(V:memory, V:target, V:args, C:regionOrFixed) o(V:memory, V:result, C:jumpOrFixed)
     // In v8, call nodes are associated with lot of complicated information in v8.
     // And they may need control in/out as well.
     Call(OpCodeClass.Value),
@@ -137,6 +138,15 @@ val OpCode.isJump: Boolean
         else -> false
     }
 
+val OpCode.isRegionOrFixedWithNext: Boolean
+    get() = this == OpCode.Region || isFixedWithNext
+
+val OpCode.isFixedWithNext: Boolean
+    get() = when (this) {
+        OpCode.Call -> true
+        else -> false
+    }
+
 val OpCode.isValue: Boolean
     get() = when (this) {
         OpCode.Argument,
@@ -165,6 +175,13 @@ data class Operator(
     val extra: Any?
 )
 
+enum class RegionKind {
+    Basic,
+    Merge,
+    LoopHeader,
+}
+
+// Hmm this is really hard to refactor.
 class ArgumentOpExtra(val name: String, val index: Int) {
     override fun equals(other: Any?): Boolean = index == other
     override fun hashCode(): Int = index.hashCode()
@@ -179,6 +196,22 @@ class FreeVarOpExtra(val name: String, val index: Int) {
     fun withIndex(newIndex: Int) = FreeVarOpExtra(name, newIndex)
 }
 
+class GetOperatorExtra(private val operator: Operator) {
+    // Keep the mapping in sync with [Operators] below.
+    val asArgument get() = cast<ArgumentOpExtra>(OpCode.Argument)
+    val asFreeVar get() = cast<FreeVarOpExtra>(OpCode.FreeVar)
+    val asLambdaLit get() = cast<GraphId>(OpCode.ScmLambdaLit)
+
+    companion object {
+        operator fun invoke(node: Node) = GetOperatorExtra(node.operator)
+    }
+
+    private inline fun <reified A> cast(op: OpCode): A {
+        require(operator.op == op)
+        return operator.extra as A
+    }
+}
+
 object Operators {
     // Re number of inputs and outputs: The idea is that these are the "expected" number of inputs and outputs.
     // We shouldn't really limit the number of valueOutputs as that's determined by the number of uses.
@@ -187,7 +220,7 @@ object Operators {
     fun start() = make(OpCode.Start, nControlOut = 1)
     fun end(nRetNodes: Int = 1) = make(OpCode.End, nControlIn = nRetNodes)
 
-    fun region(nPreds: Int, nPhis: Int) = make(OpCode.Region, nControlIn = nPreds, nControlOut = 1 + nPhis)
+    fun region(nPreds: Int, nPhis: Int, kind: RegionKind) = make1(OpCode.Region, nControlIn = nPreds, nControlOut = 1 + nPhis, extra = kind)
 
     fun ret() = make(OpCode.Return, nValueIn = 2, nControlIn = 1, nControlOut = 1)
     fun condJump() = make(OpCode.CondJump, nValueIn = 1, nControlIn = 1, nControlOut = 2)
@@ -195,23 +228,23 @@ object Operators {
 
     fun ifT() = make(OpCode.ScmIfT, nControlIn = 1, nControlOut = 1)
     fun ifF() = make(OpCode.ScmIfF, nControlIn = 1, nControlOut = 1)
-    fun argument(extra: ArgumentOpExtra) = make1(OpCode.Argument, nValueIn = 1, parameter = extra)
-    fun freeVar(extra: FreeVarOpExtra) = make1(OpCode.FreeVar, nValueIn = 1, parameter = extra)
+    fun argument(extra: ArgumentOpExtra) = make1(OpCode.Argument, nValueIn = 1, extra = extra)
+    fun freeVar(extra: FreeVarOpExtra) = make1(OpCode.FreeVar, nValueIn = 1, extra = extra)
     fun effect() = make(OpCode.Effect, nValueIn = 1)
 
     fun phi(nRegions: Int) = make(OpCode.Phi, nValueIn = nRegions, nControlIn = 1)
     fun effectPhi(nRegions: Int) = make(OpCode.EffectPhi, nValueIn = nRegions, nControlIn = 1)
 
-    fun call(nArgs: Int) = make(OpCode.Call, nValueIn = 2 + nArgs)
+    fun call(nArgs: Int) = make(OpCode.Call, nValueIn = 2 + nArgs, nControlIn = 1, nControlOut = 1)
 
     // Many of the literal nodes allocate, but are still pure from schemes' semantics.
-    fun boolLit(value: Boolean) = make1(OpCode.ScmBoolLit, parameter = value)
+    fun boolLit(value: Boolean) = make1(OpCode.ScmBoolLit, extra = value)
     fun boxLit() = make(OpCode.ScmBoxLit, nValueIn = 2)
-    fun fxLit(value: Int) = make1(OpCode.ScmFxLit, parameter = value)
+    fun fxLit(value: Int) = make1(OpCode.ScmFxLit, extra = value)
     fun lambdaLit(nFreeVars: Int, graphId: GraphId) =
-        make1(OpCode.ScmLambdaLit, nValueIn = 1 + nFreeVars, parameter = graphId)
+        make1(OpCode.ScmLambdaLit, nValueIn = 1 + nFreeVars, extra = graphId)
 
-    fun symbolLit(value: String) = make1(OpCode.ScmSymbolLit, parameter = value)
+    fun symbolLit(value: String) = make1(OpCode.ScmSymbolLit, extra = value)
 
     fun boxGet() = make(OpCode.ScmBoxGet, nValueIn = 2)
     fun boxSet() = make(OpCode.ScmBoxSet, nValueIn = 3)
@@ -228,7 +261,7 @@ object Operators {
         nControlIn: Int = 0,
         nValueOut: Int = 0,
         nControlOut: Int = 0,
-        parameter: Any
+        extra: Any
     ): Operator {
         return Operator(
             op,
@@ -236,7 +269,7 @@ object Operators {
             nControlIn = nControlIn,
             nValueOut = nValueOut,
             nControlOut = nControlOut,
-            extra = parameter
+            extra = extra
         )
     }
 
@@ -252,7 +285,7 @@ object Operators {
         nControlIn = nControlIn,
         nValueOut = nValueOut,
         nControlOut = nControlOut,
-        parameter = Unit
+        extra = Unit
     )
 
     fun isSchemeIfProjections(operators: Collection<Operator>): Boolean {

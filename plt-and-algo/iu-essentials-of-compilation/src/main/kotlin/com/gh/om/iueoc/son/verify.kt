@@ -48,6 +48,10 @@ class GraphVerifier(private val g: Graph) {
         n.controlOutputs.forEach {
             verifyEdgeAndBackEdge(nid, it, EdgeKind.Control)
         }
+
+        if (canProjectEffectOut(n.opCode)) {
+            require(n.valueOutputs.count { getOp(it).isEffect } == 1)
+        }
     }
 
     private fun canProjectEffectOut(op: OpCode) = op.isEffectfulValue || op == OpCode.Start
@@ -88,26 +92,32 @@ class GraphVerifier(private val g: Graph) {
                 // Done
             }
             OpCode.Region -> {
+                val cin = when (n.operator.extra as RegionKind) {
+                    RegionKind.Basic -> 1
+                    RegionKind.Merge -> 2
+                    RegionKind.LoopHeader -> 2
+                }
+                require(n.controlInputs.size == cin)
                 n.controlOutputs.map(::getOp).forEach {
-                    require(it == OpCode.Phi || it == OpCode.EffectPhi || it.isJump)
+                    require(it == OpCode.Phi || it == OpCode.EffectPhi || it.isJump || it.isFixedWithNext)
                 }
             }
             OpCode.Return -> {
                 checkInputBy(n, 0, EdgeKind.Value) { it.isEffect }
                 checkInputBy(n, 1, EdgeKind.Value) { it.isValue }
-                checkInputBy(n, 0, EdgeKind.Control) { it == OpCode.Region }
+                checkInputBy(n, 0, EdgeKind.Control) { it.isRegionOrFixedWithNext }
                 require(getOp(n.singleControlOutput) == OpCode.End)
             }
             OpCode.CondJump -> {
                 checkInputBy(n, 0, EdgeKind.Value) { it.isValue }
-                checkInputBy(n, 0, EdgeKind.Control) { it == OpCode.Region }
+                checkInputBy(n, 0, EdgeKind.Control) { it.isRegionOrFixedWithNext }
                 require(n.controlOutputs.size == 2)
                 n.controlOutputs.map(::getOp).forEach {
                     require(it == OpCode.ScmIfT || it == OpCode.ScmIfF)
                 }
             }
             OpCode.Jump -> {
-                checkInputBy(n, 0, EdgeKind.Control) { it == OpCode.Region }
+                checkInputBy(n, 0, EdgeKind.Control) { it.isRegionOrFixedWithNext }
                 require(getOp(n.singleControlOutput) == OpCode.Region)
             }
             OpCode.ScmIfT,
@@ -121,9 +131,12 @@ class GraphVerifier(private val g: Graph) {
             }
             OpCode.Effect -> {
                 require(n.valueInputs.size == 1)
+                checkInputBy(n, 0, EdgeKind.Value) {
+                    canProjectEffectOut(it) || it.isEffect
+                    // ^ The latter is an artifact from transformations (e.g. inlining).
+                }
                 // Can actually have multiple value outputs (effect split due to control split)
                 require(n.valueOutputs.isNotEmpty())
-                checkInputBy(n, 0, EdgeKind.Value) { canProjectEffectOut(it) }
             }
             OpCode.Phi,
             OpCode.EffectPhi -> {
@@ -141,6 +154,12 @@ class GraphVerifier(private val g: Graph) {
                 if (n.opCode == OpCode.EffectPhi) {
                     require(n.valueOutputs.size == 1)
                 }
+            }
+            OpCode.Call -> {
+                checkInputBy(n, 0, EdgeKind.Value) { it.isEffect }
+                checkInputBy(n, 0, EdgeKind.Control) { it.isRegionOrFixedWithNext }
+                require(n.valueOutputs.isNotEmpty())
+                require(getOp(n.valueOutputs[0]).isEffect)
             }
             OpCode.ScmBoolLit,
             OpCode.ScmFxLit,
@@ -171,6 +190,9 @@ class GraphVerifier(private val g: Graph) {
             }
             OpCode.Dead -> {
                 error("Shouldn't be connected to the graph?")
+            }
+            else -> {
+                error("Not implemented: $nodeOp")
             }
         }
     }

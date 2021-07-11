@@ -1,5 +1,8 @@
 package com.gh.om.iueoc
 
+import com.gh.om.iueoc.son.GraphBuilder
+import com.gh.om.iueoc.son.GraphVerifier
+import com.gh.om.iueoc.son.InlinePhase
 import com.gh.om.iueoc.son.MultiGraphBuilder
 import com.gh.om.iueoc.son.graphsToDot
 import com.gh.om.iueoc.son.interp
@@ -13,7 +16,15 @@ import com.github.h0tk3y.betterParse.parser.UnexpectedEof
 import com.github.h0tk3y.betterParse.parser.UnparsedRemainder
 import java.io.FileWriter
 
-private const val LET_ADD = """
+object AllPlaygroundTests {
+    val ALL = listOf(::BASIC, ::IMP, ::LAM)
+    val BASIC = BasicTests.ALL
+    val IMP = ImpTests.ALL
+    val LAM = LambdaTests.ALL
+}
+
+private object BasicTests {
+    const val LET_ADD = """
 (let ([x 41]
       [y 1])
   (let ([z (#fx+ x y)]
@@ -21,7 +32,7 @@ private const val LET_ADD = """
     zz))
 """
 
-private const val LET_SEQ = """
+    const val LET_SEQ = """
 (let* ([x 1]
        [y 2]
        [z (#fx+ x y)]
@@ -30,14 +41,7 @@ private const val LET_SEQ = """
   y)
 """
 
-private const val LAM_AP = """
-(let*
-  ([add1 (lambda [x] (#fx+ x 1))]
-   [add2 (lambda [x] add1)])
-  add2)
-"""
-
-private const val LET_IF = """
+    const val LET_IF = """
 (let ([x 40]
       [y 8])
   (if (#fx< x y)
@@ -45,7 +49,7 @@ private const val LET_IF = """
       2))
 """
 
-private const val BOX_IF = """
+    const val BOX_IF = """
 (let* ([b (#box 42)]
        [_ (if b
               (#box-set! b 1)
@@ -53,15 +57,18 @@ private const val BOX_IF = """
   (#box-get b))
 """
 
-private const val BOX_SEMANTICS = """
-(lambda [b x]
-  (let ([b0 (#box-get b)]
-        [_ (#box-set! b 1)]
-        [b1 (#box-get b)])
-    (#fx+ b0 b1)))
+    const val BOX_SEMANTICS = """
+(let* ([b (#box 1)]
+       [b0 (#box-get b)]
+       [_ (#box-set! b 1)]
+       [b1 (#box-get b)])
+  (#fx+ b0 b1))
 """
 
-private object EffectTests {
+    val ALL = listOf(::LET_ADD, ::LET_SEQ, ::LET_IF, ::BOX_IF, ::BOX_SEMANTICS)
+}
+
+private object ImpTests {
     // Only one branch updates effect, and the join point needs an effect phi.
     // (#box 0) is evaluated by the effectPhi at the join point.
     const val CASE_1 = """
@@ -139,6 +146,8 @@ private object EffectTests {
         (set! n (#fx- n 1)))
       s)
     """
+
+    val ALL = listOf(::CASE_1, ::CASE_2, ::CASE_3, ::WHILE_1, ::WHILE_2, ::WHILE_3)
 }
 
 private object LambdaTests {
@@ -157,6 +166,15 @@ private object LambdaTests {
                 s))])
       (loop 10 0 loop))          
     """
+
+    const val FREE_VAR = """
+(let*
+  ([add1 (lambda [x] (#fx+ x 1))]
+   [add2 (lambda [x] (add1 x))])
+  (add2 0))
+"""
+
+    val ALL = listOf(::ID, ::SUM, ::FREE_VAR)
 }
 
 fun showEocError(e: EocError, source: String, header: String = "Error") {
@@ -215,48 +233,69 @@ private fun formatParseError(e: ErrorResult, remainingDepth: Int): List<Pair<Sou
     return listOf(res)
 }
 
-fun runProgram(source: String): Value {
-    val program = try {
-        SexprGrammar.parseToEnd(source)
-    } catch (e: ParseException) {
-        showParseError(e.errorResult, source)
-        throw e
+object RunBothInterp {
+    data class IR(val source: String, val expr: AnnExpr, val g: GraphBuilder)
+
+    fun parse(source: String): IR {
+        val program = try {
+            SexprGrammar.parseToEnd(source)
+        } catch (e: ParseException) {
+            showParseError(e.errorResult, source)
+            throw e
+        }
+
+        val expr = try {
+            SexprToExpr.toExpr(program)
+        } catch (e: EocError) {
+            showEocError(e, source, "SexprToExpr error")
+            throw e
+        }
+
+        val gs = MultiGraphBuilder()
+        val g = try {
+            gs.build(null, "<main>", emptyList(), listOf(expr), expr.ann)
+        } catch (e: EocError) {
+            showEocError(e, source, "GraphBuilder error")
+            throw e
+        }
+
+        return IR(source, expr, g)
     }
 
-    val expr = try {
-        SexprToExpr.toExpr(program)
-    } catch (e: EocError) {
-        showEocError(e, source, "SexprToExpr error")
-        throw e
+    fun opt(ir: IR, verify: Boolean = true) {
+        InlinePhase(ir.g).run(3)
+        if (verify) {
+            GraphVerifier(ir.g).verifyFullyBuilt()
+        }
     }
 
-    val exprInterpResult = try {
-        interpToplevel(expr)
-    } catch (e: EocError) {
-        showEocError(e, source, "Interp error")
-        throw e
-    }
-    println("Interp -> $exprInterpResult")
+    fun run(ir: IR): Pair<Value, Value> {
+        val exprInterpResult = try {
+            interpToplevel(ir.expr)
+        } catch (e: EocError) {
+            showEocError(e, ir.source, "Interp error")
+            throw e
+        }
 
-    val gs = MultiGraphBuilder()
-    val gb = try {
-        gs.build(null, "<main>", emptyList(), listOf(expr), expr.ann)
-    } catch (e: EocError) {
-        showEocError(e, source, "GraphBuilder error")
-        throw e
+        val graphInterpResult = interp(ir.g.multiGraph, ir.g.id)
+
+        return exprInterpResult to graphInterpResult
     }
-    FileWriter("tools/out.dot").use {
-        graphsToDot(gs, it)
-    }
-    val graphInterpResult = interp(gs, gb.id)
-    println("Graph -> $graphInterpResult")
-    require(exprInterpResult == graphInterpResult) {
-        "Expr and graph results differ"
-    }
-    return graphInterpResult
 }
 
 private fun main() {
-    val result = runProgram(LambdaTests.SUM)
-    println("Ok: $result")
+    val ir = RunBothInterp.parse(LambdaTests.ID)
+    RunBothInterp.opt(ir, verify = false)
+
+    FileWriter("tools/out.dot").use { dotOut ->
+        graphsToDot(ir.g.multiGraph, dotOut)
+    }
+    GraphVerifier(ir.g).verifyFullyBuilt()
+
+    val (exprResult, graphResult) = RunBothInterp.run(ir)
+    println("Expr.interp -> $exprResult")
+    println("Graph.interp -> $graphResult")
+    require(exprResult == graphResult) {
+        "Not the same"
+    }
 }
