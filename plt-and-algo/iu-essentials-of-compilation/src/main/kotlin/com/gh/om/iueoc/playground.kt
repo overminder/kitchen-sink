@@ -1,9 +1,10 @@
 package com.gh.om.iueoc
 
-import com.gh.om.iueoc.son.GraphBuilder
+import com.gh.om.iueoc.son.ExprToGraphCollection
+import com.gh.om.iueoc.son.MutGraphCollection
+import com.gh.om.iueoc.son.MutGraph
 import com.gh.om.iueoc.son.GraphVerifier
 import com.gh.om.iueoc.son.InlinePhase
-import com.gh.om.iueoc.son.MultiGraphBuilder
 import com.gh.om.iueoc.son.graphsToDot
 import com.gh.om.iueoc.son.interp
 import com.github.h0tk3y.betterParse.grammar.parseToEnd
@@ -234,7 +235,7 @@ private fun formatParseError(e: ErrorResult, remainingDepth: Int): List<Pair<Sou
 }
 
 object RunBothInterp {
-    data class IR(val source: String, val expr: AnnExpr, val g: GraphBuilder)
+    data class IR(val source: String, val expr: AnnExpr, val g: MutGraph)
 
     fun parse(source: String): IR {
         val program = try {
@@ -251,9 +252,11 @@ object RunBothInterp {
             throw e
         }
 
-        val gs = MultiGraphBuilder()
+        val gs = MutGraphCollection()
         val g = try {
-            gs.build(null, "<main>", emptyList(), listOf(expr), expr.ann)
+            ExprToGraphCollection(gs)
+                .build(null, "<main>", emptyList(), listOf(expr), expr.ann)
+                .graph
         } catch (e: EocError) {
             showEocError(e, source, "GraphBuilder error")
             throw e
@@ -277,18 +280,18 @@ object RunBothInterp {
             throw e
         }
 
-        val graphInterpResult = interp(ir.g.multiGraph, ir.g.id)
+        val graphInterpResult = interp(ir.g.owner, ir.g.id)
 
         return exprInterpResult to graphInterpResult
     }
 }
 
 private fun main() {
-    val ir = RunBothInterp.parse(LambdaTests.ID)
+    val ir = RunBothInterp.parse(LambdaTests.SUM)
     RunBothInterp.opt(ir, verify = false)
 
     FileWriter("tools/out.dot").use { dotOut ->
-        graphsToDot(ir.g.multiGraph, dotOut)
+        graphsToDot(ir.g.owner, dotOut)
     }
     GraphVerifier(ir.g).verifyFullyBuilt()
 

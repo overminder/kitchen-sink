@@ -7,21 +7,22 @@ import java.io.Writer
 // https://renenyffenegger.ch/notes/tools/Graphviz/attributes/style (Lots of examples!)
 // http://magjac.com/graphviz-visual-editor/
 
-fun graphsToDot(gs: MultiGraph, out: Writer) {
+fun graphsToDot(gs: GraphCollection, out: Writer) {
     out.appendLine("digraph {")
-    gs.graphs.forEach { (gid, g) ->
-        val ann = g.ann
-        val namePart = g.unwrap.name?.let {
-            "$it "
-        } ?: ""
-        graphToDot(g.unwrap, out, "\"G:${gid.v} ${namePart}at line ${ann.row}\"")
+    gs.graphs.forEach { g ->
+        val gid = g.id
+        val locPart = g.sourceLoc?.let {
+            "at line ${it.row}"
+        } ?: "at ?"
+        val name = listOfNotNull("G:${gid}", g.name, locPart).joinToString()
+        graphToDot(g, out, "\"$name\"")
     }
     out.appendLine("}")
 }
 
 private fun graphToDot(g: Graph, out: Writer, name: String? = null) {
     // Header
-    out.appendLine("subgraph cluster_${g.id.v} {")
+    out.appendLine("subgraph cluster_${g.id} {")
     name?.let {
         out.appendLine("  label = $name")
         out.appendLine("  labelloc = top")
@@ -38,7 +39,7 @@ private class GraphToDot(val g: Graph, val out: Writer) {
 
     // Id as in the identifier in the dot language.
     private fun ident(id: NodeId): String {
-        return "\"${g.id.v}_${id.v}\""
+        return "\"${g.id}_${id}\""
     }
 
     fun visitEdge(edge: Edge, onlyOneEdge: Boolean) {
@@ -76,9 +77,9 @@ private class GraphToDot(val g: Graph, val out: Writer) {
         val op = n.operator.op
         val param = n.operator.extra
         val label = if (param != null && param != Unit) {
-            "\"${id.v} $op $param\""
+            "\"$id $op $param\""
         } else {
-            "\"${id.v} $op\""
+            "\"$id $op\""
         }
         val shapePart = when (op.klass) {
             OpCodeClass.Anchor -> "shape=box"

@@ -4,7 +4,6 @@ class GraphVerifier(private val g: Graph) {
     private val visited = mutableSetOf<NodeId>()
 
     fun verifyFullyBuilt() {
-        require(MultiGraphBuilder.isValidId(g.id))
         visited.clear()
         goNode(g.start)
         require(g.end in visited)
@@ -31,11 +30,12 @@ class GraphVerifier(private val g: Graph) {
      */
     private fun verifyCommonInvariants(nid: NodeId) {
         val n = g[nid]
+        require(n.id == nid)
 
-        require(n.valueInputs.all(NodeIds::isValid))
-        require(n.controlInputs.all(NodeIds::isValid))
-        require(n.valueOutputs.all(NodeIds::isValid))
-        require(n.controlInputs.all(NodeIds::isValid))
+        require(n.valueInputs.all { it.isValid })
+        require(n.controlInputs.all { it.isValid })
+        require(n.valueOutputs.all { it.isValid })
+        require(n.controlInputs.all { it.isValid })
 
         require(n.valueInputs.size == n.operator.nValueIn)
         require(n.valueOutputs.size == n.operator.nValueOut)
@@ -99,7 +99,7 @@ class GraphVerifier(private val g: Graph) {
                 }
                 require(n.controlInputs.size == cin)
                 n.controlOutputs.map(::getOp).forEach {
-                    require(it == OpCode.Phi || it == OpCode.EffectPhi || it.isJump || it.isFixedWithNext)
+                    require((cin > 1 && it == OpCode.Phi || it == OpCode.EffectPhi) || it.isJump || it.isFixedWithNext)
                 }
             }
             OpCode.Return -> {
@@ -210,5 +210,11 @@ class GraphVerifier(private val g: Graph) {
         n.controlInputs.forEach(::goNode)
         n.valueOutputs.forEach(::goNode)
         n.controlOutputs.forEach(::goNode)
+    }
+}
+
+fun Graph.verifyNodeIds(startingFrom: Int = 0) {
+    nodes.asSequence().withIndex().drop(startingFrom).forEach { (ix, node) ->
+        require(ix == node.id.asIx)
     }
 }

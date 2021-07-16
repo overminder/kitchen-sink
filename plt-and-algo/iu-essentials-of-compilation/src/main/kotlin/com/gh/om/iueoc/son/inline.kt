@@ -2,8 +2,8 @@ package com.gh.om.iueoc.son
 
 // Inline trivial calls: MkLambdaLit -> Call
 
-class InlinePhase(private val cg: Graph) {
-    private val gs = cg.multiGraph
+class InlinePhase(private val cg: MutGraph) {
+    private val gs = cg.owner
 
     fun run(nStep: Int) {
         repeat(nStep) {
@@ -31,7 +31,7 @@ class InlinePhase(private val cg: Graph) {
     }
 
     private fun inline(call: Node, lambdaLitEdge: Pair<Node, Int>) {
-        val (lambdaLit, ix) = lambdaLitEdge
+        val (lambdaLit, _) = lambdaLitEdge
         val graphId = GetOperatorExtra(lambdaLit).asLambdaLit
 
         // Transform:
@@ -81,8 +81,6 @@ class InlinePhase(private val cg: Graph) {
             val extra = GetOperatorExtra(fv).asFreeVar
             fv.becomeValueNode(get(g.freeVars[extra.index]), cg)
         } // 3
-        // XXX Edges to <call> should actually be replaced, not added and removed...
-        // ^ requires "replaceOutput", which we don't have yet.
         val calleeHasControl = callee.c0 != callee.cn
         if (calleeHasControl) {
             get(callee.c0).becomeControlNode(get(g.c0), cg) // 4
@@ -90,11 +88,11 @@ class InlinePhase(private val cg: Graph) {
             get(g.c1).replaceInput(call, get(g.c0), EdgeKind.Control)
         }
         if (calleeHasEffect) {
-            val e1 = get(g.e1)
+            get(g.e1).replaceInput(call, get(callee.en), EdgeKind.Value) // 6
             // This is to prevent two effects chained together. Doing it here is fragile, and we should instead add
             // a trim/simplify pass to remove that.
+            // val e1 = get(g.e1)
             // get(e1.singleValueOutput).replaceInput(e1, get(callee.en), EdgeKind.Value) // 6
-            get(g.e1).replaceInput(call, get(callee.en), EdgeKind.Value) // 6
         }
         if (calleeHasControl) {
             get(g.c1).replaceInput(call, get(callee.cn), EdgeKind.Control) // 7
@@ -126,27 +124,23 @@ class InlinePhase(private val cg: Graph) {
 
         // Map nid@tg to nid@g
         val idMap = mutableMapOf<NodeId, NodeId>()
-        val cgb = cg as GraphBuilder
         // Copy all the nodes from target to call site
-        for (tn in NodeTraversal(tg, followOutputs = true).liveNodes) {
-            // ^ Follow outputs as well, since there can be dead nodes
-            cgb.makeCopy(tn, idMap)
-        }
+        cg.makeCopies(NodeTraversal(tg, followOutputs = true).liveNodes, idMap)
 
-        val start = cgb[idMap[tg.start]!!]
+        val start = cg[idMap[tg.start]!!]
         val startVout = start.valueOutputs
-        val end = cgb[idMap[tg.end]!!]
+        val end = cg[idMap[tg.end]!!]
         // XXX There might be more than one return.
-        val retNode = cgb[end.singleControlInput]
+        val retNode = cg[end.singleControlInput]
         val (en, retVal) = retNode.valueInputs
 
         val c0 = start.singleControlOutput
         val cn = retNode.singleControlInput
         val collected = TargetNodes(
-            e0 = startVout.first { getOp(it, cgb) == OpCode.Effect },
+            e0 = startVout.first { getOp(it, cg) == OpCode.Effect },
             c0 = c0,
-            args = startVout.filter { getOp(it, cgb) == OpCode.Argument },
-            freeVars = startVout.filter { getOp(it, cgb) == OpCode.FreeVar },
+            args = startVout.filter { getOp(it, cg) == OpCode.Argument },
+            freeVars = startVout.filter { getOp(it, cg) == OpCode.FreeVar },
             en = en,
             cn = cn,
             retVal = retVal,

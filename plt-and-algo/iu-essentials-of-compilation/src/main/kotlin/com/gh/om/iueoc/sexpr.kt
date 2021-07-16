@@ -58,7 +58,7 @@ data class SourceLoc(val col: Int, val row: Int, val offset: Int)
 class EocError(val where: SourceLoc?, what: String) : RuntimeException(what) {
     @OptIn(ExperimentalContracts::class)
     companion object {
-        inline fun ensure(cond: Boolean, where: SourceLoc, what: () -> String) {
+        inline fun ensure(cond: Boolean, where: SourceLoc?, what: () -> String) {
             contract {
                 returns() implies cond
             }

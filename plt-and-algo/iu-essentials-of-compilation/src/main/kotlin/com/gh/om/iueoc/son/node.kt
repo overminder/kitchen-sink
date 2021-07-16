@@ -1,7 +1,13 @@
 package com.gh.om.iueoc.son
 
 @JvmInline
-value class NodeId(val v: Int)
+value class NodeId(private val v: Int) {
+    fun next() = NodeId(v + 1)
+    fun diff(other: NodeId): Int = other.v - v
+    override fun toString() = v.toString()
+    val isValid: Boolean
+        get() = v >= NodeIds.FIRST_ID_IN_GRAPH.v
+}
 typealias NodeIdList = List<NodeId>
 typealias MutNodeIdList = MutableList<NodeId>
 typealias MutNodeMap = MutableMap<NodeId, Node>
@@ -28,8 +34,6 @@ class Node(operator: Operator) {
     private val _valueOutputs: MutNodeIdList = mutableListOf()
     private val _controlOutputs: MutNodeIdList = mutableListOf()
 
-    fun deepCopy() = deepCopyMapped { it }
-
     fun deepCopyMapped(convertId: (NodeId) -> NodeId): Node {
         val n = Node(operator)
         n._valueInputs += _valueInputs.map(convertId)
@@ -47,7 +51,7 @@ class Node(operator: Operator) {
             " ${operator.extra}"
         }
         val hex = System.identityHashCode(this).and(0xffff).toString(16)
-        return "<Node ${id.v} ${operator.op}$extraPart 0x$hex>"
+        return "<Node ${id.asIx} ${operator.op}$extraPart 0x$hex>"
     }
 
     fun assignId(id: NodeId) {
@@ -82,8 +86,8 @@ class Node(operator: Operator) {
      *  False to insert an additional edge, and update operator to change the edge count.
      */
     fun addInput(input: Node, edgeKind: EdgeKind, populating: EdgeDirection) {
-        require(NodeIds.isValid(id))
-        require(NodeIds.isValid(input.id))
+        require(id.isValid)
+        require(input.id.isValid)
 
         val inputsToUpdate = mutableInputsByKind(edgeKind)
         // Add input to self.inputs
@@ -103,9 +107,9 @@ class Node(operator: Operator) {
     }
 
     fun replaceInput(oldInput: Node, newInput: Node, edgeKind: EdgeKind) {
-        require(NodeIds.isValid(id))
-        require(NodeIds.isValid(oldInput.id))
-        require(NodeIds.isValid(newInput.id))
+        require(id.isValid)
+        require(oldInput.id.isValid)
+        require(newInput.id.isValid)
 
         val inputsToUpdate = mutableInputsByKind(edgeKind)
         val index = inputsToUpdate.indexOf(oldInput.id)
@@ -116,8 +120,8 @@ class Node(operator: Operator) {
     }
 
     fun removeInput(input: Node, edgeKind: EdgeKind) {
-        require(NodeIds.isValid(id))
-        require(NodeIds.isValid(input.id))
+        require(id.isValid)
+        require(input.id.isValid)
 
         val inputsToUpdate = mutableInputsByKind(edgeKind)
         val index = inputsToUpdate.indexOf(input.id)
@@ -275,10 +279,6 @@ object NodeIds {
     // Fresh node
     val FRESH_ID = NodeId(-1)
     val FIRST_ID_IN_GRAPH = NodeId(1)
-
-    fun isValid(id: NodeId): Boolean {
-        return id.v >= FIRST_ID_IN_GRAPH.v
-    }
 }
 
 enum class EdgeKind {
@@ -310,28 +310,3 @@ enum class EdgeDirection(val bitset: Int) {
  * @param nthInput The input index wrt to, i.e. to[kind, nthInput] == from
  */
 data class Edge(val from: NodeId, val to: NodeId, val kind: EdgeKind, val nthInput: Int)
-
-interface Graph {
-    val multiGraph: MultiGraph
-    val nodes: NodeMap
-    val start: NodeId
-    val end: NodeId
-    val id: GraphId
-    val name: String?
-}
-
-operator fun Graph.get(id: NodeId): Node {
-    return requireNotNull(nodes[id]) {
-        "$id doesn't exist. All nodes: ${nodes.keys}"
-    }
-}
-
-// It's hard to implement a general purpose mutable graph -- We may need various bookkeeping processes
-// between mutations. E.g to reconstruct SSA.
-/*
-interface MutGraph: Graph {
-    override val nodes: MutNodeMap
-
-    fun gvn(n: Node): NodeId?
-}
- */

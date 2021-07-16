@@ -36,19 +36,19 @@ class Heap(
 
 typealias Env = MutableMap<NodeId, Value>
 
-fun interp(gs: MultiGraph, entry: GraphId, env: Env = mutableMapOf()): Value {
+fun interp(gs: GraphCollection, entry: GraphId, env: Env = mutableMapOf()): Value {
     return Interp(gs, entry, env, emptyList(), emptyList()).start()
 }
 
 private class Interp(
-    private val gs: MultiGraph,
-    private val gid: GraphId,
+    private val gs: GraphCollection,
+    gid: GraphId,
     // Maps phi nodes to values
     private val env: Env,
     private val args: List<Value>,
     private val freeVars: List<Value>,
 ) {
-    private val graph = requireNotNull(gs.graphs[gid]).unwrap
+    private val graph = gs[gid]
 
     private var evaluatedEffects = mutableSetOf<NodeId>()
     private var evaluatedEffectfulNodes = mutableMapOf<NodeId, Value>()
@@ -316,8 +316,7 @@ private class Interp(
     }
 
     private fun interpCall(target: GraphId, args: List<Value>, freeVars: List<Value>): Value {
-        val (ann, tg) = requireNotNull(gs.graphs[target])
-        val env: MutNodeMap = mutableMapOf()
+        val tg = gs[target]
         // Sanity check
         val startVouts = tg[tg.start].valueOutputs
         val expectedArgCount = startVouts.count {
@@ -328,10 +327,10 @@ private class Interp(
             val n = tg[it]
             n.opCode == OpCode.FreeVar
         }
-        EocError.ensure(args.size == expectedArgCount, ann) {
+        EocError.ensure(args.size == expectedArgCount, tg.sourceLoc) {
             "Arg count mismatch: expecting $expectedArgCount, got ${args.size}"
         }
-        EocError.ensure(freeVars.size == expectedFreeVarCounts, ann) {
+        EocError.ensure(freeVars.size == expectedFreeVarCounts, tg.sourceLoc) {
             "freeVar count mismatch: expecting $expectedFreeVarCounts, got ${freeVars.size}"
         }
         return Interp(gs, target, mutableMapOf(), args, freeVars).start()
