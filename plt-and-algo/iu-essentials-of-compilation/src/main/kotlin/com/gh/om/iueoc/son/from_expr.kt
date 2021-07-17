@@ -84,7 +84,7 @@ class ExprToGraphCollection(private val graphs: MutGraphCollection) {
             outerEnv.flatten() - args.map { it.unwrap }
         }.orEmpty()
 
-        val g = graphs.add { MutGraph(it, name, rootAnn, graphs) }
+        val g = graphs.add { MutGraph.make(it, name, rootAnn, graphs) }
         val gb = ExprToGraph(g)
 
         val env = gb.populateArgs(args, outerFlatEnv.keys)
@@ -377,7 +377,8 @@ class ExprToGraph(val graph: MutGraph) {
      * Remove free vars that are not lexically referred to.
      */
     private fun compactFreeVars(): List<String> {
-        val (used, unused) = graph[graph.start].valueOutputs.map(graph::get).filter {
+        val start = graph[graph.start]
+        val (used, unused) = start.valueOutputs.map(graph::get).filter {
             // For each free vars...
             it.operator.op == OpCode.FreeVar
         }.partition {
@@ -391,7 +392,8 @@ class ExprToGraph(val graph: MutGraph) {
             // But that can result in a partial node -- What's the meaning of an Add node with only 1 input?
             // I see v8 uses "dead" node as a placeholder input. This way the changed node still gets to keep the
             // correct number of input counts.
-            it.replaceInput(graph[it.singleControlInput], graph[graph.dead], EdgeKind.Control)
+            it.removeInput(start, EdgeKind.Control)
+            // it.replaceInput(start, graph[graph.dead], EdgeKind.Control)
         }
 
         used.forEachIndexed { index, n ->

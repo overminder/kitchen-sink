@@ -2,22 +2,33 @@ package com.gh.om.iueoc.son
 
 // Inline trivial calls: MkLambdaLit -> Call
 
-class InlinePhase(private val cg: MutGraph) {
-    private val gs = cg.owner
-
-    fun run(nStep: Int) {
-        repeat(nStep) {
-            if (!once()) {
-                return
-            }
-        }
+class InlinePhase(private val reps: Int) : Phase {
+    init {
+        require(reps >= 1)
     }
 
+    override fun run(g: MutGraph): Boolean {
+        val runner = InlinePhaseRunner(g)
+        var changed = false
+        repeat(reps) {
+            val changedThisTime = runner.once()
+            if (!changedThisTime) {
+                return@repeat
+            }
+            changed = true
+        }
+        return changed
+    }
+}
+
+private class InlinePhaseRunner(private val cg: MutGraph) {
+    private val gs = cg.owner
+
     // Returns true if there are changes.
-    private fun once(): Boolean {
+    fun once(): Boolean {
         // 1. Traverse the graph to find MkLambdaLit -> Call
-        val t = NodeTraversal(cg)
-        val candidates = t.liveNodes.mapNotNull { call ->
+        val t = NodeTraversal.full(cg)
+        val candidates = t.reachableNodes.mapNotNull { call ->
             asCallWithLambdaLitTarget(call)?.let { lambdaLit ->
                 call to lambdaLit
             }
@@ -123,9 +134,8 @@ class InlinePhase(private val cg: MutGraph) {
         val tg = gs[graphId]
 
         // Map nid@tg to nid@g
-        val idMap = mutableMapOf<NodeId, NodeId>()
         // Copy all the nodes from target to call site
-        cg.makeCopies(NodeTraversal(tg, followOutputs = true).liveNodes, idMap)
+        val idMap = cg.copyFrom(NodeTraversal.full(tg).reachableNodes)
 
         val start = cg[idMap[tg.start]!!]
         val startVout = start.valueOutputs

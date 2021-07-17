@@ -4,9 +4,9 @@ import com.gh.om.iueoc.SourceLoc
 
 // Sea of nodes graph.
 // Graph has a start and an end, and maintains a NodeId -> Node mapping.
-// MutableGraph provides a general purpose interface for editing nodes and edges.
-// MultiGraph is a collection of graphs.
-// MutableMultiGraph allows editing graphs.
+// MutGraph provides a general purpose interface for editing nodes and edges.
+// GraphCollection maintains a GraphId -> Graph mapping.
+// MutGraphCollection allows editing the mapping.
 
 @JvmInline value class GraphId(private val v: Int) {
     fun next() = GraphId(v + 1)
@@ -33,12 +33,18 @@ interface Graph {
     val start: NodeId
     val end: NodeId
     val nodes: List<Node>
+
+    companion object {
+        operator fun get(nodes: List<Node>, id: NodeId): Node {
+            return requireNotNull(nodes.getOrNull(id.asIx)) {
+                "$id doesn't exist. All nodes: ${nodes.size}"
+            }
+        }
+    }
 }
 
 operator fun Graph.get(id: NodeId): Node {
-    return requireNotNull(nodes.getOrNull(id.asIx)) {
-        "$id doesn't exist. All nodes: ${nodes.size}"
-    }
+    return Graph[nodes, id]
 }
 
 class IdGenerator<A>(initial: A, private val next: (A) -> A) {
@@ -155,24 +161,39 @@ class GraphBuilderState(private val graph: MutGraph) {
     }
 }
 
-class MutGraph(
+class MutGraph private constructor(
     override val id: GraphId,
     override val name: String?,
     override val sourceLoc: SourceLoc?,
     override val owner: MutGraphCollection,
 ) : Graph {
-    override val start: NodeId
-    override val end: NodeId
+    override val start
+        get() = requireNotNull(mutStart)
+    override val end
+        get() = requireNotNull(mutEnd)
     override val nodes get(): List<Node> = mutNodes
-    val dead: NodeId
 
     private val nextId = IdGenerator(NodeIds.FIRST_ID_IN_GRAPH, NodeId::next)
-    private val mutNodes = mutableListOf<Node>()
+    private var mutNodes = mutableListOf<Node>()
+    private var mutStart: NodeId? = null
+    private var mutEnd: NodeId? = null
 
-    init {
-        start = assignId(Nodes.start()).id
-        end = assignId(Nodes.end()).id
-        dead = assignId(Nodes.dead()).id
+    companion object {
+        fun make(
+            id: GraphId,
+            name: String?,
+            sourceLoc: SourceLoc?,
+            owner: MutGraphCollection,
+        ): MutGraph {
+            val out = MutGraph(id, name, sourceLoc, owner)
+            out.initAnchors()
+            return out
+        }
+    }
+
+    private fun initAnchors() {
+        mutStart = assignId(Nodes.start()).id
+        mutEnd = assignId(Nodes.end()).id
     }
 
     fun assignId(node: Node): Node {
@@ -180,15 +201,7 @@ class MutGraph(
         return add(node)
     }
 
-    private fun add(node: Node, checkSize: Boolean = true): Node {
-        if (checkSize) {
-            require(node.id.asIx == nodes.size)
-        }
-        mutNodes.add(node)
-        return node
-    }
-
-    fun makeCopies(ns: Sequence<Node>, idMap: MutableMap<NodeId, NodeId>) {
+    fun copyFrom(ns: Sequence<Node>, idMap: MutableMap<NodeId, NodeId> = mutableMapOf()): MutableMap<NodeId, NodeId> {
         val toAdd = mutableListOf<Node>()
         for (n in ns) {
             val copy = n.deepCopyMapped {
@@ -203,6 +216,29 @@ class MutGraph(
         val sizeBefore = nodes.size
         mutNodes += toAdd
         verifyNodeIds(sizeBefore)
+        return idMap
+    }
+
+    // Empty as in only copying the metadata.
+    fun makeEmptyCopy(initAnchors: Boolean = false): MutGraph {
+        val out = MutGraph(id, name, sourceLoc, owner)
+        if (initAnchors) {
+            out.initAnchors()
+        }
+        return out
+    }
+
+    fun setAnchors(start: NodeId, end: NodeId) {
+        mutStart = start
+        mutEnd = end
+    }
+
+    private fun add(node: Node, checkSize: Boolean = true): Node {
+        if (checkSize) {
+            require(node.id.asIx == nodes.size)
+        }
+        mutNodes.add(node)
+        return node
     }
 }
 
@@ -215,6 +251,9 @@ val GraphId.asIx: Int
 interface GraphCollection {
     val graphs: List<Graph>
 }
+
+val GraphCollection.graphIds: List<GraphId>
+    get() = graphs.map { it.id }
 
 operator fun GraphCollection.get(graphId: GraphId): Graph {
     return requireNotNull(graphs.getOrNull(graphId.asIx)) {
@@ -234,6 +273,19 @@ class MutGraphCollection : GraphCollection {
         val graph = build(id)
         mutGraphs.add(graph)
         return graph
+    }
+
+    fun replace(from: MutGraph, to: MutGraph) {
+        require(from.id == to.id)
+        val ix = from.id.asIx
+        require(mutGraphs[ix] === from)
+        mutGraphs[ix] = to
+    }
+
+    operator fun get(graphId: GraphId): MutGraph {
+        return requireNotNull(mutGraphs.getOrNull(graphId.asIx)) {
+            "$graphId not found. All ids: ${graphs.size}"
+        }
     }
 }
 
