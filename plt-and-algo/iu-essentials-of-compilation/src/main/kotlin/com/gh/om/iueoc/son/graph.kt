@@ -233,6 +233,8 @@ class MutGraph private constructor(
         mutEnd = end
     }
 
+    val ref get() = MutGraphRef(id, owner)
+
     private fun add(node: Node, checkSize: Boolean = true): Node {
         if (checkSize) {
             require(node.id.asIx == nodes.size)
@@ -297,6 +299,11 @@ private data class ValueNodeEqWrapper(
     // Ordering is important -- `a - b` is not the same as `b - a`.
     val inputs: List<NodeId>
 )
+
+class MutGraphRef(val id: GraphId, val gs: MutGraphCollection) {
+    val g: MutGraph
+        get() = gs[id]
+}
 
 private val Boolean.b2i: Int
     get() = if (this) 1 else 0

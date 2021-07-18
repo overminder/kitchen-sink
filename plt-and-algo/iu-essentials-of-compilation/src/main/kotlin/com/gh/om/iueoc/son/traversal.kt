@@ -11,6 +11,7 @@ class NodeTraversal private constructor(private val nodes: List<Node>, private v
         // [followOutputs] allows dead code (e.g. unused argument) to be considered as live.
         // Unless we do DCE between every traversal (which is likely beneficial?), we have to do this.
         fun full(g: Graph) = of(g.nodes, g.end, followOutputs = true)
+        fun live(g: Graph) = of(g.nodes, g.end, followOutputs = false)
 
         private fun of(nodes: List<Node>, end: NodeId, followOutputs: Boolean = true): NodeTraversal {
             return NodeTraversal(nodes, findReachable(nodes, end, followOutputs))

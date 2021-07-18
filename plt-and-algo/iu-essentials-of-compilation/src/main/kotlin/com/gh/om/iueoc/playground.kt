@@ -1,16 +1,14 @@
 package com.gh.om.iueoc
 
 import com.gh.om.iueoc.son.ExprToGraphCollection
-import com.gh.om.iueoc.son.GraphId
 import com.gh.om.iueoc.son.MutGraphCollection
 import com.gh.om.iueoc.son.MutGraph
 import com.gh.om.iueoc.son.GraphVerifier
-import com.gh.om.iueoc.son.InlinePhase
-import com.gh.om.iueoc.son.TrimPhase
-import com.gh.om.iueoc.son.get
+import com.gh.om.iueoc.son.MutGraphRef
 import com.gh.om.iueoc.son.graphIds
 import com.gh.om.iueoc.son.graphsToDot
 import com.gh.om.iueoc.son.interp
+import com.gh.om.iueoc.son.phases.Phases
 import com.github.h0tk3y.betterParse.grammar.parseToEnd
 import com.github.h0tk3y.betterParse.parser.AlternativesFailure
 import com.github.h0tk3y.betterParse.parser.ErrorResult
@@ -244,12 +242,12 @@ private fun formatParseError(e: ErrorResult, remainingDepth: Int): List<Pair<Sou
 }
 
 object RunBothInterp {
-    data class IR(val source: String, val expr: AnnExpr, val gs: MutGraphCollection, val gid: GraphId) {
+    data class IR(val source: String, val expr: AnnExpr, val gRef: MutGraphRef) {
         val g: MutGraph
-            get() = gs[gid]
+            get() = gRef.g
+        val gs: MutGraphCollection
+            get() = gRef.gs
     }
-
-    private val phases = listOf(InlinePhase(2), TrimPhase)
 
     fun parse(source: String): IR {
         val program = try {
@@ -276,16 +274,16 @@ object RunBothInterp {
             throw e
         }
 
-        return IR(source, expr, gs, g.id)
+        return IR(source, expr, g.ref)
     }
 
     fun opt(ir: IR, verify: Boolean = true) {
         for (gid in ir.gs.graphIds) {
-            for (phase in phases) {
-                val g = ir.gs[gid]
-                phase.run(g)
+            val gRef = MutGraphRef(gid, ir.gs)
+            for (phase in Phases.SIMPLE) {
+                phase.run(gRef)
                 if (verify) {
-                    GraphVerifier(g).verifyFullyBuilt()
+                    GraphVerifier(gRef.g).verifyFullyBuilt()
                 }
             }
         }
@@ -306,7 +304,7 @@ object RunBothInterp {
 }
 
 private fun main() {
-    val ir = RunBothInterp.parse(LambdaTests.K)
+    val ir = RunBothInterp.parse(LambdaTests.SUM)
     RunBothInterp.opt(ir)
 
     FileWriter("tools/out.dot").use { dotOut ->

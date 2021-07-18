@@ -1,23 +1,26 @@
-package com.gh.om.iueoc.son
+package com.gh.om.iueoc.son.phases
+
+import com.gh.om.iueoc.son.EdgeDirection
+import com.gh.om.iueoc.son.EdgeKind
+import com.gh.om.iueoc.son.GetOperatorExtra
+import com.gh.om.iueoc.son.Graph
+import com.gh.om.iueoc.son.GraphId
+import com.gh.om.iueoc.son.MutGraph
+import com.gh.om.iueoc.son.MutGraphRef
+import com.gh.om.iueoc.son.Node
+import com.gh.om.iueoc.son.NodeId
+import com.gh.om.iueoc.son.NodeTraversal
+import com.gh.om.iueoc.son.OpCode
+import com.gh.om.iueoc.son.get
+import com.gh.om.iueoc.son.removeEdges
+import com.gh.om.iueoc.son.singleControlInput
+import com.gh.om.iueoc.son.singleControlOutput
 
 // Inline trivial calls: MkLambdaLit -> Call
 
-class InlinePhase(private val reps: Int) : Phase {
-    init {
-        require(reps >= 1)
-    }
-
-    override fun run(g: MutGraph): Boolean {
-        val runner = InlinePhaseRunner(g)
-        var changed = false
-        repeat(reps) {
-            val changedThisTime = runner.once()
-            if (!changedThisTime) {
-                return@repeat
-            }
-            changed = true
-        }
-        return changed
+object InlinePhase : Phase {
+    override fun run(g: MutGraphRef): Boolean {
+        return InlinePhaseRunner(g.g).once()
     }
 }
 

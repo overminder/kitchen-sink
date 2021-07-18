@@ -201,6 +201,8 @@ class GetOperatorExtra(private val operator: Operator) {
     val asArgument get() = cast<ArgumentOpExtra>(OpCode.Argument)
     val asFreeVar get() = cast<FreeVarOpExtra>(OpCode.FreeVar)
     val asLambdaLit get() = cast<GraphId>(OpCode.ScmLambdaLit)
+    val asFxLit get() = cast<Int>(OpCode.ScmFxLit)
+    val asBoolLit get() = cast<Boolean>(OpCode.ScmBoolLit)
 
     companion object {
         operator fun invoke(node: Node) = GetOperatorExtra(node.operator)

@@ -7,6 +7,7 @@ import java.io.Writer
 // https://renenyffenegger.ch/notes/tools/Graphviz/attributes/style (Lots of examples!)
 // http://magjac.com/graphviz-visual-editor/
 
+// xdot.py seems to hang for > 600 nodes...
 fun graphsToDot(gs: GraphCollection, out: Writer) {
     out.appendLine("digraph {")
     gs.graphs.forEach { g ->
