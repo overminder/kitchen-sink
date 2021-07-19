@@ -1,6 +1,7 @@
 package com.gh.om.iueoc.son
 
 import com.gh.om.iueoc.SourceLoc
+import com.gh.om.iueoc.algo.GraphCap
 
 // Sea of nodes graph.
 // Graph has a start and an end, and maintains a NodeId -> Node mapping.
@@ -307,3 +308,29 @@ class MutGraphRef(val id: GraphId, val gs: MutGraphCollection) {
 
 private val Boolean.b2i: Int
     get() = if (this) 1 else 0
+
+object ControlFlowGraphCap : GraphCap<Graph, NodeId> {
+    override fun predecessors(g: Graph, id: Int): List<Int> {
+        return g.nodes[id].controlInputs.map { nodeToId(g, it) }
+    }
+
+    override fun successors(g: Graph, id: Int): List<Int> {
+        return g.nodes[id].controlOutputs.map { nodeToId(g, it) }
+    }
+
+    override fun nodeToId(g: Graph, n: NodeId): Int {
+        return n.asIx
+    }
+
+    override fun size(g: Graph): Int {
+        return g.nodes.size
+    }
+
+    override fun idToNode(g: Graph, id: Int): NodeId {
+        return g.nodes[id].id
+    }
+
+    override fun hasNodeId(g: Graph, id: Int): Boolean {
+        return 0 <= id && id < size(g)
+    }
+}

@@ -3,62 +3,84 @@ package com.gh.om.iueoc.algo
 import java.util.BitSet
 
 // To avoid coupling with the exact graph repr.
-// XXX can we avoid the conversion between N and Int?
-interface DagCapability<G, N> {
-    fun successors(g: G, n: N): List<N>
-
-    // Gives a (preferably dense) non-negative int, smaller than [size].
-    fun nodeToId(n: N): Int
-
+// Node IDs are (preferably dense) non-negative ints, smaller than [size].
+interface GraphTraversalCap<G> {
     // Maximum node ID
     fun size(g: G): Int
+
+    // In case the size is sparse.
+    fun hasNodeId(g: G, id: Int): Boolean
+
+    // Only makes sense if hasNodeId(id) is true.
+    fun predecessors(g: G, id: Int): List<Int>
+    fun successors(g: G, id: Int): List<Int>
 }
 
-// With predecessors.
-interface DagCapabilityP<G, N: Any> : DagCapability<G, N> {
-    fun predecessors(g: G, n: N): List<N>
-    fun idToNode(g: G, id: Int): N?
+interface GraphMapperCap<G, N : Any> {
+    fun nodeToId(g: G, n: N): Int
+    fun idToNode(g: G, id: Int): N
 }
 
-private class InversedDag<G, N: Any>(private val cap: DagCapabilityP<G, N>): DagCapabilityP<G, N> by cap {
-    override fun successors(g: G, n: N) = cap.predecessors(g, n)
-    override fun predecessors(g: G, n: N) = cap.successors(g, n)
+interface GraphCap<G, N : Any> : GraphTraversalCap<G>, GraphMapperCap<G, N>
+
+private class InversedGraphTraversalCap<G>(private val cap: GraphTraversalCap<G>) : GraphTraversalCap<G> by cap {
+    override fun successors(g: G, id: Int) = cap.predecessors(g, id)
+    override fun predecessors(g: G, id: Int) = cap.successors(g, id)
 }
 
-fun <G, N: Any> DagCapabilityP<G, N>.hasNodeId(g: G, id: Int): Boolean {
-    return idToNode(g, id) != null
+fun <G> GraphTraversalCap<G>.inversed(): GraphTraversalCap<G> = InversedGraphTraversalCap(this)
+fun <G> GraphTraversalCap<G>.maybeInverse(direction: TraversalDirection): GraphTraversalCap<G> = when (direction) {
+    TraversalDirection.Fwd -> this
+    TraversalDirection.Bwd -> inversed()
 }
-
-fun <G, N: Any> DagCapabilityP<G, N>.inversed(): DagCapabilityP<G, N> = InversedDag(this)
 
 enum class TraversalOrder {
     Pre,
     Post,
 }
 
-fun <G, N> DagCapability<G, N>.bfs(g: G, start: N): Sequence<N> = sequence {
+enum class TraversalDirection {
+    Fwd,
+    Bwd,
+}
+
+fun <GC, G, N : Any> GC.bfs(
+    g: G,
+    start: N,
+    direction: TraversalDirection = TraversalDirection.Fwd,
+): Sequence<N> where GC : GraphTraversalCap<G>, GC : GraphMapperCap<G, N> =
+    maybeInverse(direction).bfsI(g, nodeToId(g, start)).mapToNode(this, g)
+
+fun <GC, G, N : Any> GC.dfs(
+    g: G,
+    start: N,
+    order: TraversalOrder,
+    direction: TraversalDirection = TraversalDirection.Fwd,
+): Sequence<N> where GC : GraphTraversalCap<G>, GC : GraphMapperCap<G, N> =
+    maybeInverse(direction).dfsI(g, nodeToId(g, start), order).mapToNode(this, g)
+
+fun <G> GraphTraversalCap<G>.bfsI(g: G, start: Int): Sequence<Int> = sequence {
     val visited = BitSet(size(g))
-    val queue = ArrayDeque<N>()
+    val queue = ArrayDeque<Int>()
     queue.add(start)
-    visited.set(nodeToId(start))
+    visited.set(start)
 
     while (queue.isNotEmpty()) {
         val n = queue.removeFirst()
         yield(n)
         for (s in successors(g, n)) {
-            val id = nodeToId(s)
-            if (!visited.get(id)) {
-                visited.set(id)
+            if (!visited.get(s)) {
+                visited.set(s)
                 queue.add(s)
             }
         }
     }
 }
 
-fun <G, N> DagCapability<G, N>.dfs(g: G, start: N, order: TraversalOrder): Sequence<N> = sequence {
+fun <G> GraphTraversalCap<G>.dfsI(g: G, start: Int, order: TraversalOrder): Sequence<Int> = sequence {
     val visited = BitSet(size(g))
     val stack = mutableListOf(start to false)
-    visited.set(nodeToId(start))
+    visited.set(start)
 
     while (stack.isNotEmpty()) {
         val (n, childVisited) = stack.removeLast()
@@ -78,11 +100,16 @@ fun <G, N> DagCapability<G, N>.dfs(g: G, start: N, order: TraversalOrder): Seque
             }
         }
         for (s in successors(g, n).reversed()) {
-            val id = nodeToId(s)
-            if (!visited.get(id)) {
-                visited.set(id)
+            if (!visited.get(s)) {
+                visited.set(s)
                 stack.add(s to false)
             }
         }
+    }
+}
+
+private fun <G, N : Any> Sequence<Int>.mapToNode(cap: GraphMapperCap<G, N>, g: G): Sequence<N> {
+    return map {
+        requireNotNull(cap.idToNode(g, it))
     }
 }

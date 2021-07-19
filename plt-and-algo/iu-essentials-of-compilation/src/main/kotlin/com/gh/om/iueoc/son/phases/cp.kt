@@ -1,5 +1,9 @@
 package com.gh.om.iueoc.son.phases
 
+import com.gh.om.iueoc.algo.Dom
+import com.gh.om.iueoc.algo.inversed
+import com.gh.om.iueoc.algo.naiveI
+import com.gh.om.iueoc.son.ControlFlowGraphCap
 import com.gh.om.iueoc.son.EdgeDirection
 import com.gh.om.iueoc.son.EdgeKind
 import com.gh.om.iueoc.son.GetOperatorExtra
@@ -10,6 +14,7 @@ import com.gh.om.iueoc.son.NodeId
 import com.gh.om.iueoc.son.NodeTraversal
 import com.gh.om.iueoc.son.Nodes
 import com.gh.om.iueoc.son.OpCode
+import com.gh.om.iueoc.son.asIx
 import com.gh.om.iueoc.son.get
 import com.gh.om.iueoc.son.removeEdges
 import com.gh.om.iueoc.son.singleControlOutput
@@ -84,6 +89,9 @@ private class CpRunner(private val g: MutGraph) {
         // TODO: find the merge point, then kill everything between the condJump and the merge point.
         // Maybe first find the post dominator?
         val region = branch.singleControlOutput
+
+        // val dom = Dom.naiveI(ControlFlowGraphCap.inversed(), g, g.end)
+        // dom[region.asIx]
 
         return true
     }
