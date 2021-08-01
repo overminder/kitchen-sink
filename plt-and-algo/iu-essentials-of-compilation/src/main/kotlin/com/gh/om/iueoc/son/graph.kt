@@ -61,40 +61,21 @@ class IdGenerator<A>(initial: A, private val next: (A) -> A) {
 class GraphBuilderState(private val graph: MutGraph) {
     private val pureValueCache = mutableMapOf<ValueNodeEqWrapper, NodeId>()
 
-    // A region or a fixed node (e.g. call)
-    private var currentControlDep: NodeId? = null
-    var currentEffect: NodeId
+    // An anchor or a fixed node (e.g. call)
+    var currentControlDep: NodeId = graph.start
 
-    init {
-        val eff = graph.assignId(Nodes.effect())
-        eff.populateInput(graph[graph.start], EdgeKind.Value)
-        currentEffect = eff.id
-    }
-
-    fun startRegion(nPreds: Int = 1, nPhis: Int = 0, kind: RegionKind = RegionKind.Basic): Node {
-        // require(currentRegion == null)
-        val region = Nodes.region(nPreds = nPreds, nPhis = nPhis, kind = kind)
+    fun makeMergeNode(nPreds: Int, nPhis: Int, kind: RegionKind): Node {
+        val region = Nodes.merge(nPreds = nPreds, nPhis = nPhis, kind = kind)
         currentControlDep = graph.assignId(region).id
         return region
     }
 
     fun assertCurrentControlDep(): Node {
-        return graph[requireNotNull(currentControlDep)]
-    }
-
-    fun assertCurrentEffect(): Node {
-        return graph[currentEffect]
-    }
-
-    private fun projectEffectFrom(node: Node): Node {
-        val updatedEffect = graph.assignId(Nodes.effect())
-        updatedEffect.populateInput(node, EdgeKind.Value)
-        currentEffect = updatedEffect.id
-        return node
+        return graph[currentControlDep]
     }
 
     fun threadControlFrom(node: Node): Node {
-        require(node.opCode.isFixedWithNext)
+        require(node.opCode.isValueFixedWithNext)
         node.populateInput(assertCurrentControlDep(), EdgeKind.Control)
         currentControlDep = node.id
         return node
@@ -102,29 +83,19 @@ class GraphBuilderState(private val graph: MutGraph) {
 
     fun joinControlFlow(
         tValue: NodeId,
-        tEffect: NodeId,
         fValue: NodeId,
-        fEffect: NodeId,
         tJump: Node,
         fJump: Node
     ): NodeId {
         val needPhi = tValue != fValue
-        val needEffectPhi = tEffect != fEffect
         // Make a region as a join point
         // Both branches may be returning the same thing. In that case we don't need a phi.
-        val joinRegion = startRegion(nPreds = 2, nPhis = needPhi.b2i + needEffectPhi.b2i, kind = RegionKind.Merge)
-        joinRegion.populateInput(tJump, EdgeKind.Control)
-        joinRegion.populateInput(fJump, EdgeKind.Control)
-        if (needEffectPhi) {
-            val effectPhi = graph.assignId(Nodes.effectPhi(2))
-            effectPhi.populateInput(joinRegion, EdgeKind.Control)
-            effectPhi.populateInput(graph[tEffect], EdgeKind.Value)
-            effectPhi.populateInput(graph[fEffect], EdgeKind.Value)
-            currentEffect = effectPhi.id
-        }
+        val mergeNode = makeMergeNode(nPreds = 2, nPhis = needPhi.b2i, kind = RegionKind.Merge)
+        mergeNode.populateInput(tJump, EdgeKind.Control)
+        mergeNode.populateInput(fJump, EdgeKind.Control)
         return if (needPhi) {
             val phi = graph.assignId(Nodes.phi(2))
-            phi.populateInput(joinRegion, EdgeKind.Control)
+            phi.populateInput(mergeNode, EdgeKind.Control)
             phi.populateInput(graph[tValue], EdgeKind.Value)
             phi.populateInput(graph[fValue], EdgeKind.Value)
             phi.id
@@ -153,11 +124,10 @@ class GraphBuilderState(private val graph: MutGraph) {
 
     fun makeEffectfulValueNode(n: Node, valueInputs: List<NodeId> = emptyList()): Node {
         graph.assignId(n)
-        n.populateInput(assertCurrentEffect(), EdgeKind.Value)
         valueInputs.forEach {
             n.populateInput(graph[it], EdgeKind.Value)
         }
-        projectEffectFrom(n)
+        threadControlFrom(n)
         return n
     }
 }

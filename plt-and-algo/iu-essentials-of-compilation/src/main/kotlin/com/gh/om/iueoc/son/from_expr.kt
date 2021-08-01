@@ -78,7 +78,8 @@ class ExprToGraphCollection(private val graphs: MutGraphCollection) {
         name: String?,
         args: List<AnnS<String>>,
         body: List<AnnExpr>,
-        rootAnn: SourceLoc
+        rootAnn: SourceLoc,
+        verify: Boolean = true
     ): ExprToGraph {
         val outerFlatEnv = outerEnv?.let {
             outerEnv.flatten() - args.map { it.unwrap }
@@ -89,7 +90,9 @@ class ExprToGraphCollection(private val graphs: MutGraphCollection) {
 
         val env = gb.populateArgs(args, outerFlatEnv.keys)
         gb.doFunctionBody(body, env)
-        GraphVerifier(g).verifyFullyBuilt()
+        if (verify) {
+            GraphVerifier(g).verifyFullyBuilt()
+        }
         return gb
     }
 
@@ -138,13 +141,10 @@ class ExprToGraph(val graph: MutGraph) {
     }
 
     fun doFunctionBody(body: List<AnnExpr>, env: EnvChain) {
-        state.startRegion().populateInput(graph[graph.start], EdgeKind.Control)
-
         val returnValue = doSeq(body, env)
         val exitRegion = state.assertCurrentControlDep()
 
         val returnNode = graph.assignId(Nodes.ret())
-        returnNode.populateInput(state.assertCurrentEffect(), EdgeKind.Value)
         returnNode.populateInput(returnValue, EdgeKind.Value)
         returnNode.populateInput(exitRegion, EdgeKind.Control)
 
@@ -226,7 +226,7 @@ class ExprToGraph(val graph: MutGraph) {
         val f = doExpr(e.f, env)
         val args = e.args.map { doExpr(it, env) }
         val callNode = state.makeEffectfulValueNode(Nodes.call(args.size), listOf(f) + args)
-        return state.threadControlFrom(callNode).id
+        return callNode.id
     }
 
     private fun doLet(
@@ -291,81 +291,39 @@ class ExprToGraph(val graph: MutGraph) {
         // Evaluate condValue, set up condJump
         val (ifT, ifF) = makeCondJump(e.cond, env)
 
-        // Save the effect state before branching.
-        val originalEffect = state.assertCurrentEffect().id
-
         // True branch
-        state.startRegion().populateInput(ifT, EdgeKind.Control)
+        state.currentControlDep = ifT.id
         val tValue = doExpr(e.ifT, env)
-        val tValueRegion = state.assertCurrentControlDep()
-        val tEffect = state.assertCurrentEffect().id
-        val tJump = graph.assignId(Nodes.jump())
-        tJump.populateInput(tValueRegion, EdgeKind.Control)
-
-        // Restore the effect state before branching.
-        state.currentEffect = originalEffect
+        val tLastControl = state.assertCurrentControlDep()
 
         // False branch
-        state.startRegion().populateInput(ifF, EdgeKind.Control)
+        state.currentControlDep = ifF.id
         val fValue = doExpr(e.ifF, env)
-        val fValueRegion = state.assertCurrentControlDep()
-        val fEffect = state.assertCurrentEffect().id
-        val fJump = graph.assignId(Nodes.jump())
-        fJump.populateInput(fValueRegion, EdgeKind.Control)
+        val fLastControl = state.assertCurrentControlDep()
 
-        return state.joinControlFlow(tValue, tEffect, fValue, fEffect, tJump, fJump)
+        return state.joinControlFlow(tValue, fValue, tLastControl, fLastControl)
     }
 
     private fun doWhile(e: ExprImp.While, env: EnvChain): NodeId {
-        // ... beforeLoop -> Jump -(effect phi)> condRegion
-        // condRegion -> (...) -> CondJump -ifT> loopRegion -ifF> endRegion
-        // loopRegion -> Jump -(effect phi)> condRegion
-        // endRegion ...
-        val effectFromBeforeLoop = state.assertCurrentEffect()
-        val jumpFromBeforeLoop = graph.assignId(Nodes.jump())
-        jumpFromBeforeLoop.populateInput(state.assertCurrentControlDep(), EdgeKind.Control)
+        // ... beforeLoop -> loopHeader
+        // loopHeader -> (...) -> CondJump -ifT> loopBody -ifF> loopExit
+        // loopBody -> (...) -backEdge> loopHeader
+        // loopExit ...
+        val jumpFromBeforeLoop = state.assertCurrentControlDep()
 
-        val condRegion = state.startRegion(nPreds = 2, nPhis = 1, kind = RegionKind.LoopHeader)
-        condRegion.populateInput(jumpFromBeforeLoop, EdgeKind.Control)
-
-        // Pessimistically make an effect phi -- we can try to eliminate it later.
-        val effectPhi = graph.assignId(Nodes.effectPhi(2))
-        effectPhi.populateInput(condRegion, EdgeKind.Control)
-        // Value inputs added later.
-        state.currentEffect = effectPhi.id
+        val loopHeader = state.makeMergeNode(nPreds = 2, nPhis = 0, kind = RegionKind.LoopHeader)
+        loopHeader.populateInput(jumpFromBeforeLoop, EdgeKind.Control)
 
         // Evaluating e.cond may involve additional regions.
-        val (ifT, ifF) = makeCondJump(e.cond, env)
-        var effectAfterCondJump = state.assertCurrentEffect()
+        val (loopBody, loopExit) = makeCondJump(e.cond, env)
 
-        val loopRegion = state.startRegion()
-        loopRegion.populateInput(ifT, EdgeKind.Control)
+        state.currentControlDep = loopBody.id
         // Result of while is ignored
         doSeq(e.body, env)
-        val effectFromLoopEnd = state.assertCurrentEffect()
-        val jumpFromLoopEnd = graph.assignId(Nodes.jump())
-        jumpFromLoopEnd.populateInput(state.assertCurrentControlDep(), EdgeKind.Control)
-        condRegion.populateInput(jumpFromLoopEnd, EdgeKind.Control)
+        // Jump back to header
+        loopHeader.populateInput(state.assertCurrentControlDep(), EdgeKind.Control)
 
-        // Try to eliminate redundant effect phis.
-        // Hmm this is kind of complicated...
-        if (effectPhi !== effectFromLoopEnd) {
-            // ^ effectPhi merges effectFromLoopEnd and effectFromBeforeLoop,
-            // and effectFromLoopEnd comes from effectPhi. So if there's no effect in the loop,
-            // effectFromLoopEnd will stay the same as effectPhi.
-            effectPhi.populateInput(effectFromBeforeLoop, EdgeKind.Value)
-            effectPhi.populateInput(effectFromLoopEnd, EdgeKind.Value)
-        } else {
-            effectPhi.becomeValueNode(effectFromBeforeLoop, graph)
-            // This implies that the cond node evaluation is also not effectful.
-            require(effectAfterCondJump === effectPhi)
-            effectAfterCondJump = effectFromBeforeLoop
-            effectPhi.removeInput(graph[effectPhi.singleControlInput], EdgeKind.Control)
-        }
-
-        val endRegion = state.startRegion()
-        endRegion.populateInput(ifF, EdgeKind.Control)
-        state.currentEffect = effectAfterCondJump.id
+        state.currentControlDep = loopExit.id
         return state.makeUniqueValueNode(Nodes.symbolLit("#undefined"))
     }
 

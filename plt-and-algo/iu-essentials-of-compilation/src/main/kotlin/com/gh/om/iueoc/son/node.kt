@@ -239,21 +239,18 @@ object Nodes {
     fun start() = Node.fresh(Operators.start())
     fun end() = Node.fresh(Operators.end())
 
-    fun region(nPreds: Int, nPhis: Int, kind: RegionKind) =
-        Node.fresh(Operators.region(nPreds = nPreds, nPhis = nPhis, kind = kind))
+    fun merge(nPreds: Int, nPhis: Int, kind: RegionKind) =
+        Node.fresh(Operators.merge(nPreds = nPreds, nPhis = nPhis, kind = kind))
 
     fun ret() = Node.fresh(Operators.ret())
     fun condJump() = Node.fresh(Operators.condJump())
-    fun jump() = Node.fresh(Operators.jump())
 
     fun ifT() = Node.fresh(Operators.ifT())
     fun ifF() = Node.fresh(Operators.ifF())
     fun argument(extra: ArgumentOpExtra) = Node.fresh(Operators.argument(extra))
     fun freeVar(extra: FreeVarOpExtra) = Node.fresh(Operators.freeVar(extra))
-    fun effect() = Node.fresh(Operators.effect())
 
     fun phi(nRegions: Int) = Node.fresh(Operators.phi(nRegions))
-    fun effectPhi(nRegions: Int) = Node.fresh(Operators.effectPhi(nRegions))
 
     fun call(nArgs: Int) = Node.fresh(Operators.call(nArgs))
 

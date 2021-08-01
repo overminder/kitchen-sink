@@ -74,6 +74,11 @@ private class GraphToDot(val g: Graph, val out: Writer) {
         }
         visitedNodes += id
 
+        if (!id.isValid) {
+            // Still want to render it.
+            out.appendLine("  ${ident(id)} [label=Invalid]")
+            return
+        }
         val n = g[id]
         val op = n.operator.op
         val param = n.operator.extra
@@ -82,11 +87,13 @@ private class GraphToDot(val g: Graph, val out: Writer) {
         } else {
             "\"$id $op\""
         }
+        // TODO: Classify the nodes in a better way. Also add colors.
         val shapePart = when (op.klass) {
             OpCodeClass.Anchor -> "shape=box"
             OpCodeClass.Jump -> "shape=hexagon"
             OpCodeClass.Projection -> "shape=cds"
             OpCodeClass.Phi -> "shape=oval"
+            OpCodeClass.FixedValue,
             OpCodeClass.Value -> "shape=oval style=dotted"
             OpCodeClass.Misc -> "shape=box style=dotted"
         }

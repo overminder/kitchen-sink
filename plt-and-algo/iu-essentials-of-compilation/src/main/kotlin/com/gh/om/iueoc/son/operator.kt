@@ -2,29 +2,30 @@ package com.gh.om.iueoc.son
 
 enum class OpCode(val klass: OpCodeClass) {
     // Start node is the start of the graph
-    // o(C:entryRegion, V:effect, V:Argument ** |args|, V:FreeVar ** |upvals|)
+    // o(C:entryRegion, V:Argument ** |args|, V:FreeVar ** |upvals|)
     Start(OpCodeClass.Anchor),
 
     // End node is the end of the graph
     // i(C): One (or more) control input (from return)
     End(OpCodeClass.Anchor),
 
-    // Region nodes mark the start of a block.
-    // This can also be a join point for multiple incoming blocks (merge node in v8)
+    // A join point for multiple incoming blocks (merge node in v8/graal)
     // i(C:jumpOrStart ** |preds|): n predecessors, can be jump or start
     // o(C:jump; C:phi ** |preds|): 1 jump node + n phis.
     // Each phi's value input corresponds to the control input on the same index in this region.
-    Region(OpCodeClass.Anchor),
+    Merge(OpCodeClass.Anchor),
 
     // Jump nodes mark the end of a block
-    // i(V:effect, V:retVal, C:region), o(C:end)
+    // i(V:retVal, C:prev), o(C:end)
     Return(OpCodeClass.Jump),
 
     // i(V:cond, C:currentRegion), o(C:ifT, C:ifF): 2 projection outputs
     CondJump(OpCodeClass.Jump),
 
     // io(C): Jump from region to region
-    Jump(OpCodeClass.Jump),
+    // We don't need a specific node for jump. Any node with next can do. Though having a jump makes the interpreter's
+    // job easier -- there's always an end-of-block node so that phis can be detected and populated before the jump.
+    // Jump(OpCodeClass.Jump),
 
     // Projection nodes
     // Control projections
@@ -34,53 +35,48 @@ enum class OpCode(val klass: OpCodeClass) {
     ScmIfF(OpCodeClass.Projection),
 
     // Value projections
-    // Function argument. i(V): start; p(ArgumentOpExtra): name and nth argument
+    // Function argument. i(V): start (should actually be control); p(ArgumentOpExtra): name and nth argument
     Argument(OpCodeClass.Projection),
 
     // Closure lifted free var (upvalue). i(V): start; p(FreeVarOpExtra): name and nth free var
     FreeVar(OpCodeClass.Projection),
 
-    // i(V:effectfulNode): The effect of an operation. This is created by Start and threaded by effectful nodes
-    // (e.g. alloc and memory read/write). Note that this can be consumed by multiple nodes, when the control
-    // is split (e.g. (if _ (write-1) (write-2))).
-    Effect(OpCodeClass.Projection),
-
     // Value nodes
-    // Phi in v8 takes a single control input (Merge). A Region is roughly a Merge.
-    // i(C; V ** n): The region that contains the phi (just like phis appearing in a basic block's header),
-    // and the value nodes to choose from. Each value input corresponds to the region's control input on the
+    // Phi takes a single control input: a Merge node (just like phis appearing in a basic block's header).
+    // i(C:merge; V ** n:values to choose from). Each value input corresponds to the merge's control input on the
     // same index.
     Phi(OpCodeClass.Phi),
-    EffectPhi(OpCodeClass.Phi),
 
-    // i(V:memory, V:target, V:args, C:regionOrFixed) o(V:memory, V:result, C:jumpOrFixed)
+    // i(V:target, V:args, C:prev) o(V:result, C:next)
     // In v8, call nodes are associated with lot of complicated information in v8.
     // And they may need control in/out as well.
-    Call(OpCodeClass.Value),
+    Call(OpCodeClass.FixedValue),
 
     // Literals
     ScmBoolLit(OpCodeClass.Value),
 
-    // i(V:effect, V:toBox)
-    ScmBoxLit(OpCodeClass.Value),
+    // All the memory-related nodes have C in (previous control) and C out (next control)
+    // i(V:toBox, C:prev), o(C:next)
+    ScmBoxLit(OpCodeClass.FixedValue),
     ScmFxLit(OpCodeClass.Value),
 
-    // i(V:effect, V:freeVar ** |freeVars|)
-    ScmLambdaLit(OpCodeClass.Value),
+    // i(V:freeVar ** |freeVars|, C:prev), o(C:next)
+    ScmLambdaLit(OpCodeClass.FixedValue),
     ScmSymbolLit(OpCodeClass.Value),
 
     // Box operations
-    // i(V:effect V:box)
-    ScmBoxGet(OpCodeClass.Value),
+    // i(V:box, C:prev), o(C:next)
+    ScmBoxGet(OpCodeClass.FixedValue),
 
-    // i(V:effect, V:box, V:newValue)
-    ScmBoxSet(OpCodeClass.Value),
+    // i(V:box, V:newValue, C:prev), o(C:next)
+    ScmBoxSet(OpCodeClass.FixedValue),
 
     // Int operations
     ScmFxAdd(OpCodeClass.Value),
     ScmFxSub(OpCodeClass.Value),
     ScmFxLessThan(OpCodeClass.Value),
 
+    // A special marker operator, provides a dead value that should be removed from the graph.
     Dead(OpCodeClass.Misc),
 }
 
@@ -94,6 +90,9 @@ enum class OpCodeClass {
     Projection,
     Phi,
     Value,
+
+    // Fixed as in fixed in the control chain.
+    FixedValue,
 
     // Dead etc
     Misc,
@@ -111,7 +110,26 @@ val OpCode.isPure: Boolean
         else -> false
     }
 
-val OpCode.isEffectfulValue: Boolean
+val OpCode.isControlStructure: Boolean
+    get() = when (this) {
+        OpCode.Start,
+        OpCode.Merge,
+        OpCode.ScmIfT,
+        OpCode.ScmIfF,
+        OpCode.CondJump,
+        OpCode.Return -> true
+        else -> false
+    }
+
+val OpCode.hasControlInput: Boolean
+    get() = (this != OpCode.Start && isControlStructure) || isValueFixedWithNext ||
+        this == OpCode.Phi || this == OpCode.End
+
+val OpCode.hasControlOutput: Boolean
+    get() = isControlStructure || isValueFixedWithNext
+
+// FixedWithNext value nodes <-> effectful.
+val OpCode.isValueFixedWithNext: Boolean
     get() = when (this) {
         OpCode.Call,
 
@@ -120,30 +138,6 @@ val OpCode.isEffectfulValue: Boolean
         OpCode.ScmBoxGet,
 
         OpCode.ScmLambdaLit -> true
-        else -> false
-    }
-
-val OpCode.isEffect: Boolean
-    get() = when (this) {
-        OpCode.Effect,
-        OpCode.EffectPhi -> true
-        else -> false
-    }
-
-val OpCode.isJump: Boolean
-    get() = when (this) {
-        OpCode.Jump,
-        OpCode.CondJump,
-        OpCode.Return -> true
-        else -> false
-    }
-
-val OpCode.isRegionOrFixedWithNext: Boolean
-    get() = this == OpCode.Region || isFixedWithNext
-
-val OpCode.isFixedWithNext: Boolean
-    get() = when (this) {
-        OpCode.Call -> true
         else -> false
     }
 
@@ -176,7 +170,6 @@ data class Operator(
 )
 
 enum class RegionKind {
-    Basic,
     Merge,
     LoopHeader,
 }
@@ -222,34 +215,32 @@ object Operators {
     fun start() = make(OpCode.Start, nControlOut = 1)
     fun end(nRetNodes: Int = 1) = make(OpCode.End, nControlIn = nRetNodes)
 
-    fun region(nPreds: Int, nPhis: Int, kind: RegionKind) = make1(OpCode.Region, nControlIn = nPreds, nControlOut = 1 + nPhis, extra = kind)
+    fun merge(nPreds: Int, nPhis: Int, kind: RegionKind) =
+        make1(OpCode.Merge, nControlIn = nPreds, nControlOut = 1 + nPhis, extra = kind)
 
-    fun ret() = make(OpCode.Return, nValueIn = 2, nControlIn = 1, nControlOut = 1)
+    fun ret() = make(OpCode.Return, nValueIn = 1, nControlIn = 1, nControlOut = 1)
     fun condJump() = make(OpCode.CondJump, nValueIn = 1, nControlIn = 1, nControlOut = 2)
-    fun jump() = make(OpCode.Jump, nControlIn = 1, nControlOut = 1)
 
     fun ifT() = make(OpCode.ScmIfT, nControlIn = 1, nControlOut = 1)
     fun ifF() = make(OpCode.ScmIfF, nControlIn = 1, nControlOut = 1)
     fun argument(extra: ArgumentOpExtra) = make1(OpCode.Argument, nValueIn = 1, extra = extra)
     fun freeVar(extra: FreeVarOpExtra) = make1(OpCode.FreeVar, nValueIn = 1, extra = extra)
-    fun effect() = make(OpCode.Effect, nValueIn = 1)
 
     fun phi(nRegions: Int) = make(OpCode.Phi, nValueIn = nRegions, nControlIn = 1)
-    fun effectPhi(nRegions: Int) = make(OpCode.EffectPhi, nValueIn = nRegions, nControlIn = 1)
 
-    fun call(nArgs: Int) = make(OpCode.Call, nValueIn = 2 + nArgs, nControlIn = 1, nControlOut = 1)
+    fun call(nArgs: Int) = make(OpCode.Call, nValueIn = nArgs + 1, nControlIn = 1, nControlOut = 1)
 
     // Many of the literal nodes allocate, but are still pure from schemes' semantics.
     fun boolLit(value: Boolean) = make1(OpCode.ScmBoolLit, extra = value)
-    fun boxLit() = make(OpCode.ScmBoxLit, nValueIn = 2)
+    fun boxLit() = make(OpCode.ScmBoxLit, nValueIn = 1, nControlIn = 1, nControlOut = 1)
     fun fxLit(value: Int) = make1(OpCode.ScmFxLit, extra = value)
     fun lambdaLit(nFreeVars: Int, graphId: GraphId) =
-        make1(OpCode.ScmLambdaLit, nValueIn = 1 + nFreeVars, extra = graphId)
+        make1(OpCode.ScmLambdaLit, nValueIn = nFreeVars, nControlIn = 1, nControlOut = 1, extra = graphId)
 
     fun symbolLit(value: String) = make1(OpCode.ScmSymbolLit, extra = value)
 
-    fun boxGet() = make(OpCode.ScmBoxGet, nValueIn = 2)
-    fun boxSet() = make(OpCode.ScmBoxSet, nValueIn = 3)
+    fun boxGet() = make(OpCode.ScmBoxGet, nValueIn = 1, nControlIn = 1, nControlOut = 1)
+    fun boxSet() = make(OpCode.ScmBoxSet, nValueIn = 2, nControlIn = 1, nControlOut = 1)
 
     fun fxAdd() = make(OpCode.ScmFxAdd, nValueIn = 2)
     fun fxSub() = make(OpCode.ScmFxSub, nValueIn = 2)

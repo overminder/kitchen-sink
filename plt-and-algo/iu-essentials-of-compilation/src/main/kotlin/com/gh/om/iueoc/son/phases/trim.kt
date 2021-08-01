@@ -21,22 +21,6 @@ object TrimPhase : Phase {
  */
 private class TrimPhaseRunner(private val g: MutGraph) {
     fun once(): Boolean {
-        var changed = false
-
-        // 1. Remove Effect->Effect and EffectPhi->Effect
-        for (n in NodeTraversal.full(g).reachableNodes) {
-            if (n.opCode == OpCode.Effect) {
-                val vin = g[n.singleValueInput]
-                if (vin.opCode == OpCode.Effect || vin.opCode == OpCode.EffectPhi) {
-                    n.removeInput(vin, EdgeKind.Value)
-                    n.valueOutputs.map(g::get).forEach { nUse ->
-                        nUse.replaceInput(n, vin, EdgeKind.Value)
-                    }
-                    changed = true
-                }
-            }
-        }
-
         // 2. Trim
         val gCopy = g.makeEmptyCopy()
         val idMap = gCopy.copyFrom(NodeTraversal.full(g).reachableNodes)
@@ -46,6 +30,6 @@ private class TrimPhaseRunner(private val g: MutGraph) {
             end = requireNotNull(idMap[g.end]),
         )
         g.owner.replace(g, gCopy)
-        return changed || g.nodes.size != gCopy.nodes.size
+        return g.nodes.size != gCopy.nodes.size
     }
 }

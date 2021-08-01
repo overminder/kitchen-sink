@@ -8,6 +8,7 @@ import com.gh.om.iueoc.son.MutGraphRef
 import com.gh.om.iueoc.son.graphIds
 import com.gh.om.iueoc.son.graphsToDot
 import com.gh.om.iueoc.son.interp
+import com.gh.om.iueoc.son.phases.InlinePhase
 import com.gh.om.iueoc.son.phases.Phases
 import com.github.h0tk3y.betterParse.grammar.parseToEnd
 import com.github.h0tk3y.betterParse.parser.AlternativesFailure
@@ -249,7 +250,7 @@ object RunBothInterp {
             get() = gRef.gs
     }
 
-    fun parse(source: String): IR {
+    fun parse(source: String, verify: Boolean = true): IR {
         val program = try {
             SexprGrammar.parseToEnd(source)
         } catch (e: ParseException) {
@@ -267,7 +268,7 @@ object RunBothInterp {
         val gs = MutGraphCollection()
         val g = try {
             ExprToGraphCollection(gs)
-                .build(null, "<main>", emptyList(), listOf(expr), expr.ann)
+                .build(null, "<main>", emptyList(), listOf(expr), expr.ann, verify = verify)
                 .graph
         } catch (e: EocError) {
             showEocError(e, source, "GraphBuilder error")
@@ -305,10 +306,13 @@ object RunBothInterp {
 
 private fun main() {
     val ir = RunBothInterp.parse(LambdaTests.SUM)
-    RunBothInterp.opt(ir)
-
-    FileWriter("tools/out.dot").use { dotOut ->
-        graphsToDot(ir.g.owner, dotOut)
+    try {
+        RunBothInterp.opt(ir)
+    } finally {
+        // Make sure we at least have something to look at
+        FileWriter("tools/out.dot").use { dotOut ->
+            graphsToDot(ir.g.owner, dotOut)
+        }
     }
     GraphVerifier(ir.g).verifyFullyBuilt()
 
