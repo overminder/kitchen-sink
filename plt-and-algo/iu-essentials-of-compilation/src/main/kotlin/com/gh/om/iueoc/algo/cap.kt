@@ -21,7 +21,14 @@ interface GraphMapperCap<G, N : Any> {
     fun idToNode(g: G, id: Int): N
 }
 
-interface GraphCap<G, N : Any> : GraphTraversalCap<G>, GraphMapperCap<G, N>
+interface GraphCap<G, N : Any> : GraphTraversalCap<G>, GraphMapperCap<G, N> {
+    companion object {
+        const val UNDEFINED = -10
+        fun isDefined(id: Int): Boolean {
+            return id != UNDEFINED
+        }
+    }
+}
 
 private class InversedGraphTraversalCap<G>(private val cap: GraphTraversalCap<G>) : GraphTraversalCap<G> by cap {
     override fun successors(g: G, id: Int) = cap.predecessors(g, id)
@@ -59,15 +66,17 @@ fun <GC, G, N : Any> GC.dfs(
 ): Sequence<N> where GC : GraphTraversalCap<G>, GC : GraphMapperCap<G, N> =
     maybeInverse(direction).dfsI(g, nodeToId(g, start), order).mapToNode(this, g)
 
-fun <G> GraphTraversalCap<G>.bfsI(g: G, start: Int): Sequence<Int> = sequence {
+fun <G> GraphTraversalCap<G>.bfsI(g: G, start: Int): IntArray {
     val visited = BitSet(size(g))
     val queue = ArrayDeque<Int>()
     queue.add(start)
     visited.set(start)
+    val out = IntArray(size(g))
+    var ix = 0
 
     while (queue.isNotEmpty()) {
         val n = queue.removeFirst()
-        yield(n)
+        out[ix++] = n
         for (s in successors(g, n)) {
             if (!visited.get(s)) {
                 visited.set(s)
@@ -75,24 +84,27 @@ fun <G> GraphTraversalCap<G>.bfsI(g: G, start: Int): Sequence<Int> = sequence {
             }
         }
     }
+    return out.sliceArray(0 until ix)
 }
 
-fun <G> GraphTraversalCap<G>.dfsI(g: G, start: Int, order: TraversalOrder): Sequence<Int> = sequence {
+fun <G> GraphTraversalCap<G>.dfsI(g: G, start: Int, order: TraversalOrder): IntArray {
     val visited = BitSet(size(g))
     val stack = mutableListOf(start to false)
     visited.set(start)
+    val out = IntArray(size(g))
+    var ix = 0
 
     while (stack.isNotEmpty()) {
         val (n, childVisited) = stack.removeLast()
         when (order) {
             TraversalOrder.Pre -> {
                 if (!childVisited) {
-                    yield(n)
+                    out[ix++] = n
                 }
             }
             TraversalOrder.Post -> {
                 if (childVisited) {
-                    yield(n)
+                    out[ix++] = n
                     continue
                 } else {
                     stack.add(n to true)
@@ -106,10 +118,11 @@ fun <G> GraphTraversalCap<G>.dfsI(g: G, start: Int, order: TraversalOrder): Sequ
             }
         }
     }
+    return out.sliceArray(0 until ix)
 }
 
-private fun <G, N : Any> Sequence<Int>.mapToNode(cap: GraphMapperCap<G, N>, g: G): Sequence<N> {
-    return map {
+private fun <G, N : Any> IntArray.mapToNode(cap: GraphMapperCap<G, N>, g: G): Sequence<N> {
+    return asSequence().map {
         requireNotNull(cap.idToNode(g, it))
     }
 }

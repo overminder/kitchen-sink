@@ -3,8 +3,8 @@ package com.gh.om.iueoc.algo
 object Dom
 
 // Naive dataflow, from Cooper's A Simple, Fast Dominance Algorithm
-fun <G> Dom.naiveI(cap: GraphTraversalCap<G>, g: G, start: Int): List<Set<Int>> {
-    val doms = MutableList(cap.size(g)) {
+fun <G> Dom.naiveI(cap: GraphTraversalCap<G>, g: G, start: Int): Array<Set<Int>> {
+    val doms = Array(cap.size(g)) {
         if (cap.hasNodeId(g, it)) {
             setOf(it)
         } else {
@@ -13,7 +13,7 @@ fun <G> Dom.naiveI(cap: GraphTraversalCap<G>, g: G, start: Int): List<Set<Int>> 
     }
 
     var changed = true
-    val rpo = rpo(cap, g, start)
+    val (rpo, _) = rpo(cap, g, start)
     while (changed) {
         changed = false
         for (n in rpo) {
@@ -38,40 +38,76 @@ fun <G> Dom.naiveI(cap: GraphTraversalCap<G>, g: G, start: Int): List<Set<Int>> 
 }
 
 // Optimized dataflow, also from Cooper
-fun <G> Dom.cooper(cap: GraphTraversalCap<G>, g: G, start: Int): List<Set<Int>> {
-    val doms = MutableList(cap.size(g)) {
-        UNDEFINED
+fun <G> Dom.cooperI(cap: GraphTraversalCap<G>, g: G, start: Int): IntArray {
+    val doms = IntArray(cap.size(g)) {
+        GraphCap.UNDEFINED
     }
-    doms[start] = start
+    val (rpo, n2po) = rpo(cap, g, start)
+    println("rpo ${rpo.toList()}")
+    println("n2po ${n2po.toList()}")
+    fun getPo(id: Int): Int {
+        val po = n2po[id]
+        require(GraphCap.isDefined(po))
+        return po
+    }
+    val startPo = getPo(start)
+    doms[startPo] = startPo
     var changed = true
-    val rpoNoStart = rpo(cap, g, start) { it != start }
     while (changed) {
         changed = false
-        for (n in rpoNoStart) {
-            val ps = cap.predecessors(g, n)
-            val pIx = ps.indexOfFirst {
-                doms[it] != UNDEFINED
+        for (n in rpo) {
+            if (n == start) {
+                continue
             }
-            var newIDom = ps[pIx]
+
+            val ps = cap.predecessors(g, n)
+            val definedIx = ps.indexOfFirst {
+                GraphCap.isDefined(doms[getPo(it)])
+            }
+            var newIDom = getPo(ps[definedIx])
             for ((ix, p) in ps.withIndex()) {
-                if (ix == pIx) {
+                if (ix == definedIx) {
                     continue
                 }
+                newIDom = intersect(doms, getPo(p), newIDom)
+            }
+            val nPo = getPo(n)
+            if (doms[nPo] != newIDom) {
+                doms[nPo] = newIDom
+                changed = true
             }
         }
     }
-    TODO()
+    for ((ix, dom) in doms.withIndex()) {
+        doms[ix] = dom
+    }
+    return doms
 }
 
-private const val UNDEFINED = -100
+private fun intersect(doms: IntArray, x: Int, y: Int): Int {
+    var finger1 = x
+    var finger2 = y
+    while (finger1 != finger2) {
+        while (finger1 < finger2) {
+            finger1 = doms[finger1]
+            require(GraphCap.isDefined(finger1))
+        }
+        while (finger2 < finger1) {
+            finger2 = doms[finger2]
+            require(GraphCap.isDefined(finger2))
+        }
+    }
+    return finger1
+}
 
-private fun <G> rpo(cap: GraphTraversalCap<G>, g: G, start: Int, filterBy: ((Int) -> Boolean)? = null): List<Int> {
+// Returns rpo, n2po
+private fun <G> rpo(cap: GraphTraversalCap<G>, g: G, start: Int): Pair<IntArray, IntArray> {
     val postOrder = cap.dfsI(g, start, TraversalOrder.Post)
-    val out = if (filterBy != null) {
-        postOrder.filter(filterBy)
-    } else {
-        postOrder
-    }.toMutableList()
-    out.reverse()
-    return out
+    val n2po = IntArray(cap.size(g)) { GraphCap.UNDEFINED }
+    for ((ix, id) in postOrder.withIndex()) {
+        n2po[id] = ix
+    }
+
+    postOrder.reverse()
+    return postOrder to n2po
 }

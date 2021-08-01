@@ -44,6 +44,12 @@ class TestGraphCap {
             assertEquals(e, dom[i])
         }
     }
+
+    @Test
+    fun domCooper() {
+        val doms = Dom.cooperI(MapGraphCap, CASE_1, 0)
+        println(doms.toList())
+    }
 }
 
 val CASE_1: MapGraph = mapOf(
