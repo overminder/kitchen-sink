@@ -1,5 +1,7 @@
 package com.gh.om.iueoc.son
 
+import com.gh.om.iueoc.indexOfSafe
+
 @JvmInline
 value class NodeId(private val v: Int) {
     fun next() = NodeId(v + 1)
@@ -81,9 +83,8 @@ class Node(operator: Operator) {
     }
 
     /**
-     * @param populating True to override an UNPOPULATED_ID edge. This means that the total number of
-     *  inputs is not changed. Asserts if none is found.
-     *  False to insert an additional edge, and update operator to change the edge count.
+     * @param populating An edge can be added either by overwriting a UNPOPULATED slot, or by
+     * adding a new slot. [populating] specifies the direction to overwrite.
      */
     fun addInput(input: Node, edgeKind: EdgeKind, populating: EdgeDirection) {
         require(id.isValid)
@@ -92,8 +93,8 @@ class Node(operator: Operator) {
         val inputsToUpdate = mutableInputsByKind(edgeKind)
         // Add input to self.inputs
         if (populating.input) {
-            val index = inputsToUpdate.indexOf(NodeIds.UNPOPULATED_ID)
-            require(index != -1) { "All populated in $this" }
+            val index = inputsToUpdate.indexOfSafe(NodeIds.UNPOPULATED_ID)
+            requireNotNull(index) { "All populated in $this" }
             inputsToUpdate[index] = input.id
         } else {
             inputsToUpdate.add(input.id)
@@ -112,8 +113,7 @@ class Node(operator: Operator) {
         require(newInput.id.isValid)
 
         val inputsToUpdate = mutableInputsByKind(edgeKind)
-        val index = inputsToUpdate.indexOf(oldInput.id)
-        require(index != -1)
+        val index = inputsToUpdate.indexOfSafe(oldInput.id)!!
         inputsToUpdate[index] = newInput.id
         oldInput.removeUse(this, edgeKind)
         newInput.addUse(this, edgeKind, EdgeDirection.None)
@@ -124,9 +124,12 @@ class Node(operator: Operator) {
         require(input.id.isValid)
 
         val inputsToUpdate = mutableInputsByKind(edgeKind)
-        val index = inputsToUpdate.indexOf(input.id)
-        require(index != -1)
+        val index = inputsToUpdate.indexOfSafe(input.id)!!
         inputsToUpdate.removeAt(index)
+        operator = when (edgeKind) {
+            EdgeKind.Value -> operator.copy(nValueIn = operator.nValueIn - 1)
+            EdgeKind.Control -> operator.copy(nControlIn = operator.nControlIn - 1)
+        }
         input.removeUse(this, edgeKind)
     }
 
@@ -134,8 +137,8 @@ class Node(operator: Operator) {
         val outputsToUpdate = mutableOutputsByKind(edgeKind)
         if (populating.output && edgeKind == EdgeKind.Control) {
             // Usually only control edges need explicit population
-            val index = outputsToUpdate.indexOf(NodeIds.UNPOPULATED_ID)
-            require(index != -1) { "All populated in $this" }
+            val index = outputsToUpdate.indexOfSafe(NodeIds.UNPOPULATED_ID)
+            requireNotNull(index) { "All populated in $this" }
             outputsToUpdate[index] = use.id
         } else {
             outputsToUpdate.add(use.id)
@@ -148,8 +151,7 @@ class Node(operator: Operator) {
 
     private fun removeUse(use: Node, edgeKind: EdgeKind) {
         val outputsToUpdate = mutableOutputsByKind(edgeKind)
-        val index = outputsToUpdate.indexOf(use.id)
-        require(index != -1)
+        val index = outputsToUpdate.indexOfSafe(use.id)!!
         outputsToUpdate.removeAt(index)
         operator = when (edgeKind) {
             EdgeKind.Value -> operator.copy(nValueOut = operator.nValueOut - 1)
@@ -265,6 +267,8 @@ object Nodes {
     fun fxLessThan() = Node.fresh(Operators.fxLessThan())
     fun boxGet() = Node.fresh(Operators.boxGet())
     fun boxSet() = Node.fresh(Operators.boxSet())
+
+    fun opaqueValue() = Node.fresh(Operators.opaqueValue())
 
     fun dead() = Node.fresh(Operators.dead())
 }

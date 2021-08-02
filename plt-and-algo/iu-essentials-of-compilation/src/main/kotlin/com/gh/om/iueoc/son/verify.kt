@@ -5,8 +5,9 @@ class GraphVerifier(private val g: Graph) {
 
     fun verifyFullyBuilt() {
         visited.clear()
-        goNode(g.start)
-        require(g.end in visited)
+        // Visiting from `end`, going from output to input, to ignore dead code.
+        goNode(g.end)
+        require(g.start in visited)
     }
 
     private fun verifyEdgeAndBackEdge(from: NodeId, to: NodeId, kind: EdgeKind) {
@@ -137,6 +138,7 @@ class GraphVerifier(private val g: Graph) {
             OpCode.ScmSymbolLit -> {
                 require(n.valueInputs.isEmpty())
             }
+            OpCode.OpaqueValue,
             OpCode.ScmBoxLit,
             OpCode.ScmLambdaLit,
             OpCode.ScmBoxGet,
@@ -166,8 +168,8 @@ class GraphVerifier(private val g: Graph) {
         verifyEdgesByOpCode(n)
         n.valueInputs.forEach(::goNode)
         n.controlInputs.forEach(::goNode)
-        n.valueOutputs.forEach(::goNode)
-        n.controlOutputs.forEach(::goNode)
+        // n.valueOutputs.forEach(::goNode)
+        // n.controlOutputs.forEach(::goNode)
     }
 }
 

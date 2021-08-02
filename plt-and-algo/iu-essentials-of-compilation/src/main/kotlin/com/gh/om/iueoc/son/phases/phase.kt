@@ -27,14 +27,14 @@ class RepPhase(private val n: Int, private val phase: Phase) : Phase {
 
 object Phases {
     val SIMPLE = listOf(
-        InlinePhase.rep(3),
+        InlinePhase.rep(6),
         ConstantPropagationPhase.rep(1),
         // ConstantPropagationPhase,
         // ConstantPropagationPhase,
         TrimPhase,
     )
 
-    val SIMPLE_REP = SIMPLE.rep(3)
+    val SIMPLE_REP = SIMPLE.rep(2)
 }
 
 private fun Phase.rep(n: Int): Phase {

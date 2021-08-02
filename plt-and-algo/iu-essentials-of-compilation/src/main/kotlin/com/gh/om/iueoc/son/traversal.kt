@@ -1,7 +1,7 @@
 package com.gh.om.iueoc.son
 
 class NodeTraversal private constructor(private val nodes: List<Node>, private val reachable: MutableSet<NodeId>) {
-    val reachableNodeIds: Collection<NodeId>
+    val reachableNodeIds: Set<NodeId>
         get() = reachable
 
     val reachableNodes

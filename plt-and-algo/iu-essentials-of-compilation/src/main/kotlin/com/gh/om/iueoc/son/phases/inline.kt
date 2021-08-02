@@ -87,10 +87,7 @@ private class InlinePhaseRunner(private val cg: MutGraph) {
         } // 2
         val calleeHasControl = callee.c0 != callee.cn
         if (calleeHasControl) {
-            val c0 = get(callee.c0)
-            val c0Next = get(c0.singleControlOutput)
-            c0Next.replaceInput(c0, get(g.c0), EdgeKind.Control)
-            // get(callee.c0).becomeControlNode(get(g.c0), cg) // 3
+            get(callee.c0).becomeControlNode(get(g.c0), cg) // 3
         } else {
             get(g.c1).replaceInput(call, get(g.c0), EdgeKind.Control)
         }

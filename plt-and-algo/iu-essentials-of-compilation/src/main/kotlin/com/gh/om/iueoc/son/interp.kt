@@ -141,6 +141,10 @@ private class Interp(
                     Value.B(x < y)
                 }
             }
+            OpCode.OpaqueValue -> {
+                val (value) = n.valueInputs
+                goValue(value)
+            }
             else -> error("Not a value node: $n")
         }
     }
@@ -238,20 +242,11 @@ private class Interp(
     private fun interpCall(target: GraphId, args: List<Value>, freeVars: List<Value>): Value {
         val tg = gs[target]
         // Sanity check
-        val startVouts = tg[tg.start].valueOutputs
-        val expectedArgCount = startVouts.count {
-            val n = tg[it]
-            n.opCode == OpCode.Argument
+        EocError.ensure(args.size == tg.argCount, tg.sourceLoc) {
+            "Arg count mismatch: expecting ${tg.argCount}, got ${args.size}"
         }
-        val expectedFreeVarCounts = startVouts.count {
-            val n = tg[it]
-            n.opCode == OpCode.FreeVar
-        }
-        EocError.ensure(args.size == expectedArgCount, tg.sourceLoc) {
-            "Arg count mismatch: expecting $expectedArgCount, got ${args.size}"
-        }
-        EocError.ensure(freeVars.size == expectedFreeVarCounts, tg.sourceLoc) {
-            "freeVar count mismatch: expecting $expectedFreeVarCounts, got ${freeVars.size}"
+        EocError.ensure(freeVars.size == tg.freeVarCount, tg.sourceLoc) {
+            "freeVar count mismatch: expecting ${tg.freeVarCount}, got ${freeVars.size}"
         }
         return Interp(gs, target, mutableMapOf(), args, freeVars).start()
     }

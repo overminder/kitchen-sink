@@ -27,6 +27,11 @@ interface Graph {
     val name: String?
     val sourceLoc: SourceLoc?
 
+    // args / freevars may be optimized away by DCE. Need to keep a record here.
+    // In general we need to record the signature.
+    val argCount: Int
+    val freeVarCount: Int
+
     // The compilation unit
     val owner: GraphCollection
 
@@ -149,6 +154,12 @@ class MutGraph private constructor(
     private var mutStart: NodeId? = null
     private var mutEnd: NodeId? = null
 
+    override var argCount: Int = -1
+        private set
+
+    override var freeVarCount: Int = -1
+        private set
+
     companion object {
         fun make(
             id: GraphId,
@@ -193,6 +204,7 @@ class MutGraph private constructor(
     // Empty as in only copying the metadata.
     fun makeEmptyCopy(initAnchors: Boolean = false): MutGraph {
         val out = MutGraph(id, name, sourceLoc, owner)
+        out.populateSignature(argCount, freeVarCount)
         if (initAnchors) {
             out.initAnchors()
         }
@@ -202,6 +214,11 @@ class MutGraph private constructor(
     fun setAnchors(start: NodeId, end: NodeId) {
         mutStart = start
         mutEnd = end
+    }
+
+    fun populateSignature(argCount: Int, freeVarCount: Int) {
+        this.argCount = argCount
+        this.freeVarCount = freeVarCount
     }
 
     val ref get() = MutGraphRef(id, owner)

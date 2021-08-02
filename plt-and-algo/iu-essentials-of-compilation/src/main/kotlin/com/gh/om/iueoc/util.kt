@@ -15,3 +15,8 @@ object Tr {
     fun <A> more(a: () -> Trampoline<A>) = Trampoline.MoreToGo(a)
     fun <A> once(a: () -> A) = Trampoline.MoreToGo { pure(a()) }
 }
+
+fun <A> Collection<A>.indexOfSafe(a: A): Int? {
+    val ix = indexOf(a)
+    return ix.takeUnless { it == -1 }
+}

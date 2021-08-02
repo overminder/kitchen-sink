@@ -90,6 +90,10 @@ class ExprToGraphCollection(private val graphs: MutGraphCollection) {
 
         val env = gb.populateArgs(args, outerFlatEnv.keys)
         gb.doFunctionBody(body, env)
+
+        // XXX sounds hacky to set signature here. But freeVarCount is not known until the uses are all analyzed.
+        g.populateSignature(argCount = args.size, freeVarCount = gb.usedFreeVars!!.size)
+
         if (verify) {
             GraphVerifier(g).verifyFullyBuilt()
         }
@@ -218,6 +222,12 @@ class ExprToGraph(val graph: MutGraph) {
             PrimOp.BoxSet -> {
                 val (boxValue, newValue) = values
                 state.makeEffectfulValueNode(Nodes.boxSet(), listOf(boxValue, newValue)).id
+            }
+            PrimOp.Opaque -> {
+                val r = graph.assignId(Nodes.opaqueValue())
+                val value = graph[values.first()]
+                r.populateInput(value, EdgeKind.Value)
+                r.id
             }
         }
     }

@@ -129,6 +129,8 @@ open class InterpOp : InterpVar() {
                     box.value = newValue
                     Tr.pure(oldValue)
                 }
+                PrimOp.Opaque ->
+                    Tr.pure(values.first())
             }
         }
     }

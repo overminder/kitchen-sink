@@ -76,6 +76,9 @@ enum class OpCode(val klass: OpCodeClass) {
     ScmFxSub(OpCodeClass.Value),
     ScmFxLessThan(OpCodeClass.Value),
 
+    // i(V) -- Mark a value as opaque so that optimizations won't go through.
+    OpaqueValue(OpCodeClass.Value),
+
     // A special marker operator, provides a dead value that should be removed from the graph.
     Dead(OpCodeClass.Misc),
 }
@@ -103,6 +106,8 @@ val OpCode.isPure: Boolean
         OpCode.ScmBoolLit,
         OpCode.ScmFxLit,
         OpCode.ScmSymbolLit,
+        OpCode.ScmLambdaLit,
+        OpCode.ScmBoxLit,
 
         OpCode.ScmFxAdd,
         OpCode.ScmFxSub,
@@ -156,7 +161,8 @@ val OpCode.isValue: Boolean
         OpCode.ScmFxLessThan,
         OpCode.ScmBoxLit,
         OpCode.ScmBoxGet,
-        OpCode.ScmBoxSet -> true
+        OpCode.ScmBoxSet,
+        OpCode.OpaqueValue -> true
         else -> false
     }
 
@@ -245,6 +251,8 @@ object Operators {
     fun fxAdd() = make(OpCode.ScmFxAdd, nValueIn = 2)
     fun fxSub() = make(OpCode.ScmFxSub, nValueIn = 2)
     fun fxLessThan() = make(OpCode.ScmFxLessThan, nValueIn = 2)
+
+    fun opaqueValue() = make(OpCode.OpaqueValue, nValueIn = 1)
 
     fun dead() = make(OpCode.Dead)
 

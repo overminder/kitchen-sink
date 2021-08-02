@@ -48,6 +48,8 @@ enum class PrimOp(val symbol: String) {
     BoxMk("#box"),
     BoxGet("#box-get"),
     BoxSet("#box-set!"),
+
+    Opaque("#opaque"),
 }
 
 // Sexpr -> Expr
@@ -213,5 +215,6 @@ object SexprToExpr {
         PrimDescr(PrimOp.BoxMk, 1),
         PrimDescr(PrimOp.BoxGet, 1),
         PrimDescr(PrimOp.BoxSet, 2),
+        PrimDescr(PrimOp.Opaque, 1),
     )
 }

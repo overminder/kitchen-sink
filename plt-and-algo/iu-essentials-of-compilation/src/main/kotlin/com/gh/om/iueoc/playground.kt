@@ -176,6 +176,17 @@ private object LambdaTests {
       (loop 10 0 loop))          
     """
 
+    const val SUM_OPAQUE = """
+    (let ([loop
+            (lambda (n s loop)
+              (if (#fx< 0 n)
+                (loop (#fx- n 1)
+                      (#fx+ n s)
+                      loop)
+                s))])
+      (loop 10 (#opaque 0) loop))          
+    """
+
     const val FREE_VAR = """
 (let*
   ([add1 (lambda [x] (#fx+ x 1))]
@@ -183,7 +194,7 @@ private object LambdaTests {
   (add2 0))
 """
 
-    val ALL = listOf(::ID, ::SUM, ::FREE_VAR)
+    val ALL = listOf(::ID, ::SUM, ::SUM_OPAQUE, ::FREE_VAR)
 }
 
 fun showEocError(e: EocError, source: String, header: String = "Error") {
@@ -281,7 +292,7 @@ object RunBothInterp {
     fun opt(ir: IR, verify: Boolean = true) {
         for (gid in ir.gs.graphIds) {
             val gRef = MutGraphRef(gid, ir.gs)
-            for (phase in Phases.SIMPLE) {
+            for (phase in Phases.SIMPLE_REP) {
                 phase.run(gRef)
                 if (verify) {
                     GraphVerifier(gRef.g).verifyFullyBuilt()
@@ -305,7 +316,7 @@ object RunBothInterp {
 }
 
 private fun main() {
-    val ir = RunBothInterp.parse(LambdaTests.SUM)
+    val ir = RunBothInterp.parse(LambdaTests.SUM_OPAQUE)
     try {
         RunBothInterp.opt(ir)
     } finally {
