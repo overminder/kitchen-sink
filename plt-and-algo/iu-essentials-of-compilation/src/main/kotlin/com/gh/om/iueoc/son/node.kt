@@ -258,7 +258,7 @@ object Nodes {
 
     fun boolLit(value: Boolean) = Node.fresh(Operators.boolLit(value))
     fun boxLit() = Node.fresh(Operators.boxLit())
-    fun intLit(value: Int) = Node.fresh(Operators.fxLit(value))
+    fun fxLit(value: Int) = Node.fresh(Operators.fxLit(value))
     fun lambdaLit(nFreeVars: Int, graphId: GraphId) = Node.fresh(Operators.lambdaLit(nFreeVars, graphId))
     fun symbolLit(value: String) = Node.fresh(Operators.symbolLit(value))
 

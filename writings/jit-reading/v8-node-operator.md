@@ -69,7 +69,7 @@ More in CommonOperatorBuilder:
 - ObjectState(id, slot): i(V ** slot), o(V). Not sure about this.
 - TypedObjectState(id, types): same as above.
 - FrameState(bailoutId, stateCombine, functionInfo): i(V ** 5), o(V). Looks like indeed it's for deopt. What are the 5 inputs here?
-- Call(callDescriptor): first input is the target.
+- Call(callDescriptor): i(V:target, V:args, V:frameState, E?:ifNotPure, C?:ifEliminitable). first input is the target.
 
 ### CallDescriptor
 
@@ -103,3 +103,9 @@ linkage.cc constructs some common CallDescriptors:
 
 - GetStubCallDescriptor
 - GetBytecodeDispatchCallDescriptor
+
+## Simplified operators
+
+`simplified-operators.h` defines mid-level operations. They are all typed but many are polymorphic wrt the machine representation.
+
+All the memory access (get/set field, get/set indexed element, alloc) have comprehensive descriptors (FieldAccess, ElementAccess, AllocateParameters)

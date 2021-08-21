@@ -163,7 +163,7 @@ class ExprToGraph(val graph: MutGraph) {
                 state.makeUniqueValueNode(Nodes.boolLit(e.value))
             }
             is ExprVar.I -> {
-                state.makeUniqueValueNode(Nodes.intLit(e.value))
+                state.makeUniqueValueNode(Nodes.fxLit(e.value))
             }
             is ExprVar.Sym -> {
                 makeSymbolLit(e.name)
@@ -360,7 +360,7 @@ class ExprToGraph(val graph: MutGraph) {
             // But that can result in a partial node -- What's the meaning of an Add node with only 1 input?
             // I see v8 uses "dead" node as a placeholder input. This way the changed node still gets to keep the
             // correct number of input counts.
-            it.removeInput(start, EdgeKind.Control)
+            it.removeInput(start, EdgeKind.Value)
             // it.replaceInput(start, graph[graph.dead], EdgeKind.Control)
         }
 

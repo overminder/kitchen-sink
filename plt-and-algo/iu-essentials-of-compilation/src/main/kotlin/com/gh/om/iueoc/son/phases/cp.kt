@@ -60,15 +60,104 @@ private class CpRunner(private val g: MutGraph) {
         }
 
         return when (n.opCode) {
-            OpCode.ScmFxAdd -> simpifyBinaryIntOp(n) { lhs, rhs -> Nodes.intLit(lhs + rhs) }
-            OpCode.ScmFxSub -> simpifyBinaryIntOp(n) { lhs, rhs -> Nodes.intLit(lhs - rhs) }
-            OpCode.ScmFxLessThan -> simpifyBinaryIntOp(n) { lhs, rhs -> Nodes.boolLit(lhs < rhs) }
+            OpCode.ScmFxAdd -> simpifyBinaryIntOp(n) { lhs, rhs ->
+                Nodes.fxLit(lhs + rhs)
+            } || simplifyAddReassoc(n)
+            OpCode.ScmFxSub -> simpifyBinaryIntOp(n) { lhs, rhs ->
+                Nodes.fxLit(lhs - rhs)
+            }
+            OpCode.ScmFxLessThan -> simpifyBinaryIntOp(n) { lhs, rhs ->
+                Nodes.boolLit(lhs < rhs)
+            }
             OpCode.CondJump -> simplifyCondJump(n)
             OpCode.Dead -> simplifyDead(n)
             else -> false
         }
     }
 
+    /**
+     * Globally reassociate the arith ops.
+     * This is more efficient if it's applied to the whole arith tree... Otherwise it sounds really inefficient.
+     * (Need to find a way to remove visited arith nodes from workList... Or shall we?)
+     */
+    private fun simplifyAddReassoc(n: Node): Boolean {
+        // Need to also deal with other operators. Hmm.
+        var constSum = 0
+        var nConsts = 0
+        val poss = mutableListOf<Node>()
+        val negs = mutableListOf<Node>()
+        fun go(n: Node, isNeg: Boolean) {
+            when (val op = n.opCode) {
+                OpCode.ScmFxAdd -> {
+                    for (rand in n.valueInputs.map(g::get)) {
+                        go(rand, isNeg)
+                    }
+                }
+                OpCode.ScmFxSub -> {
+                    val (lhs, rhs) = n.valueInputs.map(g::get)
+                    go(lhs, isNeg)
+                    go(rhs, !isNeg)
+                }
+                OpCode.ScmFxLit -> {
+                    var value = GetOperatorExtra(n).asFxLit
+                    if (isNeg) {
+                        value = -value
+                    }
+                    constSum += value
+                    nConsts += 1
+                }
+                else -> {
+                    val out = if (isNeg) negs else poss
+                    out += n
+                }
+            }
+        }
+
+        go(n, false)
+        if (nConsts == 0) {
+            // No changes.
+            return false
+        }
+
+        var lhs = if (constSum != 0) {
+            g.assignId(Nodes.fxLit(constSum))
+        } else {
+            null
+        }
+        lhs = poss.fold(lhs) { acc, rhs ->
+            if (acc == null) {
+                rhs
+            } else {
+                val add = g.assignId(Nodes.fxAdd())
+                add.populateInput(acc, EdgeKind.Value)
+                add.populateInput(rhs, EdgeKind.Value)
+                add
+            }
+        }
+        val posSum = lhs ?: g.assignId(Nodes.fxLit(0))
+        val negSum = negs.fold(null) { acc: Node?, rhs ->
+            if (acc == null) {
+                rhs
+            } else {
+                val add = g.assignId(Nodes.fxAdd())
+                add.populateInput(acc, EdgeKind.Value)
+                add.populateInput(rhs, EdgeKind.Value)
+                add
+            }
+        }
+        val replacement = if (negSum == null) {
+            posSum
+        } else {
+            val sub = g.assignId(Nodes.fxSub())
+            sub.populateInput(posSum, EdgeKind.Value)
+            sub.populateInput(negSum, EdgeKind.Value)
+            sub
+        }
+        replaceWith(n, replacement)
+        return true
+    }
+
+    /** If a control-threaded value node [n] has no value uses, kill it. */
     private fun simplifyPureValueWithControl(n: Node) {
         val next = g[n.singleControlOutput]
         val prev = g[n.singleControlInput]
@@ -83,14 +172,18 @@ private class CpRunner(private val g: MutGraph) {
         }
         val (lhs, rhs) = vins.map { GetOperatorExtra(it).asFxLit }
         val replacement = g.assignId(binOp(lhs, rhs))
-        n.becomeValueNode(replacement, g)
+        replaceWith(n, replacement)
+        return true
+    }
+
+    private fun replaceWith(orig: Node, replacement: Node) {
+        orig.becomeValueNode(replacement, g)
         // Note that n's inputs are not yet cut away -- we have to manually do that.
         // n has no edges now, and becomes invalid. Hopefully it won't be seen again...
-        n.removeEdges(g, EdgeDirection.Input, EdgeKind.VALUE)
+        orig.removeEdges(g, EdgeDirection.Input, EdgeKind.VALUE)
         // However n may still be in the worklist. Remove it so that we never see invalid nodes.
-        workList -= n.id
+        workList -= orig.id
         workList += replacement.valueOutputs
-        return true
     }
 
     private fun tryEvaluateAsBool(value: Node): Boolean? {
@@ -102,7 +195,8 @@ private class CpRunner(private val g: MutGraph) {
             OpCode.ScmSymbolLit,
             OpCode.ScmFxAdd,
             OpCode.ScmFxSub,
-            OpCode.ScmBoxSet, -> true
+            OpCode.ScmBoxSet,
+            -> true
             else -> null
         }
     }

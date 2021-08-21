@@ -31,7 +31,7 @@ There's a two level hierarchy:
 - JumpConditional calls MergeIntoSuccessorEnvironment -- For while it's jump forward so it's effectful. Creates:
   + A sub_environment
   + A IfFalse projection
-  + Calls PrepareForLoopExit to build (for OSR?)
+  + Calls PrepareForLoopExit to build LoopExit/LoopExitEffect/LoopExitValue (for OSR?)
   + A fresh Merge node, or some phis to add to the merge
 
 - JumpLoop node merge the current env back to the loop header. This also calls MergeIntoSuccessorEnvironment, but for while loops it's jumping backwards and doesn't do anything. Creates:

@@ -27,7 +27,7 @@ class RepPhase(private val n: Int, private val phase: Phase) : Phase {
 
 object Phases {
     val SIMPLE = listOf(
-        InlinePhase.rep(6),
+        InlinePhase.rep(4),
         ConstantPropagationPhase.rep(1),
         // ConstantPropagationPhase,
         // ConstantPropagationPhase,

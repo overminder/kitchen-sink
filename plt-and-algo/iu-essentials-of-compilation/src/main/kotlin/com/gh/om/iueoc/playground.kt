@@ -194,7 +194,35 @@ private object LambdaTests {
   (add2 0))
 """
 
-    val ALL = listOf(::ID, ::SUM, ::SUM_OPAQUE, ::FREE_VAR)
+    // An example that shows exponential explosion of inlining.
+    const val FIBO_REC = """
+(let*
+  ([+ (lambda [x y] (#fx+ x y))]
+   [- (lambda [x y] (#fx- x y))]
+   [< (lambda [x y] (#fx< x y))]
+   [fibo (lambda [n fibo]
+           (if (< n 2)
+               n
+               (+ (fibo (- n 1) fibo)
+                  (fibo (- n 2) fibo))))])
+  (fibo 10 fibo))
+    """
+
+    val ALL = listOf(::ID, ::SUM, ::SUM_OPAQUE, ::FREE_VAR, ::FIBO_REC)
+}
+
+private object AllocTests {
+    const val COND_ALLOC = """
+(let
+  ([maybe-alloc
+     (lambda (box value)
+       (let ([nbox (#box value)])
+         (if (< (#box-get box) (#box-get nbox))
+             nbox
+             box)))])
+             
+   
+    """
 }
 
 fun showEocError(e: EocError, source: String, header: String = "Error") {
@@ -316,7 +344,7 @@ object RunBothInterp {
 }
 
 private fun main() {
-    val ir = RunBothInterp.parse(LambdaTests.SUM_OPAQUE)
+    val ir = RunBothInterp.parse(LambdaTests.FIBO_REC)
     try {
         RunBothInterp.opt(ir)
     } finally {
