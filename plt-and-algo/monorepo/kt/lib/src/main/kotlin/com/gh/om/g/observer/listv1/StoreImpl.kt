@@ -3,10 +3,34 @@ package com.gh.om.g.observer.listv1
 import com.gh.om.g.observer.frp.Behavior
 import com.gh.om.g.observer.frp.MutableBehavior
 import com.gh.om.g.observer.frp.ReentryGuard
+import com.gh.om.g.observer.listv1.NodeAdjUtil.ids
+import com.gh.om.g.observer.listv1.NodeAdjUtil.splitToAdjsRec
+import java.util.IdentityHashMap
+
+/**
+ * [Node] but in adjacency-list representation: [next] is an indirect ref rather than a direct ref.
+ * Used as an internal representation in [StoreImpl]: [Node] are deconstructed when written to store,
+ * and reconstructed when read from store.
+ */
+class NodeAdj<out ID, K : Any, V>(
+    val id: ID,
+    var next: TriState<NodeAdjEdge<K, V>>,
+    val value: V,
+)
+
+private typealias NodeAdjRoot<K, V> = NodeAdj<K, K, V>
+
+/**
+ * Describes where the next node is stored.
+ */
+sealed class NodeAdjEdge<K : Any, V> {
+    class Ref<K : Any, V>(val id: K) : NodeAdjEdge<K, V>()
+    class Inlined<K : Any, V>(val value: NodeAdj<Unit, K, V>) : NodeAdjEdge<K, V>()
+}
 
 class StoreImpl<K : Any, V> {
     private val reentryGuard = ReentryGuard(this.javaClass.simpleName)
-    val idToNodes = mutableMapOf<K, Node<K, V>>()
+    val idToNodes = mutableMapOf<K, NodeAdjRoot<K, V>>()
     val watchers = mutableSetOf<Watcher<K, V>>()
 
     /**
@@ -15,10 +39,13 @@ class StoreImpl<K : Any, V> {
     // XXX what about deletion?
     fun watch(mb: MutableBehavior<Node<K, V>>): AutoCloseable {
         val node = mb.value
+        val (root, nodeAdjs) = node.splitToAdjsRec()
+        // A local graph to build circular nodes
+        val snapshot = mutableMapOf<K, MutableNode<K, V>>()
         return reentryGuard {
-            val doNotify = write(node)
-            val rwNode = read(node)
-            val w = newWatcher(rwNode, mb)
+            val doNotify = write(nodeAdjs, snapshot)
+            val rwNode = read(root, snapshot)
+            val w = newWatcher(root, rwNode, mb)
             mb.value = rwNode
             watchers += w
             doNotify()
@@ -31,42 +58,41 @@ class StoreImpl<K : Any, V> {
     }
 
     fun writeAndNotify(node: Node<K, V>) {
+        val (_, nodeAdjs) = node.splitToAdjsRec()
         reentryGuard {
-            write(node)()
+            write(nodeAdjs, mutableMapOf())()
         }
     }
 
-    private fun write(newNode: Node<K, V>): () -> Unit {
+    private fun write(
+        newNodes: List<NodeAdjRoot<K, V>>,
+        snapshot: MutableMap<K, MutableNode<K, V>>
+    ): () -> Unit {
         // Update id map
-        for (node in newNode.genNodes()) {
-            node.id?.let { id ->
-                mergeAndWrite(id, node)
-            }
+        for (node in newNodes) {
+            mergeAndWrite(node)
         }
         // Reconstruct updated nodes that are being watched
-        val idsUpdated = newNode.ids().toSet()
+        val idsUpdated = newNodes.map { it.id }.toSet()
         val thunksToNotify = watchers.mapNotNull { w ->
-            buildThunkToNotify(idsUpdated, w)
+            buildThunkToNotify(idsUpdated, w, snapshot)
         }
         // XXX when to GC unreachable nodes?
         return { thunksToNotify.forEach(Thunk::invoke) }
     }
 
-    private fun mergeAndWrite(
-        id: K,
-        node: Node<K, V>
-    ) {
+    private fun mergeAndWrite(node: NodeAdjRoot<K, V>) {
+        val id = node.id
         val oldNode = idToNodes[id]
         val merged = if (oldNode != null) {
-            // Could even avoid the alloc if everything is the same.
-            MutableNode(
-                id = id,
-                value = node.value,
-                next = if (node.next.isPresent) {
+            NodeAdjRoot(
+                id,
+                if (node.next.isPresent) {
                     node.next
                 } else {
                     oldNode.next
-                }
+                },
+                node.value
             )
         } else {
             node
@@ -74,55 +100,57 @@ class StoreImpl<K : Any, V> {
         idToNodes[id] = merged
     }
 
-    private fun read(rNode: Node<K, V>): Node<K, V> {
-        // A local graph to cache results and avoid recomputing cycles
-        val mutGraph = mutableMapOf<K, MutableNode<K, V>>()
-        val mutNode = readOnceMut(rNode, mutGraph)
-        readIter(mutNode, mutNode, mutGraph)
-        return mutNode
-    }
-
-    private tailrec fun readIter(
-        head: Node<K, V>,
-        tail: MutableNode<K, V>,
-        mutGraph: MutableMap<K, MutableNode<K, V>>,
-    ) {
-        val next = tail.next.valueOrNull ?: return
-        val visited = next.id != null && next.id in mutGraph
-        val newNext = readOnceMut(next, mutGraph)
-        tail.next = TriState.HasValue(newNext)
-        if (visited) {
-            // Assume we reached a fixed point. This is probably the case for singly linked list..
-            return
-        }
-        readIter(head, newNext, mutGraph)
-    }
-
-    private fun readOnceMut(
-        node: Node<K, V>,
-        g: MutableMap<K, MutableNode<K, V>>
-    ): MutableNode<K, V> {
-        val id = node.id
-        return if (id != null) {
-            g.getOrPut(id) {
-                requireNotNull(idToNodes[id]) {
-                    "The node $id was just written and should exist"
-                }.mutableCopy()
+    /**
+     * Reconstruct nodes from [root], reusing [snapshot] for structural sharing and to build cycles.
+     */
+    private fun read(
+        root: NodeAdjEdge<K, V>,
+        snapshot: MutableMap<K, MutableNode<K, V>>
+    ): Node<K, V> {
+        fun go(node: NodeAdjEdge<K, V>): Node<K, V> {
+            return when (node) {
+                is NodeAdjEdge.Inlined -> {
+                    val deref = node.value
+                    MutableNode(
+                        id = null,
+                        next = deref.next.fmap(::go),
+                        value = deref.value
+                    )
+                }
+                is NodeAdjEdge.Ref -> {
+                    val existing = snapshot[node.id]
+                    if (existing == null) {
+                        val deref = requireNotNull(idToNodes[node.id]) {
+                            "The node ${node.id} was just written and should exist"
+                        }
+                        val mutNode = MutableNode(
+                            deref.id,
+                            // To be populated later
+                            TriState.NotPresent,
+                            deref.value
+                        )
+                        snapshot[node.id] = mutNode
+                        mutNode.next = deref.next.fmap(::go)
+                        mutNode
+                    } else {
+                        existing
+                    }
+                }
             }
-        } else {
-            node.mutableCopy()
         }
+        return go(root)
     }
 
     private fun buildThunkToNotify(
         idsUpdated: Set<K>,
-        w: Watcher<K, V>
+        w: Watcher<K, V>,
+        sharedNodeMap: MutableMap<K, MutableNode<K, V>>
     ): Thunk? {
         if (!idsUpdated.any(w.contains::contains)) {
             return null
         }
 
-        val rNode = read(w.mb.value)
+        val rNode = read(w.root, sharedNodeMap)
         w.contains = rNode.ids().toSet()
         return if (rNode.stackSafeEq(w.mb.value)) {
             // Nothing to notify
@@ -133,45 +161,117 @@ class StoreImpl<K : Any, V> {
     }
 
     private fun newWatcher(
-        newNode: Node<K, V>,
+        root: NodeAdjEdge<K, V>,
+        currentValue: Node<K, V>,
         mb: MutableBehavior<Node<K, V>>
     ): Watcher<K, V> {
         return Watcher(
+            root,
             mb,
-            newNode.ids().toSet()
+            currentValue.ids().toSet()
         )
     }
+}
 
-    private fun Node<K, V>.mutableCopy(): MutableNode<K, V> {
-        return MutableNode(id, next, value)
-    }
+fun <K : Any, V> Node<K, V>.mutableCopy(): MutableNode<K, V> {
+    return MutableNode(id, next, value)
+}
 
-    private fun Node<K, V>.genNodes(): Sequence<Node<K, V>> {
-        val seenIds = mutableSetOf<K>()
+object NodeAdjUtil {
+    fun <K : Any, V> Node<K, V>.genNodes(): Sequence<Node<K, V>> {
+        val seenIds = IdentityHashMap<Node<*, *>, Unit>()
         return generateSequence(this) {
             it.next.valueOrNull
         }.takeWhile {
-            val id = it.id
-            if (id == null) {
-                true
-            } else {
-                // Avoid cycles.
-                seenIds.add(id)
-            }
+            // Avoid cycles.
+            // XXX are nodes without ids supposed to have cycles? Probably still yes,
+            // as each id-less node is still uniquely identifiable under an id-ful node or watcher's root.
+            seenIds.put(it, Unit) == null
         }.constrainOnce()
     }
 
-    private fun Node<K, V>.ids() = genNodes().mapNotNull { it.id }
+    fun <K : Any, V> Node<K, V>.ids() = genNodes().mapNotNull { it.id }
+
+    /**
+     * Deconstruct [this] to adjacency graph representation ([NodeAdjEdge]).
+     */
+    // Brute force, assuming no cycles, not tailrec
+    fun <K : Any, V> Node<K, V>.splitToAdjsRec(): Pair<NodeAdjEdge<K, V>, List<NodeAdjRoot<K, V>>> {
+        // In reversed order (child first, parent last)
+        val out = mutableListOf<NodeAdjRoot<K, V>>()
+        fun go(node: Node<K, V>): NodeAdjEdge<K, V> {
+            val id = node.id
+            val next = node.next.fmap(::go)
+            return if (id == null) {
+                NodeAdjEdge.Inlined(
+                    NodeAdj(
+                        Unit,
+                        next,
+                        node.value
+                    )
+                )
+            } else {
+                val newNode = NodeAdj(
+                    id,
+                    next,
+                    node.value
+                )
+                out += newNode
+                NodeAdjEdge.Ref(id)
+            }
+        }
+
+        val root = go(this)
+        // Such that it's ordered as parent first and child last
+        out.reverse()
+        return root to out
+    }
+
+    fun <K : Any, V> Node<K, V>.splitToAdjs(): Sequence<NodeAdj<K?, K, V>> {
+        return sequence {
+            var head: NodeAdj<K?, K, V>? = null
+            var tail: NodeAdjEdge<K, V>? = null
+            for (node in genNodes()) {
+                val id = node.id
+                /*
+                val next = node.next.bind {
+                    val nextId = it.id
+                    if (nextId != null) {
+                        TriState.HasValue(NodeAdjEdge.Ref(nextId))
+                    } else {
+                        // To be replaced later
+                        TriState.NotPresent
+                    }
+                }
+                 */
+                val next = if (id != null) {
+                    NodeAdjEdge.Ref(id)
+                } else {
+                    NodeAdjEdge.Inlined(
+                        NodeAdj(
+                            Unit,
+                            TriState.NotPresent,
+                            node.value
+                        )
+                    )
+                }
+            }
+        }
+    }
 }
 
-// Mutable to make certain operation faster
-private class MutableNode<K : Any, V>(
+// Mutable to make certain operation faster, and to allow cycles
+class MutableNode<K : Any, V>(
     override val id: K?,
     override var next: TriState<Node<K, V>>,
     override val value: V
 ) : Node<K, V>
 
 class Watcher<K : Any, V>(
+    /**
+     * The "dehydrated" root node.
+     */
+    val root: NodeAdjEdge<K, V>,
     val mb: MutableBehavior<Node<K, V>>,
     /**
      * The transitive child ids in the node, such that when any of these

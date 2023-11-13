@@ -8,7 +8,7 @@
 
 plugins {
     // Apply the org.jetbrains.kotlin.jvm Plugin to add support for Kotlin.
-    id("org.jetbrains.kotlin.jvm") version "1.9.20"
+    alias(libs.plugins.kotlin.jvm)
 
     // Apply the java-library plugin for API and implementation separation.
     `java-library`
@@ -21,15 +21,21 @@ repositories {
 
 dependencies {
     // Use the Kotlin JUnit 5 integration.
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation(libs.kotlin.junit5)
 
     // Use the JUnit 5 integration.
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.9.1")
 
+    // assertThat().isEqualTo()
     testImplementation("org.assertj:assertj-core:3.24.2")
+
+    // Property test (a la QuickCheck)
+    testImplementation(libs.kotest.property)
+    testImplementation(libs.kotest.core)
+    testImplementation(libs.kotest.runner)
 }
 
-tasks.named<Test>("test") {
+tasks.withType<Test>().forEach {
     // Use JUnit Platform for unit tests.
-    useJUnitPlatform()
+    it.useJUnitPlatform()
 }

@@ -10,6 +10,7 @@ private typealias IStore = StoreImpl<Int, Any>
 
 class StoreImplShould {
     private val target = IStore()
+
     @Test
     fun work() {
         assertThat(1).isEqualTo(1)
@@ -71,13 +72,13 @@ class StoreImplShould {
     }
 
     @Test
-    fun `merge cycles to fixed point (almost)`() {
+    fun `merge cycles and prefer child`() {
         val node0 = nodeOf("n0-v1", id = 0, next = TriState.NotPresent)
         val node1 = nodeOf("n1", id = 1, next = TriState.HasValue(node0))
         val root = nodeOf("n0-v0", id = 0, next = TriState.HasValue(node1))
         val (b, close) = watch(root)
-        // Note that this is incorrect, as node0 is ignored.
-        assertThat(b.value.value).isEqualTo("n0-v0")
+        // Prefer child over parent values
+        assertThat(b.value.value).isEqualTo("n0-v1")
         assertThat(b.value.next.valueOrNull?.value).isEqualTo("n1")
         target.writeAndNotify(nodeOf("n1-v2", id = 1, next = TriState.NotPresent))
         assertThat(b.value.next.valueOrNull?.value).isEqualTo("n1-v2")
@@ -90,8 +91,12 @@ class StoreImplShould {
         return mb to target.watch(mb)
     }
 
-    private fun nodeOf(value: Any, id: Int? = null, next: TriState<INode> = TriState.IsNull): INode {
-        return object: INode {
+    private fun nodeOf(
+        value: Any,
+        id: Int? = null,
+        next: TriState<INode> = TriState.IsNull
+    ): INode {
+        return object : INode {
             override val id: Int? = id
             override val next: TriState<INode> = next
             override val value: Any = value

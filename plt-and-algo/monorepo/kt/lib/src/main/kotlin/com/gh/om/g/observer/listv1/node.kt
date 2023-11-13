@@ -37,6 +37,20 @@ sealed class TriState<out A : Any> {
     data class HasValue<out A : Any>(val value: A) : TriState<A>()
 }
 
+fun <A: Any, B: Any> TriState<A>.fmap(f: (A) -> B): TriState<B> {
+    return bind {
+        TriState.HasValue(f(it))
+    }
+}
+
+fun <A: Any, B: Any> TriState<A>.bind(f: (A) -> TriState<B>): TriState<B> {
+    return when (this) {
+        is TriState.HasValue -> f(value)
+        TriState.IsNull -> TriState.IsNull
+        TriState.NotPresent -> TriState.NotPresent
+    }
+}
+
 val TriState<*>.isPresent: Boolean
     get() = this !is TriState.NotPresent
 
