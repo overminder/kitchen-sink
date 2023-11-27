@@ -1,4 +1,5 @@
 mod interior_mut;
+pub mod fibo;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
