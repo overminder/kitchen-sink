@@ -9,11 +9,11 @@ _fibo_asm_internal:
 .fibo_recur:
     ; Store n to stack
     ; Note that sp needs to be 16-byte aligned, so we allocate 32 bytes to
-    ; to store [fibo(n - 1), n, saved lr, saved fp]
+    ; to store [saved fp, saved lr, n, fibo(n - 1)]
     sub sp, sp, #32
     str fp, [sp]
-    str lr, [sp, #-8]
-    str x0, [sp, #-16]
+    str lr, [sp, #8]
+    str x0, [sp, #16]
     mov fp, sp
 
     ; Call fibo(n - 1)
@@ -21,18 +21,18 @@ _fibo_asm_internal:
     bl .fibo_entry
 
     ; Store ret val of fibo(n - 1) to stack
-    str x0, [sp, #-24]
+    str x0, [sp, #24]
 
     ; Call fibo(n - 2)
-    ldr x0, [sp, #-16]
+    ldr x0, [sp, #16]
     sub x0, x0, #2
     bl .fibo_entry
 
     ; Add ret vals and restore lr, fp, sp
-    ldr x1, [sp, #-24]
-    ldr lr, [sp, #-8]
-    ldr fp, [sp]
+    ldr x1, [sp, #24]
     add x0, x0, x1
+    ldr lr, [sp, #8]
+    ldr fp, [sp]
     add sp, sp, #32
     ret
 
