@@ -20,6 +20,8 @@ repositories {
 }
 
 dependencies {
+    implementation(libs.kotlinx.coroutines.core)
+
     // Use the Kotlin JUnit 5 integration.
     testImplementation(libs.kotlin.junit5)
 
