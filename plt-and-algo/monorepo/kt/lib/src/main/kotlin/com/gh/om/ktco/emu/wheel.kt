@@ -2,9 +2,7 @@ package com.gh.om.ktco.emu
 
 import com.gh.om.ktco.emu.CoPrelude.bind
 import com.gh.om.ktco.emu.Interp.runBlocking
-import com.gh.om.ktco.printMyThread
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -58,6 +56,17 @@ private val AlternativeDispatcher by lazy {
     mkDispatcher("Alt")
 }
 
+object CoCancelled : CancellationException() {
+    override fun toString(): String {
+        return "CoCancelled"
+    }
+
+    override fun fillInStackTrace(): Throwable {
+        // Do not fill
+        return this
+    }
+}
+
 class CoJob(
     val exceptionRef: IORef<CancellationException?> = IORef(null),
     val onCancel: ((CancellationException) -> Boolean) = { /* handled? */ false },
@@ -71,8 +80,10 @@ data class CoCtx(
     val job: CoJob? = CoJob(),
 )
 
-class CoLaunched<out A>(
-    val f: CompletionStage<@UnsafeVariance A>,
+class CoLaunched<A>(
+    // XXX need a single source of truth for cancellation
+    val f: CompletableFuture<A>,
+    val job: CoJob?,
 )
 
 sealed class CoroutineM<out A> {
@@ -83,24 +94,23 @@ sealed class CoroutineM<out A> {
         val f: (A) -> CoroutineM<B>,
     ) : CoroutineM<B>()
 
-    data object Cancel : CoroutineM<Nothing>()
+    data object CancelSelf : CoroutineM<Unit>()
+    data class Cancel(val launched: CoLaunched<*>) : CoroutineM<Unit>()
 
     data class Launch<A>(
         val propagateCancel: Boolean = true,
+        val updateContext: ((CoCtx) -> CoCtx)? = null,
         val task: () -> CoroutineM<A>,
     ) : CoroutineM<CoLaunched<A>>()
 
     // Reader monad
     data object GetContext : CoroutineM<CoCtx>()
-    data class WithContext<A>(
-        val f: (CoCtx) -> CoCtx,
-        val inner: () -> CoroutineM<A>
-    ) : CoroutineM<A>()
 
     data class Join<A>(
         val launched: CoLaunched<A>,
     ) : CoroutineM<Result<A>>()
 
+    // TODO: Need to support immediate cancellation
     data class Delay(
         val callcc: (scheduler: ScheduledExecutorService, k: (Unit) -> Unit) -> Unit
     ) : CoroutineM<Unit>()
@@ -130,12 +140,10 @@ object Interp {
         ctx: CoCtx,
         k: Cont<A>
     ) {
-        // printMyThread("runCont ${co.javaClass.simpleName} in ${ctx.dispatcher}")
-        val canceled = ctx.job?.exceptionRef?.value
-        if (canceled != null) {
-            // Don't proceed. (Join should still return)
+        if (transitivelyCancelled(ctx.job)) {
             return
         }
+        // printMyThread("runCont ${co.javaClass.simpleName} in ${ctx.dispatcher}")
         return when (co) {
             is CoroutineM.Bind<*, *> -> {
                 // k must be (CoCtx, B) -> Unit
@@ -143,7 +151,7 @@ object Interp {
                 runBind(co, ctx, k as Cont<Any?>)
             }
 
-            CoroutineM.Cancel -> {
+            CoroutineM.CancelSelf -> {
                 cancelJobs(ctx.job)
             }
 
@@ -162,6 +170,7 @@ object Interp {
 
             is CoroutineM.Delay -> {
                 co.callcc(DefaultScheduler) {
+                    // Right now the delay is not interrupted
                     dispatch(ctx) {
                         // A must be Unit
                         @Suppress("UNCHECKED_CAST")
@@ -171,30 +180,36 @@ object Interp {
             }
 
             CoroutineM.GetContext -> {
-                // A must be Unit
+                // A must be CoCtx
                 @Suppress("UNCHECKED_CAST")
                 k(ctx as A)
             }
 
-            is CoroutineM.WithContext -> {
-                val newCtx = co.f(ctx)
-                dispatch(newCtx) {
-                    // A must be Unit
-                    runCont(co.inner(), newCtx, k)
-                }
+            is CoroutineM.Cancel -> {
+                // XXX race condition?
+                co.launched.f.completeExceptionally(CoCancelled)
+                cancelJobs(co.launched.job)
+                // A must be Unit
+                @Suppress("UNCHECKED_CAST")
+                k(Unit as A)
             }
         }
     }
 
-    private fun cancelJobs(job: CoJob?) {
-        val ce = object : CancellationException() {
-            override fun fillInStackTrace(): Throwable {
-                // Do not fill
-                return this
+    private fun transitivelyCancelled(job: CoJob?): Boolean {
+        for (p in generateSequence(job) { it.parent }) {
+            val canceled = p.exceptionRef.value
+            if (canceled != null) {
+                // Don't proceed. (Join should still return)
+                return true
             }
         }
+        return false
+    }
+
+    private fun cancelJobs(job: CoJob?) {
         for (p in generateSequence(job) { it.parent }) {
-            if (p.onCancel(ce)) {
+            if (p.onCancel(CoCancelled)) {
                 break
             }
         }
@@ -213,8 +228,9 @@ object Interp {
             val handled = !co.propagateCancel
             handled
         })
-        val childCtx = CoCtx(job = childJob, dispatcher = ctx.dispatcher, name = ctx.name)
-        val result = CoLaunched(future)
+        val childCtx0 = CoCtx(job = childJob, dispatcher = ctx.dispatcher, name = ctx.name)
+        val childCtx = co.updateContext?.invoke(childCtx0) ?: childCtx0
+        val result = CoLaunched(future, childCtx.job)
         dispatch(childCtx) {
             runCont(co.task(), childCtx) { value ->
                 future.complete(value)
@@ -273,7 +289,6 @@ object Interp {
 
 object CoPrelude {
     fun delay(ms: Long): CoroutineM<Unit> {
-        // XXX Which executor runs the delay?
         return CoroutineM.Delay { executor, function ->
             executor.schedule({ function(Unit) }, ms, TimeUnit.MILLISECONDS)
         }
@@ -284,65 +299,156 @@ object CoPrelude {
         noinline updateContext: ((CoCtx) -> CoCtx)? = null,
         noinline task: () -> CoroutineM<A>
     ): CoroutineM<CoLaunched<A>> {
-        val innerTask = if (updateContext != null) {
-            { withContext(updateContext, task) }
-        } else {
-            task
-        }
         val resultIsUnit = A::class == Unit::class
-        return CoroutineM.Launch(propagateCancel = !resultIsUnit, innerTask)
+        return CoroutineM.Launch(propagateCancel = !resultIsUnit, updateContext, task)
     }
 
-    inline fun <reified A> join(launched: CoLaunched<A>): CoroutineM<Result<A>> =
+    fun <A> join(launched: CoLaunched<A>): CoroutineM<Result<A>> =
         CoroutineM.Join(launched)
 
     fun <A, B> CoroutineM<A>.bind(f: (A) -> CoroutineM<B>): CoroutineM<B> = CoroutineM.Bind(this, f)
     fun getContext(): CoroutineM<CoCtx> = CoroutineM.GetContext
-    fun <A> withContext(
-        f: (CoCtx) -> CoCtx,
-        inner: () -> CoroutineM<A>
-    ): CoroutineM<A> = CoroutineM.WithContext(f, inner)
+    inline fun <reified A> withContext(
+        noinline f: (CoCtx) -> CoCtx,
+        noinline inner: () -> CoroutineM<A>
+    ): CoroutineM<A> = launch(f, inner).bind {
+        join(it).bind { r ->
+            // XXX Now quite right?
+            pure(r.getOrThrow())
+        }
+    }
 
-    fun cancel(): CoroutineM<Unit> = CoroutineM.Cancel
+    fun cancel(): CoroutineM<Unit> = CoroutineM.CancelSelf
+    fun cancel(launched: CoLaunched<*>): CoroutineM<Unit> = CoroutineM.Cancel(launched)
     fun joinAll(vararg launcheds: CoLaunched<*>): CoroutineM<Unit> {
         return launcheds.fold(pure(Unit)) { accu, launched ->
             join(launched).bind { accu }
         }
     }
-}
 
-fun main() {
-    fun modifyCtx(name: String? = null, dispatcher: CoDispatcher? = null): (CoCtx) -> CoCtx = {
-        it.copy(name = name ?: it.name, dispatcher = dispatcher ?: it.dispatcher)
-    }
-
-    fun printCtxName(extra: String = "") = CoPrelude.getContext().bind {
+    fun printCtxName(extra: String = "") = getContext().bind {
         val tName = Thread.currentThread().name
         println("[t = $tName, ctx = ${it.name}] $extra")
-        CoPrelude.pure(Unit)
+        pure(Unit)
     }
 
-    CoPrelude.launch(modifyCtx(name = "First")) {
+    fun modifyCtx(
+        name: String? = null,
+        dispatcher: CoDispatcher? = null
+    ): (CoCtx) -> CoCtx = {
+        it.copy(name = name ?: it.name, dispatcher = dispatcher ?: it.dispatcher)
+    }
+}
+
+fun delayAndPrint() {
+    CoPrelude.delay(500).bind {
+        CoPrelude.printCtxName("Test")
+    }.runBlocking()
+}
+
+fun launchAndCancelWithinChild() {
+    CoPrelude.launch(CoPrelude.modifyCtx(name = "First")) {
         CoPrelude.delay(500).bind {
-            printCtxName("500ms")
+            CoPrelude.printCtxName("500ms")
         }.bind {
             CoPrelude.cancel()
         }.bind {
-            printCtxName("After cancel")
+            CoPrelude.printCtxName("After cancel")
         }
     }.bind { firstJob ->
-        CoPrelude.launch(modifyCtx(name = "Second", dispatcher = AlternativeDispatcher)) {
+        CoPrelude.launch(CoPrelude.modifyCtx(name = "Second", dispatcher = AlternativeDispatcher)) {
             CoPrelude.delay(1000).bind {
-                printCtxName("1000ms")
+                CoPrelude.printCtxName("1000ms")
             }
         }.bind { secondJob ->
             CoPrelude.joinAll(firstJob, secondJob)
         }
     }.runBlocking(CoCtx(DefaultDispatcher))
+}
+
+fun launchAndCancelChildFromParent() {
+    CoPrelude.launch(CoPrelude.modifyCtx(name = "First")) {
+        CoPrelude.delay(500).bind {
+            CoPrelude.printCtxName("500ms")
+        }.bind {
+            CoPrelude.delay(1000)
+        }.bind {
+            CoPrelude.printCtxName("1500ms -- should not reach here")
+        }
+    }.bind { firstJob ->
+        CoPrelude.launch(CoPrelude.modifyCtx(name = "Second", dispatcher = AlternativeDispatcher)) {
+            CoPrelude.delay(1000).bind {
+                CoPrelude.printCtxName("1000ms")
+            }
+        }.bind { secondJob ->
+            CoPrelude.cancel(firstJob).bind {
+                CoPrelude.joinAll(firstJob, secondJob)
+            }
+        }
+    }.runBlocking(CoCtx(DefaultDispatcher))
+}
+
+fun launchAndJoin() {
+    CoPrelude.launch(CoPrelude.modifyCtx(name = "First")) {
+        CoPrelude.delay(1000).bind {
+            CoPrelude.pure("Ok")
+        }
+    }.bind { job ->
+        CoPrelude.printCtxName("Start").bind {
+            CoPrelude.join(job).bind { value ->
+                CoPrelude.printCtxName("value = $value")
+            }
+        }
+    }.runBlocking()
+}
+
+fun launchAndJoinCancelled() {
+    CoPrelude.launch(CoPrelude.modifyCtx(name = "First")) {
+        CoPrelude.delay(1000).bind {
+            CoPrelude.cancel().bind {
+                CoPrelude.pure("Should not be executed")
+            }
+        }
+    }.bind { job ->
+        CoPrelude.printCtxName("Start").bind {
+            CoPrelude.join(job).bind { value ->
+                CoPrelude.printCtxName("value = $value")
+            }
+        }
+    }.runBlocking()
+}
+
+fun launchAndCancelParent() {
+    CoPrelude.launch(CoPrelude.modifyCtx(name = "First")) {
+        CoPrelude.delay(500).bind {
+            CoPrelude.printCtxName("500ms")
+        }.bind {
+            CoPrelude.delay(1000)
+        }.bind {
+            CoPrelude.printCtxName("1500ms -- should not reach here")
+        }
+    }.bind { firstJob ->
+        CoPrelude.launch(CoPrelude.modifyCtx(name = "Second", dispatcher = AlternativeDispatcher)) {
+            CoPrelude.delay(1000).bind {
+                CoPrelude.printCtxName("1000ms")
+            }
+        }.bind { secondJob ->
+            CoPrelude.delay(1200).bind {
+                CoPrelude.cancel().bind {
+                    CoPrelude.joinAll(firstJob, secondJob)
+                }
+            }
+        }
+    }.runBlocking(CoCtx(DefaultDispatcher))
+}
+
+fun main() {
+    // delayAndPrint()
+    launchAndCancelChildFromParent()
+    // launchAndJoin()
+    // launchAndJoinCancelled()
+    // launchAndCancelParent()
 
     /*
-    CoPrelude.delay(500).bind {
-        printCtxName("Test")
-    }.runBlocking()
     */
 }
