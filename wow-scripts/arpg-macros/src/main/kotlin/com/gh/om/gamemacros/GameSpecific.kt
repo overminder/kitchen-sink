@@ -1,6 +1,9 @@
+@file:OptIn(FlowPreview::class)
+
 package com.gh.om.gamemacros
 
 import com.github.kwhat.jnativehook.keyboard.NativeKeyEvent
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.joinAll
@@ -18,6 +21,7 @@ object GameSpecific {
         ::triggerSkillsInD4,
         ::townHotkeyInPoe,
         ::autoFlaskInPoe,
+        // ::detonateMineInPoe,
     )
 
     private suspend fun triggerSkillsInD4() {
@@ -47,6 +51,44 @@ object GameSpecific {
         }
     }
 
+    /**
+     * Detonate mines after each throw
+     */
+    private suspend fun detonateMineInPoe() {
+        val isPoe = isPoe()
+        val mineKey = "E"
+
+        suspend fun detonateWhenThrowing(isThrowingMines: Boolean) {
+            if (!isPoe.value || !isThrowingMines) {
+                return
+            }
+            KeyHooks.postPressRelease(NativeKeyEvent.VC_T)
+        }
+
+        suspend fun detonateAfterThrowing(thrown: Boolean) {
+            if (!isPoe.value || !thrown) {
+                return
+            }
+            delay(Duration.ofMillis(100))
+            KeyHooks.postPressRelease(NativeKeyEvent.VC_T)
+        }
+
+        currentCoroutineScope().async {
+            KeyHooks
+                .keyStates()
+                .map { mineKey in it.pressed }
+                // | Important! Otherwise keyStates are constantly changing
+                .distinctUntilChanged()
+                .sampleAndReemit(Duration.ofMillis(100))
+                .collect(::detonateWhenThrowing)
+        }
+
+        KeyHooks
+            .keyReleases()
+            .map { it == mineKey }
+            .collectLatest(::detonateAfterThrowing)
+    }
+
     private suspend fun townHotkeyInPoe() {
         val isPoe = isPoe()
 
@@ -70,10 +112,41 @@ object GameSpecific {
 
     private suspend fun autoFlaskInPoe() {
         // Keys to trigger flasks
-        val skillKeys = setOf("Q", "E")
+        // val skillKeys = setOf("Q", "E")
+        val skillKeys = setOf("Q", "E", "W")
+
+        val autoFlaskDisabledSince = KeyHooks.keyPresses().mapNotNull {
+            // Key to temporarily disable auto flask
+            if (it == "F4") {
+                // XXX This should come from the original source of the flow,
+                // not during a transformation (because flow is lazy)...
+                // Otherwise, this flow should be made hot to eagerly pull
+                // the current time.
+                Instant.now()
+            } else {
+                null
+            }
+        }.asNullable()
+            .onStart { emit(null) }
+            .stateIn(currentCoroutineScope())
+
+        val autoFlaskEnabled = autoFlaskDisabledSince
+            .sampleAndReemit(Duration.ofSeconds(1))
+            .map { disabledSince ->
+                val now = Instant.now()
+                disabledSince == null || now.isAfter(
+                    disabledSince.plusSeconds(10)
+                )
+            }
+
+        val isPoeF = combine(
+            isPoe(), autoFlaskEnabled,
+        ) { isPoe, enabled ->
+            isPoe && enabled
+        }.stateIn(currentCoroutineScope())
 
         val flaskInputs = combine(
-            isPoe(), KeyHooks.keyStates()
+            isPoeF, KeyHooks.keyStates()
         ) { isPoe, keyState ->
             PoeFlasks.InputEvent(
                 timestamp = Instant.now(),
@@ -83,34 +156,60 @@ object GameSpecific {
 
         val flaskInputState = flaskInputs.stateIn(currentCoroutineScope())
 
-        val fm = BuffManager(
-            PoeFlasks.Config.Par(
-                listOf(
-                    PoeFlasks.Config.alt(1, 2),
-                    PoeFlasks.Config.alt(3, 4)
-                )
-            ).toKeeper()
-        )
+        val fm = BuffManager(PoeFlasks.leveling.toKeeper())
 
         val gapFixer = currentCoroutineScope().async {
-            PoeFlasks.runGapFixer(fm, flaskInputs)
+            PoeFlasks.runGapFixer(fm, flaskInputs, isPoeF)
         }
 
-        val organicUser = currentCoroutineScope().async {
+        val useWhenKeyDown = currentCoroutineScope().async {
+            KeyHooks.keyPresses().collect {
+                if (it in skillKeys && isPoeF.value) {
+                    fm.useAll()
+                }
+            }
+        }
+
+
+        val useWhenLongPressed = currentCoroutineScope().async {
             while (true) {
                 if (flaskInputState.value.shouldUse) {
                     fm.useAll()
                 }
-
                 delay(Duration.ofMillis(100 + Random.nextLong(10)))
             }
         }
 
-        joinAll(gapFixer, organicUser)
+        // Only useWhenLongPressed: No over-firing
+        // gapFixer + useWhenLongPressed: Has over-firing
+        // useWhenKeyDown + useWhenLongPressed: Has over-firing
+        // Sounds like it's a race condition.
+        joinAll(gapFixer, useWhenKeyDown, useWhenLongPressed)
     }
 }
 
 private object PoeFlasks {
+    val leveling =
+        Config.Par(
+            listOf(
+                // Config.One(2),
+                // Config.One(3),
+                Config.alt(4, 5),
+                // Config.par(3, 4, 5),
+            )
+        )
+    val main = Config.par(1, 2, 3, 4, 5)
+    val dualLife = Config.Par(
+        listOf(
+            Config.alt(1, 2),
+            // PoeFlasks.Config.par(1, 2),
+            Config.One(3),
+            Config.One(4),
+            Config.One(5),
+            // PoeFlasks.Config.alt(4, 5)
+        )
+    )
+
     // Leftmost pixel of buff bar for each flask in 2560x1440 resolution
     private val X_COORDS = listOf(
         416,
@@ -149,6 +248,14 @@ private object PoeFlasks {
         val shouldUse: Boolean,
     )
 
+    enum class Ix(val key: Int) {
+        F1(0),
+        F2(1),
+        F3(2),
+        F4(3),
+        F5(4);
+    }
+
     /**
      * Represents a group of flasks, automated in certain way
      */
@@ -186,7 +293,8 @@ private object PoeFlasks {
 
     suspend fun runGapFixer(
         buffManager: BuffManager,
-        flaskInputs: Flow<InputEvent>
+        flaskInputs: Flow<InputEvent>,
+        isPoe: StateFlow<Boolean>,
     ) {
 
         val activelyPlaying = flaskInputs
@@ -196,7 +304,7 @@ private object PoeFlasks {
 
         buffManager.runGapFixer(
             activelyPlaying::value,
-            isPoe()::value,
+            isPoe::value,
         )
     }
 }

@@ -2,7 +2,9 @@ package com.gh.om.gamemacros
 
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicReference
 
+// XXX These must be thread safe
 object ActionCombinators {
     fun unconditionallySkipIfTooFrequent(
         frequency: Duration,
@@ -32,27 +34,47 @@ object ActionCombinators {
         }
     }
 
-    class SkipIfTooFrequent<A>(
+    class SkipIfTooFrequent(
         private val frequency: Duration,
-        private val conditionalAction: (A) -> Boolean,
-    ) : (A) -> Boolean {
-        var lastTimeFired: Instant? = null
-            private set
+        private val conditionalAction: () -> Boolean,
+        private val getNow: () -> Instant = Instant::now,
+    ) : () -> Boolean {
+        private val lastTimeFiredRef = AtomicReference(UNINITIALIZED)
+
+        val lastTimeFired: Instant?
+            get() {
+                val ltf = lastTimeFiredRef.get()
+                if (ltf === BEING_FIRED || ltf === UNINITIALIZED) {
+                    return null
+                }
+                return ltf
+            }
 
         /**
          * @return True if the action is triggered.
          */
-        override fun invoke(input: A): Boolean {
-            val ltf = lastTimeFired
-            val now = Instant.now()
-            if (ltf == null || now.isAfter(ltf.plus(frequency))) {
-                val fired = conditionalAction(input)
+        override fun invoke(): Boolean {
+            val now = getNow()
+            val ltf = lastTimeFiredRef.getAndSet(BEING_FIRED)
+            if (ltf === BEING_FIRED) {
+                // Is being fired by someone else: Already too frequent.
+                return false
+            }
+            if (ltf === UNINITIALIZED || now.isAfter(ltf.plus(frequency))) {
+                val fired = conditionalAction()
                 if (fired) {
-                    lastTimeFired = now
+                    lastTimeFiredRef.set(now)
                     return true
                 }
             }
+            // "Unlock" the ref
+            lastTimeFiredRef.set(ltf)
             return false
+        }
+
+        companion object {
+            private val BEING_FIRED = Instant.now()
+            private val UNINITIALIZED = Instant.now()
         }
     }
 }

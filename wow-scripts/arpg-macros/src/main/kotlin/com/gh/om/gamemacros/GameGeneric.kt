@@ -1,15 +1,20 @@
 package com.gh.om.gamemacros
 
 import kotlinx.coroutines.async
-import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.time.delay
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
 interface BuffKeeper {
     fun isBuffInEffect(): Boolean
-    suspend fun trigger()
+
+    /**
+     * @return True if any of the buff was indeed triggered
+     */
+    fun trigger(): Boolean
 
     /**
      * The start time of the latest buff
@@ -24,8 +29,7 @@ interface BuffKeeper {
 
 class BuffManager(private val keeper: BuffKeeper) {
     suspend fun useAll() {
-        // Avoid using all at the same time
-        keeper.trigger()
+        keeper.triggerUndetectably()
     }
 
     /**
@@ -75,8 +79,8 @@ class BuffManager(private val keeper: BuffKeeper) {
 }
 
 class ParallelBuffKeeper(
-    private val keepers: List<BuffKeeper>,
-    private val randomDelayMs: Long = 20,
+    val keepers: List<BuffKeeper>,
+    val randomDelayMs: Long = 20,
 ) : BuffKeeper {
 
     override val lastTimeBuffWasApplied: Instant?
@@ -91,20 +95,42 @@ class ParallelBuffKeeper(
         .map { it.isBuffInEffect() }
         .all { it }
 
-    override suspend fun trigger() {
+    override fun trigger(): Boolean {
+        return keepers.map { it.trigger() }.any { it }
+    }
+}
+
+suspend fun BuffKeeper.triggerUndetectably() {
+    if (this is ParallelBuffKeeper) {
+        // Avoid using all at the same time
         keepers.map {
             currentCoroutineScope().async {
                 delay(Duration.ofMillis(Random.nextLong(randomDelayMs)))
                 it.trigger()
             }
-        }.joinAll()
+        }.awaitAll().any { it }
+    } else {
+        trigger()
     }
 }
 
 class AlternatingBuffKeeper(
-    val keepers: List<BuffKeeper>,
+    private val keepers: List<BuffKeeper>,
+    getNow: () -> Instant = Instant::now,
+    // Around a couple of frames to leave time for flask buff to show
+    // XXX This is much more than a couple of frames!
+    throttle: Duration = Duration.ofMillis(500),
 ) : BuffKeeper {
-    private var nextIx = 0
+    private val nextIxRef = AtomicInteger()
+
+    // Need one more layer of throttle here, since each keeper's internal
+    // throttle state is independent, and won't prevent other keepers
+    // from overfiring.
+    private val throttledUse = ActionCombinators.SkipIfTooFrequent(
+        getNow = getNow,
+        frequency = throttle,
+        conditionalAction = ::triggerInternal,
+    )
 
     override val lastTimeBuffWasApplied: Instant?
         get() = keepers.mapNotNull { it.lastTimeBuffWasApplied }.maxOrNull()
@@ -116,34 +142,39 @@ class AlternatingBuffKeeper(
         return keepers.map { it.isBuffInEffect() }.any { it }
     }
 
-    override suspend fun trigger() {
+    override fun trigger() = throttledUse()
+
+    private fun triggerInternal(): Boolean {
         // Shouldn't trigger if any is in effect
         if (isBuffInEffect()) {
-            return
+            // Still return true to throttle
+            return true
         }
 
+        val nextIx = nextIxRef.getAndUpdate {
+            (it + 1) % keepers.size
+        }
         val keeper = keepers[nextIx]
         keeper.trigger()
-        nextIx = (nextIx + 1) % keepers.size
+        return true
     }
 }
 
 class SingleBuffKeeper(
     throttle: Duration = Duration.ofSeconds(1),
+    private val getNow: () -> Instant = Instant::now,
     private val applyBuff: () -> Unit,
     private val isBuffInEffect: () -> Boolean,
 ) : BuffKeeper {
     override fun isBuffInEffect(): Boolean {
         val inEffect = this.isBuffInEffect.invoke()
         if (inEffect) {
-            lastTimeBuffHadEffect = Instant.now()
+            lastTimeBuffHadEffect = getNow()
         }
         return inEffect
     }
 
-    override suspend fun trigger() {
-        throttledUse(Unit)
-    }
+    override fun trigger() = throttledUse()
 
     override val lastTimeBuffWasApplied
         get() = throttledUse.lastTimeFired
@@ -152,13 +183,12 @@ class SingleBuffKeeper(
         private set
 
     private val throttledUse = ActionCombinators.SkipIfTooFrequent(
-        throttle,
-        ::conditionalAction
+        getNow = getNow,
+        frequency = throttle,
+        conditionalAction = ::conditionalAction
     )
 
-    private fun conditionalAction(
-        @Suppress("UNUSED_PARAMETER") ignored: Unit
-    ): Boolean {
+    private fun conditionalAction(): Boolean {
         return if (isBuffInEffect()) {
             false
         } else {

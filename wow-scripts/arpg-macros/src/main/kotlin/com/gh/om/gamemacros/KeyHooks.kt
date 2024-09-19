@@ -14,6 +14,20 @@ data class SimpleKeyStates(
 )
 
 object KeyHooks {
+    fun keyPresses(): Flow<String> {
+        return callbackFlow {
+            val kl = object : NativeKeyListener {
+                override fun nativeKeyPressed(nativeEvent: NativeKeyEvent) {
+                    trySend(getKeyText(nativeEvent))
+                }
+            }
+            GlobalScreen.addNativeKeyListener(kl)
+            awaitClose {
+                GlobalScreen.removeNativeKeyListener(kl)
+            }
+        }
+    }
+
     fun keyReleases(): Flow<String> {
         return callbackFlow {
             val kl = object : NativeKeyListener {
@@ -26,11 +40,12 @@ object KeyHooks {
             awaitClose {
                 GlobalScreen.removeNativeKeyListener(kl)
             }
-        }.distinctUntilChanged()
+        }
     }
 
     fun keyStates(): Flow<SimpleKeyStates> {
-        val currentState: MutableSet<String> = ConcurrentHashMap.newKeySet<String>()
+        val currentState: MutableSet<String> =
+            ConcurrentHashMap.newKeySet<String>()
 
         return callbackFlow {
             fun sendNewState() {
@@ -59,8 +74,20 @@ object KeyHooks {
     }
 
     fun postPressRelease(keyCode: Int) {
-        val press = NativeKeyEvent(NativeKeyEvent.NATIVE_KEY_PRESSED, 0, 0, keyCode, NativeKeyEvent.CHAR_UNDEFINED)
-        val release = NativeKeyEvent(NativeKeyEvent.NATIVE_KEY_RELEASED, 0, 0, keyCode, NativeKeyEvent.CHAR_UNDEFINED)
+        val press = NativeKeyEvent(
+            NativeKeyEvent.NATIVE_KEY_PRESSED,
+            0,
+            0,
+            keyCode,
+            NativeKeyEvent.CHAR_UNDEFINED
+        )
+        val release = NativeKeyEvent(
+            NativeKeyEvent.NATIVE_KEY_RELEASED,
+            0,
+            0,
+            keyCode,
+            NativeKeyEvent.CHAR_UNDEFINED
+        )
         GlobalScreen.postNativeEvent(press)
         GlobalScreen.postNativeEvent(release)
     }
