@@ -7,6 +7,8 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 
 data class SimpleKeyStates(
@@ -95,6 +97,24 @@ object KeyHooks {
     fun postAsciiString(string: String) {
         for (c in string) {
             postPressRelease(getKeyCodeFromAsciiChar(c))
+        }
+    }
+}
+
+object KeyHooksEx {
+    fun keyPressed(
+        key: String,
+        sampleInterval: Duration? = Duration.ofMillis(100)
+    ): Flow<Boolean> {
+        val presses = KeyHooks
+            .keyStates()
+            .map { key in it.pressed }
+            // | Important! Otherwise keyStates are constantly changing
+            .distinctUntilChanged()
+        return if (sampleInterval != null) {
+            presses.sampleAndReemit(sampleInterval)
+        } else {
+            presses
         }
     }
 }

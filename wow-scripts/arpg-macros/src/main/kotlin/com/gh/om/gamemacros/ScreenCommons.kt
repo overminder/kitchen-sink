@@ -11,6 +11,7 @@ import org.example.com.gh.om.gamemacros.Win32Api
 import java.time.Duration
 import java.util.*
 
+// TODO: This is not cross platform yet. Make it work on Mac
 object ScreenCommons {
     fun activeWindows(
         sampleInterval: Duration = Duration.ofMillis(100)

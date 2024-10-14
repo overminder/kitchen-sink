@@ -9,8 +9,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.time.delay
-import kotlinx.coroutines.time.sample
 import java.time.Duration
+import kotlin.random.Random
 
 suspend fun currentCoroutineScope() =
     CoroutineScope(currentCoroutineContext())
@@ -21,9 +21,20 @@ fun <A> Flow<A>.sampleAndReemit(
     return transformLatest {
         while (true) {
             emit(it)
-            delay(interval)
+            safeDelay(interval)
         }
-    }.sample(interval)
+    }
 }
 
 fun <A> Flow<A>.asNullable(): Flow<A?> = this
+
+/**
+ * Safe in the sense that there's a random variance
+ */
+suspend fun safeDelay(
+    duration: Duration = Duration.ofMillis(100),
+    extraMillis: Long = 10
+) {
+    val changedDuration = duration.toMillis() + Random.nextLong(0, extraMillis)
+    delay(Duration.ofMillis(changedDuration))
+}

@@ -2,11 +2,9 @@ package com.gh.om.gamemacros
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.time.delay
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.random.Random
 
 interface BuffKeeper {
     fun isBuffInEffect(): Boolean
@@ -73,7 +71,7 @@ class BuffManager(private val keeper: BuffKeeper) {
 
         while (true) {
             once()
-            delay(Duration.ofMillis(100))
+            safeDelay(Duration.ofMillis(100))
         }
     }
 }
@@ -105,7 +103,7 @@ suspend fun BuffKeeper.triggerUndetectably() {
         // Avoid using all at the same time
         keepers.map {
             currentCoroutineScope().async {
-                delay(Duration.ofMillis(Random.nextLong(randomDelayMs)))
+                safeDelay(Duration.ZERO, randomDelayMs)
                 it.trigger()
             }
         }.awaitAll().any { it }
@@ -194,6 +192,31 @@ class SingleBuffKeeper(
         } else {
             applyBuff()
             true
+        }
+    }
+}
+
+class KeySequencer(
+    private val runKeys: List<suspend () -> Unit>,
+) : suspend () -> Unit {
+    override suspend fun invoke() {
+        for (k in runKeys) {
+            k()
+        }
+    }
+
+    companion object {
+        fun from(
+            keyAndCastRates: List<Pair<String, Double>>,
+        ): KeySequencer {
+            val runKeys = keyAndCastRates.map { (key, castRate) ->
+                val backswingTime = (1000 / castRate).toLong()
+                suspend {
+                    KeyHooks.postAsciiString(key)
+                    safeDelay(Duration.ofMillis(backswingTime))
+                }
+            }
+            return KeySequencer(runKeys)
         }
     }
 }

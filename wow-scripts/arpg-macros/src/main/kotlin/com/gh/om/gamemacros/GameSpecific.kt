@@ -7,13 +7,11 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.time.delay
 import org.example.com.gh.om.gamemacros.Win32Api
 import java.awt.Color
 import java.time.Duration
 import java.time.Instant
 import kotlin.math.pow
-import kotlin.random.Random
 
 
 object GameSpecific {
@@ -21,7 +19,9 @@ object GameSpecific {
         ::triggerSkillsInD4,
         ::townHotkeyInPoe,
         ::autoFlaskInPoe,
-        // ::detonateMineInPoe,
+        // ::tripleClickInPoe,
+        // ::novaOfFrostboltsInPoe,
+        ::detonateMineInPoe,
     )
 
     private suspend fun triggerSkillsInD4() {
@@ -47,15 +47,55 @@ object GameSpecific {
             if (shouldTrigger.value) {
                 actions()
             }
-            delay(Duration.ofMillis(10))
+            safeDelay(Duration.ofMillis(10))
         }
+    }
+
+    /**
+     * Triggers both ice nova and frostbolts with just one key. This
+     * allows us to emulate Kitava's Thirst while still benefitting from
+     * suppressions from a rare helmet.
+     *
+     * Warning: This (or manual self-casting frostbolt in general) will
+     * result in 30-50% less DPS, because of the zero dps frostbolt cast.
+     */
+    private suspend fun novaOfFrostboltsInPoe() {
+        val isPoe = isPoeAndTriggerKeyEnabled()
+        val inputKey = "E"
+        // Comes from POB.
+        val frostboltCastRate = 4.53
+        // Can be slower than what POB shows
+        val novaCastRate = 6.36
+        val sequencer = KeySequencer.from(
+            listOf(
+                // Need to cast frostbolt first, so spell echo from nova
+                // goes to the frostbolt (instead of on the self-cast,
+                // which incurs double backswing animation)
+                "F" to frostboltCastRate,
+                "D" to novaCastRate,
+                "D" to novaCastRate,
+                "D" to novaCastRate,
+            )
+        )
+
+        // The idea is to consider both discrete input key presses and
+        // continuous input key states, and continuously run the key
+        // sequence while the input key is pressed.
+        KeyHooksEx
+            .keyPressed(inputKey, sampleInterval = null)
+            .onStart { emit(false) }
+            .collectLatest { pressed ->
+                while (isPoe.value && pressed) {
+                    sequencer()
+                }
+            }
     }
 
     /**
      * Detonate mines after each throw
      */
     private suspend fun detonateMineInPoe() {
-        val isPoe = isPoe()
+        val isPoe = isPoeAndTriggerKeyEnabled()
         val mineKey = "E"
 
         suspend fun detonateWhenThrowing(isThrowingMines: Boolean) {
@@ -69,7 +109,7 @@ object GameSpecific {
             if (!isPoe.value || !thrown) {
                 return
             }
-            delay(Duration.ofMillis(100))
+            safeDelay(Duration.ofMillis(100))
             KeyHooks.postPressRelease(NativeKeyEvent.VC_T)
         }
 
@@ -87,6 +127,29 @@ object GameSpecific {
             .keyReleases()
             .map { it == mineKey }
             .collectLatest(::detonateAfterThrowing)
+    }
+
+    private suspend fun tripleClickInPoe() {
+        val mousePosition = MouseHooks
+            .motionEvents()
+            .map {
+                it.x to it.y
+            }
+            .stateIn(currentCoroutineScope())
+
+        val isPoe = isPoe()
+        suspend fun handle(pressed: Boolean) {
+            if (!isPoe.value || !pressed) {
+                return
+            }
+
+            repeat(3) {
+                val (x, y) = mousePosition.value
+                MouseHooks.postClick(x, y)
+                safeDelay(Duration.ofMillis(16))
+            }
+        }
+        KeyHooksEx.keyPressed("X", sampleInterval = null).collect(::handle)
     }
 
     private suspend fun townHotkeyInPoe() {
@@ -115,38 +178,12 @@ object GameSpecific {
         // val skillKeys = setOf("Q", "E")
         val skillKeys = setOf("Q", "E", "W")
 
-        val autoFlaskDisabledSince = KeyHooks.keyPresses().mapNotNull {
-            // Key to temporarily disable auto flask
-            if (it == "F4") {
-                // XXX This should come from the original source of the flow,
-                // not during a transformation (because flow is lazy)...
-                // Otherwise, this flow should be made hot to eagerly pull
-                // the current time.
-                Instant.now()
-            } else {
-                null
-            }
-        }.asNullable()
-            .onStart { emit(null) }
-            .stateIn(currentCoroutineScope())
+        val fm = BuffManager(PoeFlasks.leveling2Qs.toKeeper())
 
-        val autoFlaskEnabled = autoFlaskDisabledSince
-            .sampleAndReemit(Duration.ofSeconds(1))
-            .map { disabledSince ->
-                val now = Instant.now()
-                disabledSince == null || now.isAfter(
-                    disabledSince.plusSeconds(10)
-                )
-            }
-
-        val isPoeF = combine(
-            isPoe(), autoFlaskEnabled,
-        ) { isPoe, enabled ->
-            isPoe && enabled
-        }.stateIn(currentCoroutineScope())
+        val isPoe = isPoeAndTriggerKeyEnabled()
 
         val flaskInputs = combine(
-            isPoeF, KeyHooks.keyStates()
+            isPoe, KeyHooks.keyStates()
         ) { isPoe, keyState ->
             PoeFlasks.InputEvent(
                 timestamp = Instant.now(),
@@ -156,15 +193,13 @@ object GameSpecific {
 
         val flaskInputState = flaskInputs.stateIn(currentCoroutineScope())
 
-        val fm = BuffManager(PoeFlasks.leveling.toKeeper())
-
         val gapFixer = currentCoroutineScope().async {
-            PoeFlasks.runGapFixer(fm, flaskInputs, isPoeF)
+            PoeFlasks.runGapFixer(fm, flaskInputs, isPoe)
         }
 
         val useWhenKeyDown = currentCoroutineScope().async {
             KeyHooks.keyPresses().collect {
-                if (it in skillKeys && isPoeF.value) {
+                if (it in skillKeys && isPoe.value) {
                     fm.useAll()
                 }
             }
@@ -176,7 +211,7 @@ object GameSpecific {
                 if (flaskInputState.value.shouldUse) {
                     fm.useAll()
                 }
-                delay(Duration.ofMillis(100 + Random.nextLong(10)))
+                safeDelay(Duration.ofMillis(100))
             }
         }
 
@@ -189,16 +224,25 @@ object GameSpecific {
 }
 
 private object PoeFlasks {
-    val leveling =
+    val leveling2Qs = Config.alt(4, 5)
+    val leveling3Qs = Config.alt(3, 4, 5)
+    val leveling2Qs1U =
         Config.Par(
             listOf(
                 // Config.One(2),
-                // Config.One(3),
-                Config.alt(4, 5),
-                // Config.par(3, 4, 5),
+                Config.One(3),
+                Config.alt(4, 5)
             )
         )
-    val main = Config.par(1, 2, 3, 4, 5)
+    val leveling2Qs2U =
+        Config.Par(
+            listOf(
+                Config.One(2),
+                Config.One(3),
+                Config.alt(4, 5)
+            )
+        )
+    val all = Config.par(1, 2, 3, 4, 5)
     val dualLife = Config.Par(
         listOf(
             Config.alt(1, 2),
@@ -209,6 +253,8 @@ private object PoeFlasks {
             // PoeFlasks.Config.alt(4, 5)
         )
     )
+
+    val nonPf = Config.par(2, 3, 4, 5)
 
     // Leftmost pixel of buff bar for each flask in 2560x1440 resolution
     private val X_COORDS = listOf(
@@ -248,6 +294,9 @@ private object PoeFlasks {
         val shouldUse: Boolean,
     )
 
+    /**
+     * The index of the flask slot.
+     */
     enum class Ix(val key: Int) {
         F1(0),
         F2(1),
@@ -319,9 +368,46 @@ private fun actionToPressAndReleaseKey(
 
 private suspend fun activeTitleAsState(title: String) = ScreenCommons
     .activeWindowHas(title = title)
+    .onStart { emit(false) }
     .stateIn(currentCoroutineScope())
 
 private suspend fun isPoe() = activeTitleAsState("Path of Exile")
+
+private suspend fun isPoeAndTriggerKeyEnabled(): StateFlow<Boolean> {
+    return combine(
+        isPoe(), isTriggerKeyEnabled(),
+    ) { isPoe, enabled ->
+        isPoe && enabled
+    }.stateIn(currentCoroutineScope())
+}
+
+private suspend fun isTriggerKeyEnabled(
+    keyToDisable: String = "F4"
+): Flow<Boolean> {
+    val disabledSince = KeyHooks.keyPresses().mapNotNull {
+        // Key to temporarily disable triggers
+        if (it == keyToDisable) {
+            // XXX This should come from the original source of the flow,
+            // not during a transformation (because flow is lazy)...
+            // Otherwise, this flow should be made hot to eagerly pull
+            // the current time.
+            Instant.now()
+        } else {
+            null
+        }
+    }.asNullable()
+        .onStart { emit(null) }
+        .stateIn(currentCoroutineScope())
+
+    return disabledSince
+        .sampleAndReemit(Duration.ofSeconds(1))
+        .map { disabledSince ->
+            val now = Instant.now()
+            disabledSince == null || now.isAfter(
+                disabledSince.plusSeconds(10)
+            )
+        }
+}
 
 private val COLOR_RGB_COMPONENTS =
     listOf(Color::getRed, Color::getBlue, Color::getGreen)
