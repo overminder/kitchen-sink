@@ -22,7 +22,9 @@ dependencies {
 
     // https://mvnrepository.com/artifact/net.java.dev.jna/jna
     implementation("net.java.dev.jna:jna-platform:5.14.0")
-    implementation("net.java.dev.jna:jna-platform:5.14.0")
+
+    // mac JNA stuff
+    implementation("com.github.oshi:oshi-core:6.6.5")
 }
 
 tasks.test {

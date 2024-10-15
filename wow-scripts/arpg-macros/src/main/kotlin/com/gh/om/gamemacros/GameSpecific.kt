@@ -13,21 +13,20 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.math.pow
 
-
 object GameSpecific {
     val ALL = listOf(
-        ::triggerSkillsInD4,
+        // ::triggerSkillsInD4,
         ::townHotkeyInPoe,
-        ::autoFlaskInPoe,
+        // ::autoFlaskInPoe,
         // ::tripleClickInPoe,
         // ::novaOfFrostboltsInPoe,
-        ::detonateMineInPoe,
+        // ::detonateMineInPoe,
     )
 
     private suspend fun triggerSkillsInD4() {
         val shouldTrigger = combine(
             KeyHooks.keyStates(),
-            ScreenCommons.activeWindowHas(title = "Diablo IV")
+            ScreenCommons.INSTANCE.activeWindowHas(title = "Diablo IV")
         ) { keyState, isD4 ->
             // E is the key for the main skill
             "E" in keyState.pressed && isD4
@@ -272,11 +271,7 @@ private object PoeFlasks {
         val x = X_COORDS[flaskIx]
 
         fun isBuffActive(): Boolean {
-            val pixelRef = Win32Api.getPixel(
-                x = x,
-                y = Y_COORD
-            ) ?: return false
-            val pixel = fromColorRef(pixelRef)
+            val pixel = ScreenCommons.INSTANCE.getPixel(x = x, y = Y_COORD) ?: return false
 
             return colorDistance(BUFF_COLOR, pixel) < 10
         }
@@ -367,6 +362,7 @@ private fun actionToPressAndReleaseKey(
     }
 
 private suspend fun activeTitleAsState(title: String) = ScreenCommons
+    .INSTANCE
     .activeWindowHas(title = title)
     .onStart { emit(false) }
     .stateIn(currentCoroutineScope())
@@ -422,10 +418,3 @@ private fun colorDistance(
     return (variances / 3).pow(0.5)
 }
 
-// See https://learn.microsoft.com/en-us/windows/win32/gdi/colorref
-private fun fromColorRef(colorRef: Int): Color {
-    val r = colorRef and 0xff
-    val g = (colorRef shr 8) and 0xff
-    val b = (colorRef shr 16) and 0xff
-    return Color(r, g, b)
-}

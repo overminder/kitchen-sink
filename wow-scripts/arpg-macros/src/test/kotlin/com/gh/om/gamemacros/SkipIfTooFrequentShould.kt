@@ -68,7 +68,7 @@ class BuffMocks(
         return Buff(newVersion, getNow())
     }
 
-    suspend fun conditionalAction(): Boolean {
+    fun conditionalAction(): Boolean {
         require(!isConditionalActionEntered.getAndSet(true))
         try {
             if (isInEffect()) {

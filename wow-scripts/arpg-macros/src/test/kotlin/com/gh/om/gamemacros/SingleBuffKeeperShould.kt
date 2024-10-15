@@ -15,7 +15,7 @@ private class TestSingleBuffKeeper(private val mocks: BuffMocks) : BuffKeeper {
         return mocks.isInEffect()
     }
 
-    override suspend fun trigger() = mocks.conditionalAction()
+    override fun trigger() = mocks.conditionalAction()
 
     override val lastTimeBuffWasApplied: Instant? = null
     override val lastTimeBuffHadEffect: Instant? = null
