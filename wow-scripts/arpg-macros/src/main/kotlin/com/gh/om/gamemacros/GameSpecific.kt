@@ -7,7 +7,6 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.joinAll
-import org.example.com.gh.om.gamemacros.Win32Api
 import java.awt.Color
 import java.time.Duration
 import java.time.Instant
@@ -17,8 +16,8 @@ object GameSpecific {
     val ALL = listOf(
         // ::triggerSkillsInD4,
         ::townHotkeyInPoe,
-        // ::autoFlaskInPoe,
-        // ::tripleClickInPoe,
+        ::autoFlaskInPoe,
+        ::tripleClickInPoe,
         // ::novaOfFrostboltsInPoe,
         // ::detonateMineInPoe,
     )
@@ -174,10 +173,10 @@ object GameSpecific {
 
     private suspend fun autoFlaskInPoe() {
         // Keys to trigger flasks
-        // val skillKeys = setOf("Q", "E")
-        val skillKeys = setOf("Q", "E", "W")
+        val skillKeys = setOf("Q", "E")
+        // val skillKeys = setOf("Q", "E", "W")
 
-        val fm = BuffManager(PoeFlasks.leveling2Qs.toKeeper())
+        val fm = BuffManager(PoeFlasks.mbTincture.toKeeper())
 
         val isPoe = isPoeAndTriggerKeyEnabled()
 
@@ -254,6 +253,7 @@ private object PoeFlasks {
     )
 
     val nonPf = Config.par(2, 3, 4, 5)
+    val mbTincture = Config.One(3, isTincture = true)
 
     // Leftmost pixel of buff bar for each flask in 2560x1440 resolution
     private val X_COORDS = listOf(
@@ -265,23 +265,60 @@ private object PoeFlasks {
     ).map { it + 2 /* To use flasks slightly earlier */ }
     private val Y_COORD = 1432
 
+    // Tinctures have a different "active" pixel checking logic,
+    // though their "cooldown" bar looks like flask's duration bar.
+    private val TINCTURE_X = 444
+    private val TINCTURE_Y = 1314
+
+    // The color for flask's duration bar (or tincture's cooldown bar)
     private val BUFF_COLOR = Color(249, 215, 153)
 
-    fun flaskKeeper(flaskIx: Int): BuffKeeper {
-        val x = X_COORDS[flaskIx]
+    // The color for tincture's red light activation indicator at the top
+    private val TINCTURE_ACTIVE_COLOR = Color(164, 83, 40)
 
-        fun isBuffActive(): Boolean {
-            val pixel = ScreenCommons.INSTANCE.getPixel(x = x, y = Y_COORD) ?: return false
+    fun tinctureKeeper(
+        ix: Int
+    ): BuffKeeper {
+        val activeX = X_COORDS[ix] + TINCTURE_X - X_COORDS.first()
+        val activeY = TINCTURE_Y
+        val isCoolingDown = { isDurationBarActive(ix) }
 
-            return colorDistance(BUFF_COLOR, pixel) < 10
+        fun doUse() = KeyHooks.postAsciiString("${ix + 1}")
+
+        fun isActiveOrCoolingDown(): Boolean {
+            val pixel =
+                ScreenCommons.INSTANCE.getPixel(x = activeX, y = activeY)
+                    ?: return false
+            val distance = colorDistance(TINCTURE_ACTIVE_COLOR, pixel)
+            // println("Pixel: $pixel, distance = $distance")
+            val isActive = distance < 15
+            return isActive || isCoolingDown()
         }
 
+        return SingleBuffKeeper(
+            applyBuff = ::doUse,
+            isBuffInEffect = ::isActiveOrCoolingDown
+        )
+    }
+
+    fun flaskKeeper(
+        flaskIx: Int,
+    ): BuffKeeper {
         fun useFlask() = KeyHooks.postAsciiString("${flaskIx + 1}")
 
         return SingleBuffKeeper(
             applyBuff = ::useFlask,
-            isBuffInEffect = ::isBuffActive
+            isBuffInEffect = { isDurationBarActive(flaskIx) }
         )
+    }
+
+    private fun isDurationBarActive(ix: Int): Boolean {
+        val x = X_COORDS[ix]
+        val y = Y_COORD
+        val pixel = ScreenCommons.INSTANCE.getPixel(x = x, y = y)
+            ?: return false
+
+        return colorDistance(BUFF_COLOR, pixel) < 10
     }
 
     data class InputEvent(
@@ -305,7 +342,11 @@ private object PoeFlasks {
      */
     sealed class Config {
         data class Alt(val configs: List<Config>) : Config()
-        data class One(val key: Int) : Config()
+        data class One(
+            val key: Int,
+            val isTincture: Boolean = false
+        ) : Config()
+
         data class Par(val configs: List<Config>) : Config()
 
         fun toKeeper(): BuffKeeper {
@@ -320,7 +361,11 @@ private object PoeFlasks {
                         configs.map(Config::toKeeper)
                     )
 
-                is One -> flaskKeeper(key - 1)
+                is One -> if (isTincture) {
+                    tinctureKeeper(key - 1)
+                } else {
+                    flaskKeeper(key - 1)
+                }
             }
         }
 
@@ -417,4 +462,3 @@ private fun colorDistance(
     }
     return (variances / 3).pow(0.5)
 }
-
