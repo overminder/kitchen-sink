@@ -75,7 +75,7 @@ object KeyHooks {
         }.distinctUntilChanged()
     }
 
-    fun postPressRelease(keyCode: Int) {
+    fun postPress(keyCode: Int) {
         val press = NativeKeyEvent(
             NativeKeyEvent.NATIVE_KEY_PRESSED,
             0,
@@ -83,6 +83,10 @@ object KeyHooks {
             keyCode,
             NativeKeyEvent.CHAR_UNDEFINED
         )
+        GlobalScreen.postNativeEvent(press)
+    }
+
+    fun postRelease(keyCode: Int) {
         val release = NativeKeyEvent(
             NativeKeyEvent.NATIVE_KEY_RELEASED,
             0,
@@ -90,8 +94,24 @@ object KeyHooks {
             keyCode,
             NativeKeyEvent.CHAR_UNDEFINED
         )
-        GlobalScreen.postNativeEvent(press)
         GlobalScreen.postNativeEvent(release)
+    }
+
+    fun postPressRelease(keyCode: Int) {
+        postPress(keyCode)
+        postRelease(keyCode)
+    }
+
+    suspend fun postPressWaitRelease(
+        keyCodes: List<Int>,
+        waitTime: Duration
+    ) {
+        try {
+            keyCodes.forEach(::postPress)
+            safeDelay(waitTime)
+        } finally {
+            keyCodes.forEach(::postRelease)
+        }
     }
 
     fun postAsciiString(string: String) {
@@ -117,9 +137,44 @@ object KeyHooksEx {
             presses
         }
     }
+
+    enum class Conj {
+        And,
+        Or,
+    }
+
+    fun keysPressed(
+        keys: List<String>,
+        conj: Conj = Conj.And,
+        sampleInterval: Duration? = Duration.ofMillis(100)
+    ): Flow<Boolean> {
+        var previousState: Set<String> = emptySet()
+        val presses = KeyHooks
+            .keyStates()
+            .map {
+                val keySet = it.pressed
+                if (previousState != keySet) {
+                    // Debug (can't replicate hmm)
+                    // println("keyStates change: $previousState -> $keySet")
+                    previousState = keySet
+                }
+                val check = when (conj) {
+                    Conj.And -> keys::all
+                    Conj.Or -> keys::any
+                }
+                check { key -> key in it.pressed }
+            }
+            // | Important! Otherwise keyStates are constantly changing
+            .distinctUntilChanged()
+        return if (sampleInterval != null) {
+            presses.sampleAndReemit(sampleInterval)
+        } else {
+            presses
+        }
+    }
 }
 
-private fun getKeyCodeFromAsciiChar(c: Char): Int {
+fun getKeyCodeFromAsciiChar(c: Char): Int {
     SPECIAL_CASE_KEY_CODES[c]?.let {
         return it
     }

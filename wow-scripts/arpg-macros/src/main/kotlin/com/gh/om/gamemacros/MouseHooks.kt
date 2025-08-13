@@ -47,7 +47,20 @@ object MouseHooks {
         y: Int,
         button: Int = NativeMouseEvent.BUTTON1,
         delayMs: Long = 16,
+        moveFirst: Boolean = false,
     ) {
+        val ev0 = if (moveFirst) {
+            NativeMouseEvent(
+                NativeMouseEvent.NATIVE_MOUSE_MOVED,
+                0,
+                x,
+                y,
+                1,
+                button
+            )
+        } else {
+            null
+        }
         val ev = NativeMouseEvent(
             NativeMouseEvent.NATIVE_MOUSE_PRESSED,
             0,
@@ -64,6 +77,10 @@ object MouseHooks {
             1,
             button
         )
+        ev0?.let {
+            GlobalScreen.postNativeEvent(it)
+            safeDelay(Duration.ofMillis(delayMs))
+        }
         GlobalScreen.postNativeEvent(ev)
         safeDelay(Duration.ofMillis(delayMs))
         GlobalScreen.postNativeEvent(ev2)

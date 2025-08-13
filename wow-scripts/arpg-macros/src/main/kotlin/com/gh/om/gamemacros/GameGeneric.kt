@@ -2,6 +2,7 @@ package com.gh.om.gamemacros
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.time.delay
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -216,6 +217,48 @@ class KeySequencer(
                     safeDelay(Duration.ofMillis(backswingTime))
                 }
             }
+            return KeySequencer(runKeys)
+        }
+
+        /**
+         * Alternates between the keys and press times.
+         * A string can contain more than one chars, which will be pressed
+         * together and released together.
+         *
+         * The press time is in milliseconds.
+         */
+        fun fromLongPress(
+            keyAndPressTimes: List<Pair<String, Long>>,
+            gap: Duration = Duration.ofMillis(25),
+        ): KeySequencer {
+            val runKeys = keyAndPressTimes.map { (keys, pressTime) ->
+                suspend {
+                    KeyHooks.postPressWaitRelease(
+                        keys.map(::getKeyCodeFromAsciiChar),
+                        Duration.ofMillis(pressTime)
+                    )
+                    delay(gap)
+                }
+            }
+            return KeySequencer(runKeys)
+        }
+
+        fun shortPressWithInterval(
+            keys: String,
+            gapBefore: Duration = Duration.ofMillis(200),
+            gapAfter: Duration = Duration.ofMillis(200),
+            duration: Duration = Duration.ofMillis(200),
+        ): KeySequencer {
+            val runKeys = listOf(
+                suspend {
+                    delay(gapBefore)
+                    KeyHooks.postPressWaitRelease(
+                        keys.map(::getKeyCodeFromAsciiChar),
+                        duration
+                    )
+                    delay(gapAfter)
+                }
+            )
             return KeySequencer(runKeys)
         }
     }

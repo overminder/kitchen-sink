@@ -2,6 +2,9 @@
 
 package com.gh.om.gamemacros
 
+import com.gh.om.gamemacros.complex.LEADER_KEY
+import com.gh.om.gamemacros.complex.MouseCap
+import com.gh.om.gamemacros.complex.PoeStackedDeck
 import com.github.kwhat.jnativehook.keyboard.NativeKeyEvent
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
@@ -14,30 +17,51 @@ import kotlin.math.pow
 
 object GameSpecific {
     val ALL = listOf(
-        // ::triggerSkillsInD4,
+        // ::lodWolInD3,
+        ::triggerSkillsInD4,
         ::townHotkeyInPoe,
+        ::townHotkeyInPoe2,
         ::autoFlaskInPoe,
-        ::tripleClickInPoe,
+        // ::tripleClickInPoe,
         // ::novaOfFrostboltsInPoe,
         // ::detonateMineInPoe,
+        ::triggerSkillInPoe,
+        ::toggleLongPressInPoe,
+
+        ::ctrlClickManyTimesInPoe,
+        MouseCap::printMousePos,
+        PoeStackedDeck::unstackEntireStack,
+
+        // TODO: too many commands such that it becomes harder to
+        //  allocate a different hot key for each. Need to switch to the
+        //  leader key pattern.
     )
 
-    private suspend fun triggerSkillsInD4() {
+    init {
+        // Sanity check: these 2 rules may conflict with each other
+        val mutualExclusive = ALL.count {
+            setOf(
+                ::triggerSkillInPoe.name,
+                ::toggleLongPressInPoe.name,
+            ).contains(it.name)
+        }
+        // require(mutualExclusive <= 1) { "Conflicting rules!" }
+    }
+
+    private suspend fun triggerSkillsInD3() {
         val shouldTrigger = combine(
             KeyHooks.keyStates(),
-            ScreenCommons.INSTANCE.activeWindowHas(title = "Diablo IV")
-        ) { keyState, isD4 ->
+            ScreenCommons.INSTANCE.activeWindowsThat { it.endsWith("III") }
+        ) { keyState, isD3 ->
             // E is the key for the main skill
-            "E" in keyState.pressed && isD4
+            "E" in keyState.pressed && isD3
         }.stateIn(currentCoroutineScope())
 
         val actions = ActionCombinators.roundRobin(
             // All the rest of the skills to be triggered together
             listOf(
                 NativeKeyEvent.VC_Q,
-                NativeKeyEvent.VC_2,
-                NativeKeyEvent.VC_3,
-                NativeKeyEvent.VC_4,
+                NativeKeyEvent.VC_F,
             ).map(::actionToPressAndReleaseKey)
         )
 
@@ -45,8 +69,107 @@ object GameSpecific {
             if (shouldTrigger.value) {
                 actions()
             }
-            safeDelay(Duration.ofMillis(10))
+            safeDelay(Duration.ofMillis(200))
         }
+    }
+
+    private suspend fun lodWolInD3() {
+        // E is for triggering
+        val triggerKey = "E"
+        val isD3 = ScreenCommons.INSTANCE
+            .activeWindowsThat { it.endsWith("III") }
+            .stateIn(currentCoroutineScope())
+        val keyIsPressed = KeyHooks.keyStates().map {
+            triggerKey in it.pressed
+        }.stateIn(currentCoroutineScope())
+
+        currentCoroutineScope().async {
+            val useCooldowns = ActionCombinators.roundRobin(
+                listOf(
+                    // Epiphany
+                    NativeKeyEvent.VC_F,
+                    // Potion
+                    NativeKeyEvent.VC_3,
+                ).map(::actionToPressAndReleaseKey)
+            )
+            while (true) {
+                if (isD3.value && keyIsPressed.value) {
+                    useCooldowns()
+                }
+                safeDelay(Duration.ofMillis(200))
+            }
+        }
+
+        // val castRate = 2.25 * 1.1
+        val castRate = 1.85 * 1.1
+        val sequencer = KeySequencer.from(
+            listOf(
+                // 1 bell + 1 cyclone
+                "D" to castRate,
+                "Q" to castRate,
+            )
+        )
+
+        // The idea is to consider both discrete input key presses and
+        // continuous input key states, and continuously run the key
+        // sequence while the input key is pressed.
+        KeyHooksEx
+            .keyPressed(triggerKey, sampleInterval = null)
+            .onStart { emit(false) }
+            .collectLatest { pressed ->
+                while (isD3.value && pressed) {
+                    sequencer()
+                }
+            }
+    }
+
+    private suspend fun triggerSkillsInD4() {
+        suspend fun shouldTrigger(key: String): StateFlow<Boolean> {
+            return combine(
+                KeyHooks.keyStates(),
+                ScreenCommons.INSTANCE.activeWindowHas(title = "Diablo IV")
+            ) { keyState, isD4 ->
+                // E is the key for the main skill
+                key in keyState.pressed && isD4
+            }.stateIn(currentCoroutineScope())
+        }
+
+        suspend fun triggerKeyOn(
+            onPress: String,
+            keys: List<Int>
+        ) {
+            val actions = ActionCombinators.roundRobin(
+                // All the rest of the skills to be triggered together
+                keys.map(::actionToPressAndReleaseKey)
+            )
+
+            val shouldTrigger = shouldTrigger(onPress)
+
+            while (true) {
+                if (shouldTrigger.value) {
+                    actions()
+                }
+                safeDelay(Duration.ofMillis(50))
+            }
+        }
+
+        currentCoroutineScope().async {
+            triggerKeyOn(
+                "F", listOf(
+                    NativeKeyEvent.VC_Q,
+                    NativeKeyEvent.VC_1,
+                    NativeKeyEvent.VC_2,
+                )
+            )
+        }
+
+        triggerKeyOn(
+            "E",
+            listOf(
+                NativeKeyEvent.VC_3,
+                NativeKeyEvent.VC_4,
+            )
+        )
     }
 
     /**
@@ -90,6 +213,96 @@ object GameSpecific {
     }
 
     /**
+     * When pressing E, repeatedly short-press Q (plague bearer) to weave
+     * spells into attacks. Plague bearer isn't in the global GCD.
+     * Also short-press D (focus).
+     */
+    private suspend fun triggerSkillInPoe() {
+        val isPoe = isPoeAndTriggerKeyEnabled()
+
+        suspend fun runSeq(
+            inputKeys: List<String>,
+            sequencer: KeySequencer
+        ) {
+            KeyHooksEx
+                .keysPressed(
+                    inputKeys,
+                    conj = KeyHooksEx.Conj.Or,
+                    sampleInterval = null
+                )
+                .onStart { emit(false) }
+                .collectLatest { pressed ->
+                    while (isPoe.value && pressed) {
+                        sequencer()
+                    }
+                }
+        }
+
+        suspend fun insertSpells() {
+            val sequencer = KeySequencer.from(
+                listOf("Q" to 300.0, "D" to 300.0)
+            )
+            runSeq(listOf("E", "F"), sequencer)
+        }
+
+        // currentCoroutineScope().async { insertSpells() }
+        insertSpells()
+    }
+
+    /**
+     * Toggle repeated E on T. The is to solve a pain point for simulacrum.
+     */
+    private suspend fun toggleLongPressInPoe() {
+        val isPoe = isPoeAndTriggerKeyEnabled(
+            // Also disable on travel macros, since they may type T.
+            setOf("F4", "F5", "F6", "F7")
+        )
+
+        val output = MutableStateFlow(false)
+
+        suspend fun updateOutputOnPress(
+            inputKey: String,
+            how: (Boolean) -> Boolean
+        ) {
+            var wasInputPressed = false
+            KeyHooksEx
+                .keyPressed(inputKey, sampleInterval = null)
+                .onStart { emit(false) }
+                .collectLatest { pressed ->
+                    if (!wasInputPressed && pressed) {
+                        // Do toggle
+                        output.update(how)
+                    }
+                    wasInputPressed = pressed
+                }
+        }
+
+        currentCoroutineScope().async {
+            // Toggle on Q
+            updateOutputOnPress("T") { !it && isPoe.value }
+        }
+
+        currentCoroutineScope().async {
+            // Reset on R
+            updateOutputOnPress("R") { false }
+        }
+
+        val mainAttack = KeySequencer.fromLongPress(
+            listOf(
+                "E" to 500
+            )
+        )
+
+        output.collectLatest { shouldAttack ->
+            if (shouldAttack) {
+                while (isPoe.value) {
+                    mainAttack()
+                }
+            }
+        }
+    }
+
+    /**
      * Detonate mines after each throw
      */
     private suspend fun detonateMineInPoe() {
@@ -127,6 +340,46 @@ object GameSpecific {
             .collectLatest(::detonateAfterThrowing)
     }
 
+    /**
+     * E.g. deleting beasts
+     * regex: wild|primal|vivid|chimeral|black
+     * XXX bug: once alt-x, only pressing alt can also trigger this
+     */
+    private suspend fun ctrlClickManyTimesInPoe() {
+        val mousePosition = MouseHooks
+            .motionEvents()
+            .map {
+                it.x to it.y
+            }
+            .stateIn(currentCoroutineScope())
+
+        val isPoe = isPoeAndTriggerKeyEnabled(
+            setOf("F4", "F5", "F6", "F7", "R", "E", "W")
+        )
+
+        suspend fun handle(pressed: Boolean) {
+            if (!isPoe.value || !pressed) {
+                return
+            }
+
+            repeat(75) {
+                if (!isPoe.value) {
+                    // Cooperatively break
+                    return
+                }
+
+                val (x, y) = mousePosition.value
+                KeyHooks.postPress(NativeKeyEvent.VC_CONTROL)
+                safeDelay(Duration.ofMillis(50))
+                MouseHooks.postClick(x, y)
+                safeDelay(Duration.ofMillis(50))
+                KeyHooks.postRelease(NativeKeyEvent.VC_CONTROL)
+                safeDelay(Duration.ofMillis(100))
+            }
+        }
+        LEADER_KEY.isEnabled("01").collect(::handle)
+    }
+
     private suspend fun tripleClickInPoe() {
         val mousePosition = MouseHooks
             .motionEvents()
@@ -150,16 +403,14 @@ object GameSpecific {
         KeyHooksEx.keyPressed("X", sampleInterval = null).collect(::handle)
     }
 
-    private suspend fun townHotkeyInPoe() {
-        val isPoe = isPoe()
-
-        val hotkeys = mapOf(
-            "F5" to "/hideout",
-            "F6" to "/kingsmarch",
-        )
+    private suspend fun townHotkeyIn(
+        checkGame: suspend () -> StateFlow<Boolean>,
+        hotkeys: Map<String, String>
+    ) {
+        val gameIsRunning = checkGame()
 
         fun handle(key: String) {
-            if (!isPoe.value) {
+            if (!gameIsRunning.value) {
                 return
             }
             val command = hotkeys[key] ?: return
@@ -171,12 +422,31 @@ object GameSpecific {
         KeyHooks.keyReleases().collect(::handle)
     }
 
+    private suspend fun townHotkeyInPoe() {
+        townHotkeyIn(
+            ::isPoe, mapOf(
+                "F5" to "/hideout",
+                "F6" to "/kingsmarch",
+                "F7" to "/heist",
+            )
+        )
+    }
+
+    private suspend fun townHotkeyInPoe2() {
+        townHotkeyIn(
+            ::isPoe2, mapOf(
+                "F5" to "/hideout",
+            )
+        )
+    }
+
     private suspend fun autoFlaskInPoe() {
         // Keys to trigger flasks
         val skillKeys = setOf("Q", "E")
         // val skillKeys = setOf("Q", "E", "W")
 
         val fm = BuffManager(PoeFlasks.mbTincture.toKeeper())
+        // val fm = BuffManager(PoeFlasks.all.toKeeper())
 
         val isPoe = isPoeAndTriggerKeyEnabled()
 
@@ -252,6 +522,8 @@ private object PoeFlasks {
         )
     )
 
+    val nonPf2 = Config.par(4, 5)
+    val nonPf3 = Config.par(3, 4, 5)
     val nonPf = Config.par(2, 3, 4, 5)
     val mbTincture = Config.One(3, isTincture = true)
 
@@ -413,21 +685,24 @@ private suspend fun activeTitleAsState(title: String) = ScreenCommons
     .stateIn(currentCoroutineScope())
 
 private suspend fun isPoe() = activeTitleAsState("Path of Exile")
+private suspend fun isPoe2() = activeTitleAsState("Path of Exile 2")
 
-private suspend fun isPoeAndTriggerKeyEnabled(): StateFlow<Boolean> {
+suspend fun isPoeAndTriggerKeyEnabled(
+    keysToDisable: Set<String> = setOf("F4")
+): StateFlow<Boolean> {
     return combine(
-        isPoe(), isTriggerKeyEnabled(),
+        isPoe(), isTriggerKeyEnabled(keysToDisable),
     ) { isPoe, enabled ->
         isPoe && enabled
     }.stateIn(currentCoroutineScope())
 }
 
 private suspend fun isTriggerKeyEnabled(
-    keyToDisable: String = "F4"
+    keysToDisable: Set<String>
 ): Flow<Boolean> {
     val disabledSince = KeyHooks.keyPresses().mapNotNull {
         // Key to temporarily disable triggers
-        if (it == keyToDisable) {
+        if (it in keysToDisable) {
             // XXX This should come from the original source of the flow,
             // not during a transformation (because flow is lazy)...
             // Otherwise, this flow should be made hot to eagerly pull

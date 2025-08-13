@@ -17,9 +17,17 @@ interface ScreenCommons {
         sampleInterval: Duration = Duration.ofMillis(100),
     ): Flow<Boolean>
 
+    fun activeWindowsThat(
+        sampleInterval: Duration = Duration.ofMillis(100),
+        predicate: (String) -> Boolean,
+    ): Flow<Boolean>
+
     // Assuming a 2560x1440 screen.
     // HiDPI on Mac will need to scale accordingly.
-    fun getPixel(x: Int, y: Int): Color?
+    fun getPixel(
+        x: Int,
+        y: Int
+    ): Color?
 
     companion object {
         val INSTANCE = when (OS.CURRENT) {
@@ -31,8 +39,11 @@ interface ScreenCommons {
     }
 }
 
-private object Win32ScreenCommons : ScreenCommons {
-    override fun activeWindowHas(title: String, sampleInterval: Duration): Flow<Boolean> {
+object Win32ScreenCommons : ScreenCommons {
+    override fun activeWindowHas(
+        title: String,
+        sampleInterval: Duration
+    ): Flow<Boolean> {
         val titleChars = title.toCharArray()
 
         fun check(
@@ -48,12 +59,24 @@ private object Win32ScreenCommons : ScreenCommons {
         return activeWindowsThat(sampleInterval, transform = ::check)
     }
 
-    override fun getPixel(x: Int, y: Int): Color? {
+    override fun getPixel(
+        x: Int,
+        y: Int
+    ): Color? {
         val pixelRef = Win32Api.getPixel(
             x = x,
             y = y
         ) ?: return null
         return fromColorRef(pixelRef)
+    }
+
+    override fun activeWindowsThat(
+        sampleInterval: Duration,
+        predicate: (String) -> Boolean,
+    ): Flow<Boolean> {
+        return activeWindowsThat(sampleInterval) { cs, len ->
+            predicate(cs.slice(0 until len).joinToString(""))
+        }
     }
 
     fun <A> activeWindowsThat(
@@ -78,13 +101,23 @@ private object Win32ScreenCommons : ScreenCommons {
 }
 
 private object MacScreenCommons : ScreenCommons {
-    override fun activeWindowHas(title: String, sampleInterval: Duration): Flow<Boolean> {
+    override fun activeWindowHas(
+        title: String,
+        sampleInterval: Duration
+    ): Flow<Boolean> {
+        return activeWindowsThat(sampleInterval, title::equals)
+    }
+
+    override fun activeWindowsThat(
+        sampleInterval: Duration,
+        predicate: (String) -> Boolean
+    ): Flow<Boolean> {
         return callbackFlow {
             val job = launch {
                 val buffer = CharArray(1024)
                 while (true) {
                     val activeWindowTitle = MacApi.getActiveWindowTitle()
-                    trySend(title == activeWindowTitle)
+                    trySend(predicate(activeWindowTitle))
                     delay(sampleInterval)
                 }
             }
@@ -94,7 +127,10 @@ private object MacScreenCommons : ScreenCommons {
         }.distinctUntilChanged()
     }
 
-    override fun getPixel(x: Int, y: Int): Color {
+    override fun getPixel(
+        x: Int,
+        y: Int
+    ): Color {
         // Mac uses HiDPI
         return MacApi.getPixel(x / 2, y / 2)
     }
