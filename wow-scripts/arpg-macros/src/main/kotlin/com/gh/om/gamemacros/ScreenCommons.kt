@@ -10,6 +10,7 @@ import org.example.com.gh.om.gamemacros.Win32Api
 import java.awt.Color
 import java.time.Duration
 import java.util.*
+import kotlin.math.pow
 
 interface ScreenCommons {
     fun activeWindowHas(
@@ -142,4 +143,20 @@ private fun fromColorRef(colorRef: Int): Color {
     val g = (colorRef shr 8) and 0xff
     val b = (colorRef shr 16) and 0xff
     return Color(r, g, b)
+}
+
+object ColorUtil {
+    private val components = listOf(
+        Color::getRed, Color::getGreen, Color::getBlue
+    )
+
+    // 0 ~ 255
+    fun absoluteDistance(
+        x: Color,
+        y: Color
+    ): Double {
+        return (components.sumOf {
+            (it(x) - it(y)).toDouble().pow(2)
+        } / 3).pow(0.5)
+    }
 }

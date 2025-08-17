@@ -1,6 +1,7 @@
 package com.gh.om.gamemacros.complex
 
 import com.gh.om.gamemacros.MouseHooks
+import com.gh.om.gamemacros.ScreenCommons
 import com.gh.om.gamemacros.currentCoroutineScope
 import com.gh.om.gamemacros.isPoeAndTriggerKeyEnabled
 import com.gh.om.gamemacros.safeDelay
@@ -18,9 +19,7 @@ object MouseCap {
             }
             .stateIn(currentCoroutineScope())
 
-        val isPoe = isPoeAndTriggerKeyEnabled(
-            setOf("F4")
-        )
+        val isPoe = isPoeAndTriggerKeyEnabled()
 
         suspend fun handle(pressed: Boolean) {
             if (!isPoe.value || !pressed) {
@@ -28,8 +27,9 @@ object MouseCap {
             }
 
             val (x, y) = mousePosition.value
+            val color = ScreenCommons.INSTANCE.getPixel(x, y)
             val now = LocalDateTime.now()
-            println("${now.hour}:${now.minute}:${now.second} Mouse(x = $x, y = $y)")
+            println("${now.hour}:${now.minute}:${now.second} Mouse(x = $x, y = $y), color = $color")
             safeDelay(Duration.ofMillis(1000))
         }
         LEADER_KEY.isEnabled("02").collect(::handle)

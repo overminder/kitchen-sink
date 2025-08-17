@@ -4,6 +4,8 @@ package com.gh.om.gamemacros
 
 import com.gh.om.gamemacros.complex.LEADER_KEY
 import com.gh.om.gamemacros.complex.MouseCap
+import com.gh.om.gamemacros.complex.PoeAutoAlt
+import com.gh.om.gamemacros.complex.PoeRerollKirac
 import com.gh.om.gamemacros.complex.PoeStackedDeck
 import com.github.kwhat.jnativehook.keyboard.NativeKeyEvent
 import kotlinx.coroutines.FlowPreview
@@ -31,10 +33,8 @@ object GameSpecific {
         ::ctrlClickManyTimesInPoe,
         MouseCap::printMousePos,
         PoeStackedDeck::unstackEntireStack,
-
-        // TODO: too many commands such that it becomes harder to
-        //  allocate a different hot key for each. Need to switch to the
-        //  leader key pattern.
+        PoeAutoAlt::play,
+        PoeRerollKirac::main,
     )
 
     init {

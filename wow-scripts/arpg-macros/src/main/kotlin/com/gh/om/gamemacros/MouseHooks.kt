@@ -7,6 +7,7 @@ import com.github.kwhat.jnativehook.mouse.NativeMouseMotionListener
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import java.awt.Point
 import java.time.Duration
 
 object MouseHooks {
@@ -42,6 +43,42 @@ object MouseHooks {
         }
     }
 
+    fun moveTo(
+        point: Point,
+    ) {
+        moveTo(point.x, point.y)
+    }
+
+    fun moveTo(
+        x: Int,
+        y: Int
+    ) {
+        val ev = NativeMouseEvent(
+            NativeMouseEvent.NATIVE_MOUSE_MOVED,
+            0,
+            x,
+            y,
+            1,
+            NativeMouseEvent.NOBUTTON
+        )
+        GlobalScreen.postNativeEvent(ev)
+    }
+
+    suspend fun postClick(
+        point: Point,
+        button: Int = NativeMouseEvent.BUTTON1,
+        delayMs: Long = 50,
+        moveFirst: Boolean = false,
+    ) {
+        postClick(
+            x = point.x,
+            y = point.y,
+            button = button,
+            delayMs = delayMs,
+            moveFirst = moveFirst
+        )
+    }
+
     suspend fun postClick(
         x: Int,
         y: Int,
@@ -49,18 +86,6 @@ object MouseHooks {
         delayMs: Long = 16,
         moveFirst: Boolean = false,
     ) {
-        val ev0 = if (moveFirst) {
-            NativeMouseEvent(
-                NativeMouseEvent.NATIVE_MOUSE_MOVED,
-                0,
-                x,
-                y,
-                1,
-                button
-            )
-        } else {
-            null
-        }
         val ev = NativeMouseEvent(
             NativeMouseEvent.NATIVE_MOUSE_PRESSED,
             0,
@@ -77,8 +102,8 @@ object MouseHooks {
             1,
             button
         )
-        ev0?.let {
-            GlobalScreen.postNativeEvent(it)
+        if (moveFirst) {
+            moveTo(x, y)
             safeDelay(Duration.ofMillis(delayMs))
         }
         GlobalScreen.postNativeEvent(ev)

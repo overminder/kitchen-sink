@@ -25,6 +25,9 @@ dependencies {
 
     // mac JNA stuff
     implementation("com.github.oshi:oshi-core:6.6.5")
+
+    // OCR
+    implementation("net.sourceforge.tess4j:tess4j:5.16.0")
 }
 
 tasks.test {

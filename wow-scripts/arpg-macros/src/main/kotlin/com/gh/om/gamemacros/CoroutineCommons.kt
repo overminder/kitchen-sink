@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.time.delay
 import java.time.Duration
 import kotlin.random.Random
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.toJavaDuration
 
 suspend fun currentCoroutineScope() =
     CoroutineScope(currentCoroutineContext())
@@ -37,4 +39,13 @@ suspend fun safeDelay(
 ) {
     val changedDuration = duration.toMillis() + Random.nextLong(0, extraMillis)
     delay(Duration.ofMillis(changedDuration))
+}
+
+suspend fun safeDelayK(
+    duration: kotlin.time.Duration = 100.milliseconds,
+    extraMillis: Long = 10
+) {
+    val changedDuration =
+        duration + Random.nextLong(0, extraMillis).milliseconds
+    delay(changedDuration.toJavaDuration())
 }
