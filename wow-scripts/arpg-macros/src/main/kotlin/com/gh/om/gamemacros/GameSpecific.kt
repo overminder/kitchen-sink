@@ -4,8 +4,12 @@ package com.gh.om.gamemacros
 
 import com.gh.om.gamemacros.complex.LEADER_KEY
 import com.gh.om.gamemacros.complex.MouseCap
+import com.gh.om.gamemacros.complex.PoeAltAugRegal
 import com.gh.om.gamemacros.complex.PoeAutoAlt
+import com.gh.om.gamemacros.complex.PoeDumpBag
+import com.gh.om.gamemacros.complex.PoeHarvestReforge
 import com.gh.om.gamemacros.complex.PoeRerollKirac
+import com.gh.om.gamemacros.complex.PoeRollMap
 import com.gh.om.gamemacros.complex.PoeStackedDeck
 import com.github.kwhat.jnativehook.keyboard.NativeKeyEvent
 import kotlinx.coroutines.FlowPreview
@@ -28,13 +32,19 @@ object GameSpecific {
         // ::novaOfFrostboltsInPoe,
         // ::detonateMineInPoe,
         ::triggerSkillInPoe,
-        ::toggleLongPressInPoe,
+        ::toggleAutoAttackInPoe,
 
         ::ctrlClickManyTimesInPoe,
         MouseCap::printMousePos,
         PoeStackedDeck::unstackEntireStack,
         PoeAutoAlt::play,
         PoeRerollKirac::main,
+        PoeDumpBag::bagToStash,
+        PoeDumpBag::bagToStashForced,
+        PoeDumpBag::moveMapFromStashToBag,
+        PoeAltAugRegal::main,
+        PoeHarvestReforge::main,
+        PoeRollMap::main,
     )
 
     init {
@@ -42,7 +52,7 @@ object GameSpecific {
         val mutualExclusive = ALL.count {
             setOf(
                 ::triggerSkillInPoe.name,
-                ::toggleLongPressInPoe.name,
+                ::toggleAutoAttackInPoe.name,
             ).contains(it.name)
         }
         // require(mutualExclusive <= 1) { "Conflicting rules!" }
@@ -136,7 +146,7 @@ object GameSpecific {
 
         suspend fun triggerKeyOn(
             onPress: String,
-            keys: List<Int>
+            keys: List<Int>,
         ) {
             val actions = ActionCombinators.roundRobin(
                 // All the rest of the skills to be triggered together
@@ -182,7 +192,7 @@ object GameSpecific {
      */
     private suspend fun novaOfFrostboltsInPoe() {
         val isPoe = isPoeAndTriggerKeyEnabled()
-        val inputKey = "E"
+        val inputKey = PoeKeyMapping.attack
         // Comes from POB.
         val frostboltCastRate = 4.53
         // Can be slower than what POB shows
@@ -213,16 +223,15 @@ object GameSpecific {
     }
 
     /**
-     * When pressing E, repeatedly short-press Q (plague bearer) to weave
-     * spells into attacks. Plague bearer isn't in the global GCD.
-     * Also short-press D (focus).
+     * When attacking, repeatedly short-press focus or chest opener
+     * (plague bearer). The triggered keys should not be in the global GCD.
      */
     private suspend fun triggerSkillInPoe() {
         val isPoe = isPoeAndTriggerKeyEnabled()
 
         suspend fun runSeq(
             inputKeys: List<String>,
-            sequencer: KeySequencer
+            sequencer: KeySequencer,
         ) {
             KeyHooksEx
                 .keysPressed(
@@ -240,9 +249,15 @@ object GameSpecific {
 
         suspend fun insertSpells() {
             val sequencer = KeySequencer.from(
-                listOf("Q" to 300.0, "D" to 300.0)
+                listOf(
+                    PoeKeyMapping.plagueBearer to 300.0,
+                    PoeKeyMapping.focus to 300.0,
+                )
             )
-            runSeq(listOf("E", "F"), sequencer)
+            runSeq(
+                listOf(PoeKeyMapping.attack, PoeKeyMapping.unearth),
+                sequencer
+            )
         }
 
         // currentCoroutineScope().async { insertSpells() }
@@ -250,19 +265,19 @@ object GameSpecific {
     }
 
     /**
-     * Toggle repeated E on T. The is to solve a pain point for simulacrum.
+     * This to solve a pain point for simulacrum.
      */
-    private suspend fun toggleLongPressInPoe() {
+    private suspend fun toggleAutoAttackInPoe() {
         val isPoe = isPoeAndTriggerKeyEnabled(
             // Also disable on travel macros, since they may type T.
-            setOf("F4", "F5", "F6", "F7")
+            PoeKeyMapping.travelMacros
         )
 
         val output = MutableStateFlow(false)
 
         suspend fun updateOutputOnPress(
             inputKey: String,
-            how: (Boolean) -> Boolean
+            how: (Boolean) -> Boolean,
         ) {
             var wasInputPressed = false
             KeyHooksEx
@@ -278,18 +293,18 @@ object GameSpecific {
         }
 
         currentCoroutineScope().async {
-            // Toggle on Q
-            updateOutputOnPress("T") { !it && isPoe.value }
+            // Toggle on auto attack key
+            updateOutputOnPress(PoeKeyMapping.autoAttack) { !it && isPoe.value }
         }
 
         currentCoroutineScope().async {
-            // Reset on R
-            updateOutputOnPress("R") { false }
+            // Reset on move
+            updateOutputOnPress(PoeKeyMapping.move) { false }
         }
 
         val mainAttack = KeySequencer.fromLongPress(
             listOf(
-                "E" to 500
+                PoeKeyMapping.attack to 500
             )
         )
 
@@ -307,7 +322,7 @@ object GameSpecific {
      */
     private suspend fun detonateMineInPoe() {
         val isPoe = isPoeAndTriggerKeyEnabled()
-        val mineKey = "E"
+        val mineKey = PoeKeyMapping.attack
 
         suspend fun detonateWhenThrowing(isThrowingMines: Boolean) {
             if (!isPoe.value || !isThrowingMines) {
@@ -354,7 +369,7 @@ object GameSpecific {
             .stateIn(currentCoroutineScope())
 
         val isPoe = isPoeAndTriggerKeyEnabled(
-            setOf("F4", "F5", "F6", "F7", "R", "E", "W")
+            PoeKeyMapping.travelOrMovement
         )
 
         suspend fun handle(pressed: Boolean) {
@@ -362,7 +377,7 @@ object GameSpecific {
                 return
             }
 
-            repeat(75) {
+            repeat(300) {
                 if (!isPoe.value) {
                     // Cooperatively break
                     return
@@ -405,7 +420,7 @@ object GameSpecific {
 
     private suspend fun townHotkeyIn(
         checkGame: suspend () -> StateFlow<Boolean>,
-        hotkeys: Map<String, String>
+        hotkeys: Map<String, String>,
     ) {
         val gameIsRunning = checkGame()
 
@@ -425,9 +440,9 @@ object GameSpecific {
     private suspend fun townHotkeyInPoe() {
         townHotkeyIn(
             ::isPoe, mapOf(
-                "F5" to "/hideout",
-                "F6" to "/kingsmarch",
-                "F7" to "/heist",
+                PoeKeyMapping.hideout to "/hideout",
+                PoeKeyMapping.kingsmarch to "/kingsmarch",
+                PoeKeyMapping.heist to "/heist",
             )
         )
     }
@@ -435,15 +450,14 @@ object GameSpecific {
     private suspend fun townHotkeyInPoe2() {
         townHotkeyIn(
             ::isPoe2, mapOf(
-                "F5" to "/hideout",
+                PoeKeyMapping.hideout to "/hideout",
             )
         )
     }
 
     private suspend fun autoFlaskInPoe() {
         // Keys to trigger flasks
-        val skillKeys = setOf("Q", "E")
-        // val skillKeys = setOf("Q", "E", "W")
+        val skillKeys = setOf(PoeKeyMapping.attack)
 
         val fm = BuffManager(PoeFlasks.mbTincture.toKeeper())
         // val fm = BuffManager(PoeFlasks.all.toKeeper())
@@ -549,7 +563,7 @@ private object PoeFlasks {
     private val TINCTURE_ACTIVE_COLOR = Color(164, 83, 40)
 
     fun tinctureKeeper(
-        ix: Int
+        ix: Int,
     ): BuffKeeper {
         val activeX = X_COORDS[ix] + TINCTURE_X - X_COORDS.first()
         val activeY = TINCTURE_Y
@@ -616,7 +630,7 @@ private object PoeFlasks {
         data class Alt(val configs: List<Config>) : Config()
         data class One(
             val key: Int,
-            val isTincture: Boolean = false
+            val isTincture: Boolean = false,
         ) : Config()
 
         data class Par(val configs: List<Config>) : Config()
@@ -672,7 +686,7 @@ private object PoeFlasks {
 
 private fun actionToPressAndReleaseKey(
     keyCode: Int,
-    maximumFrequency: Duration = Duration.ofMillis(100)
+    maximumFrequency: Duration = Duration.ofMillis(100),
 ): () -> Unit =
     ActionCombinators.unconditionallySkipIfTooFrequent(maximumFrequency) {
         KeyHooks.postPressRelease(keyCode)
@@ -688,7 +702,7 @@ private suspend fun isPoe() = activeTitleAsState("Path of Exile")
 private suspend fun isPoe2() = activeTitleAsState("Path of Exile 2")
 
 suspend fun isPoeAndTriggerKeyEnabled(
-    keysToDisable: Set<String> = setOf("F4")
+    keysToDisable: Set<String> = setOf(PoeKeyMapping.pauseMacro),
 ): StateFlow<Boolean> {
     return combine(
         isPoe(), isTriggerKeyEnabled(keysToDisable),
@@ -697,8 +711,29 @@ suspend fun isPoeAndTriggerKeyEnabled(
     }.stateIn(currentCoroutineScope())
 }
 
+object PoeKeyMapping {
+    val blink = "Q"
+    val attack = "W"
+    val move = "E"
+
+    val autoAttack = "D"
+    val focus = "R"
+
+    // 3.26: auto open chest
+    val plagueBearer = "F"
+    val unearth = "S"
+
+    val pauseMacro = "F4"
+    val hideout = "F5"
+    val kingsmarch = "F6"
+    val heist = "F7"
+
+    val travelMacros = setOf(pauseMacro, hideout, kingsmarch, heist)
+    val travelOrMovement = travelMacros + setOf(move, blink)
+}
+
 private suspend fun isTriggerKeyEnabled(
-    keysToDisable: Set<String>
+    keysToDisable: Set<String>,
 ): Flow<Boolean> {
     val disabledSince = KeyHooks.keyPresses().mapNotNull {
         // Key to temporarily disable triggers
@@ -730,7 +765,7 @@ private val COLOR_RGB_COMPONENTS =
 
 private fun colorDistance(
     c1: Color,
-    c2: Color
+    c2: Color,
 ): Double {
     val variances = COLOR_RGB_COMPONENTS.sumOf { comp ->
         (comp(c1) - comp(c2)).toDouble().pow(2)

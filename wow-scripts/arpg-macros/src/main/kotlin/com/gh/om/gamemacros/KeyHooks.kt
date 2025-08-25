@@ -10,9 +10,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.milliseconds
 
 data class SimpleKeyStates(
-    val pressed: Set<String>
+    val pressed: Set<String>,
 )
 
 object KeyHooks {
@@ -75,6 +76,23 @@ object KeyHooks {
         }.distinctUntilChanged()
     }
 
+    suspend fun withModifierKey(
+        keyCode: Int,
+        inner: suspend () -> Unit,
+    ) {
+        postPress(keyCode)
+        safeDelayK(30.milliseconds)
+        try {
+            inner()
+        } finally {
+            postRelease(keyCode)
+            // Important to also delay here (otherwise nested call means
+            // multiple releases are done at the same time, breaking poe's
+            // key handling)
+            safeDelayK(30.milliseconds)
+        }
+    }
+
     fun postPress(keyCode: Int) {
         val press = NativeKeyEvent(
             NativeKeyEvent.NATIVE_KEY_PRESSED,
@@ -104,7 +122,7 @@ object KeyHooks {
 
     suspend fun postPressWaitRelease(
         keyCodes: List<Int>,
-        waitTime: Duration
+        waitTime: Duration,
     ) {
         try {
             keyCodes.forEach(::postPress)
@@ -124,7 +142,7 @@ object KeyHooks {
 object KeyHooksEx {
     fun keyPressed(
         key: String,
-        sampleInterval: Duration? = Duration.ofMillis(100)
+        sampleInterval: Duration? = Duration.ofMillis(100),
     ): Flow<Boolean> {
         val presses = KeyHooks
             .keyStates()
@@ -146,7 +164,7 @@ object KeyHooksEx {
     fun keysPressed(
         keys: List<String>,
         conj: Conj = Conj.And,
-        sampleInterval: Duration? = Duration.ofMillis(100)
+        sampleInterval: Duration? = Duration.ofMillis(100),
     ): Flow<Boolean> {
         var previousState: Set<String> = emptySet()
         val presses = KeyHooks
