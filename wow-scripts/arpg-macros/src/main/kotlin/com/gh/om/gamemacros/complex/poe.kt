@@ -394,6 +394,15 @@ object PoeGraphicConstants {
     }
 
     /**
+     * Caveat: the mouse position will change.
+     */
+    suspend fun filterHasItem(grids: Sequence<Point>): List<Point> {
+        MouseHooks.moveTo(emptySpaceInRightSideOfBag)
+        safeDelayK(30.milliseconds)
+        return grids.filter(::gridHasItem).toList()
+    }
+
+    /**
      * A "grid" as in bag slot or kirac mission slot.
      */
     fun gridHasItem(point: Point): Boolean {

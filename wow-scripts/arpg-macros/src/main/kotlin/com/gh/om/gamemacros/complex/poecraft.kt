@@ -5,7 +5,7 @@ import com.gh.om.gamemacros.complex.PoeDumpBag.bagColumns
 import com.gh.om.gamemacros.complex.PoeDumpBag.bagRows
 import com.gh.om.gamemacros.complex.PoeDumpBag.mapStashColumns
 import com.gh.om.gamemacros.complex.PoeDumpBag.mapStashRows
-import com.gh.om.gamemacros.complex.PoeItem.MapAug
+import com.gh.om.gamemacros.complex.PoeRollableItem.MapAug
 import com.gh.om.gamemacros.isPoeAndTriggerKeyEnabled
 import com.gh.om.gamemacros.safeDelayK
 import com.github.kwhat.jnativehook.mouse.NativeMouseEvent
@@ -16,13 +16,9 @@ import kotlin.time.Duration.Companion.milliseconds
 
 // More comprehensive crafting: transmute, alt, aug, regal, exalt.
 
-data class PoeItem(
-    val klass: Klass?,
-    val rarity: Rarity,
-    val explicitMods: List<ExplicitMod>,
-    val qualities: List<Quality>,
-) {
+sealed interface PoeItem {
     enum class Klass(val repr: String) {
+        Currency("Stackable Currency"),
         Map("Maps");
 
         companion object {
@@ -31,6 +27,27 @@ data class PoeItem(
             }
         }
     }
+}
+
+data class PoeCurrency(
+    val type: Type,
+    val stackSize: Int,
+) : PoeItem {
+    interface Type
+
+    enum class KnownType(val repr: String) : Type {
+        Chaos("Chaos Orb")
+    }
+
+    object UnknownType : Type
+}
+
+data class PoeRollableItem(
+    val klass: PoeItem.Klass?,
+    val rarity: Rarity,
+    val explicitMods: List<ExplicitMod>,
+    val qualities: List<Quality>,
+) : PoeItem {
 
     enum class Rarity {
         Normal,
@@ -90,7 +107,27 @@ data class PoeItem(
     }
 }
 
+fun PoeRollableItem.hasAffix(name: String): Boolean {
+    return explicitMods.any {
+        it.name == name
+    }
+}
+
 object PoeRollMap {
+    val modsToAvoid = listOf(
+        // 78% scarab is nice but volatile is too annoying
+        "Volatile",
+        // 15% pack is too insignificant for eye strain or difficulty
+        "of Desolation",
+        "Searing",
+        "Decaying",
+        "Hungering",
+        // -37% res is too bad
+        "of Exposure",
+        // 56% rarity is a joke
+        "Cycling",
+    )
+
     suspend fun main() {
         val isPoe = isPoeAndTriggerKeyEnabled()
 
@@ -109,14 +146,18 @@ object PoeRollMap {
     suspend fun checkAndRollOnce(
         mapSlot: Point,
         chaosSlot: Point,
-    ): PoeItem? {
+    ): PoeRollableItem? {
         MouseHooks.moveTo(mapSlot)
         safeDelayK(30.milliseconds)
 
         val ad = PoeInteractor.getAdvancedDescriptionOfItemUnderMouse() ?: ""
-        val item = PoeItemParser.parse(ad) ?: error("can't parse: $ad")
+        val item = PoeItemParser.parseAsRollable(ad)
+        if (item.rarity != PoeRollableItem.Rarity.Rare) {
+            println("Found non-rare item, skip")
+            return item
+        }
         val score = getMapScoreForAbyss(item)
-        if (score >= 9) {
+        if (score >= 10 && !modsToAvoid.any(item::hasAffix)) {
             // Good enough!
             return item
         }
@@ -138,21 +179,29 @@ object PoeRollMap {
     }
 
     suspend fun rollMapsUntilDone(shouldContinue: () -> Boolean) {
-        val rolledMaps = mutableListOf<PoeItem>()
+        val rolledMaps = mutableListOf<PoeRollableItem>()
+        var chaosUsed = 0
         val mapsToRoll = mapStashSlots().toMutableList()
+        val bagSlots = bagSlots()
         // We'll pop rolled maps from the list
         mapsToRoll.reverse()
 
         fun report() {
-            val averageScore =
-                rolledMaps.sumOf(::getMapScoreForAbyss) / rolledMaps.size
-            println("Rolled ${rolledMaps.size} map, average $averageScore")
+            val scores = rolledMaps.map(::getMapScoreForAbyss)
+            val avgCost = (chaosUsed.toDouble() / scores.size).fmt()
+            val lines = listOf(
+                "Rolled ${scores.size} maps using ${chaosUsed}c. Avg ${avgCost}c",
+                "Average score ${scores.average().fmt()}, each: ${
+                    scores.map(Number::fmt)
+                }",
+            )
+            lines.forEach(::println)
         }
 
-        for (bagSlot in bagSlots()) {
+        for (bagSlot in bagSlots) {
             // Check stack count of chaos
-            val count = 20
-            repeat(count) {
+            var count = getChaosCountAt(bagSlot)
+            while (count > 0) {
                 if (mapsToRoll.isEmpty() || !shouldContinue()) {
                     // We are done
                     report()
@@ -161,17 +210,38 @@ object PoeRollMap {
                 val mapSlot = mapsToRoll.last()
                 val rolledMap = checkAndRollOnce(mapSlot, bagSlot)
                 if (rolledMap != null) {
+                    // Check only without rolling
                     mapsToRoll.removeLast()
                     rolledMaps.add(rolledMap)
+                } else {
+                    count -= 1
+                    chaosUsed += 1
                 }
             }
         }
+
+        report()
     }
 
-    fun getMapScoreForAbyss(item: PoeItem): Double {
+    private suspend fun getChaosCountAt(point: Point): Int {
+        MouseHooks.moveTo(point)
+        safeDelayK(30.milliseconds)
+
+        val d = PoeInteractor.getDescriptionOfItemUnderMouse() ?: ""
+        val currency = PoeItemParser.parse(d) as? PoeCurrency
+        return if (currency?.type == PoeCurrency.KnownType.Chaos) {
+            currency.stackSize
+        } else {
+            0
+        }
+    }
+
+    fun getMapScoreForAbyss(item: PoeRollableItem): Double {
         // We use a weighted sum of currency + scarab.
         // 120 quant + 45 pack + 170 currency -> 10 points (good enough)
         // 130 quant + 38 pack + 120 currency + 90 scarab -> 14 points (great)
+        // Cutoffs: 9 without filter requires ~10 rolls.
+        // 11 + filter requires ~40 rolls. maybe 9.5 or 10 is more economic.
         require(item.klass == PoeItem.Klass.Map)
 
         val currency = getRealPctValue(item.qualities, MapAug.Currency)
@@ -193,7 +263,7 @@ object PoeRollMap {
     }
 
     fun getRealPctValue(
-        quals: List<PoeItem.Quality>,
+        quals: List<PoeRollableItem.Quality>,
         aug: MapAug,
     ): Int {
         // Each quality improves by
@@ -208,11 +278,11 @@ object PoeRollMap {
         }
         val fromChisel = quals.firstOrNull {
             val name = it.name
-            name is PoeItem.QualName.Chisel && name.ty == aug
+            name is PoeRollableItem.QualName.Chisel && name.ty == aug
         }
         var nativeQual = quals.firstOrNull {
             val name = it.name
-            name is PoeItem.QualName.Native && name.ty == aug
+            name is PoeRollableItem.QualName.Native && name.ty == aug
         }?.value ?: 0
         if (fromChisel != null) {
             nativeQual -= fromChisel.value * chiselMulti
@@ -220,19 +290,25 @@ object PoeRollMap {
         return nativeQual
     }
 
-    private fun bagSlots() = PoeGraphicConstants.allGrids(
-        start = PoeGraphicConstants.firstItemInBag,
-        rows = bagRows,
-        columns = bagColumns,
-        gridSize = PoeGraphicConstants.bagGridSize,
-    )
+    private suspend fun bagSlots(): List<Point> {
+        val grids = PoeGraphicConstants.allGrids(
+            start = PoeGraphicConstants.firstItemInBag,
+            rows = bagRows,
+            columns = bagColumns,
+            gridSize = PoeGraphicConstants.bagGridSize,
+        )
+        return PoeGraphicConstants.filterHasItem(grids)
+    }
 
-    private fun mapStashSlots() = PoeGraphicConstants.allGrids(
-        start = PoeGraphicConstants.firstItemInMapStash,
-        rows = mapStashRows,
-        columns = mapStashColumns,
-        gridSize = PoeGraphicConstants.mapGridSize,
-    )
+    private suspend fun mapStashSlots(): List<Point> {
+        val grids = PoeGraphicConstants.allGrids(
+            start = PoeGraphicConstants.firstItemInMapStash,
+            rows = mapStashRows,
+            columns = mapStashColumns,
+            gridSize = PoeGraphicConstants.mapGridSize,
+        )
+        return PoeGraphicConstants.filterHasItem(grids)
+    }
 }
 
 object PoeAltAugRegal {
@@ -315,7 +391,7 @@ object PoeHarvestReforge {
         safeDelayK(50.milliseconds)
 
         val ad = PoeInteractor.getAdvancedDescriptionOfItemUnderMouse() ?: ""
-        val item = PoeItemParser.parse(ad) ?: return true
+        val item = PoeItemParser.parseAsRollable(ad)
         val allMatch = checklist.any { desired ->
             item.explicitMods.any { it.name == desired }
         }
@@ -336,25 +412,50 @@ object PoeHarvestReforge {
 
 object PoeItemParser {
     val klassPat = Pattern.compile("Item Class: (.+)")
-    val rarityPat = Pattern.compile("Rarity: (Normal|Magic|Rare)")
+    val rarityPat =
+        Pattern.compile("Rarity: (Normal|Magic|Rare)")
     val explicitModPat =
         Pattern.compile("""(?<pos>Prefix|Suffix) Modifier "(?<name>.+?)"(?: \(Tier: (?<tier>\d+)\))?""")
     val qualPat = Pattern.compile("""(?<name>[a-zA-Z ()]+): \+(?<pct>\d+)%""")
+    val stackSizePat = Pattern.compile("""Stack Size: (\d+)/""")
+
+    fun parseAsRollable(ad: String): PoeRollableItem {
+        val item = parse(ad)
+        require(item is PoeRollableItem) {
+            "Expecting rollable item, got $item from:\n$ad"
+        }
+        return item
+    }
 
     /**
      * @param ad Advanced description of an item
      */
     fun parse(ad: String): PoeItem? {
-        val klass = matchGroup(ad, klassPat)?.let(PoeItem.Klass::fromRepr)
+        val klass =
+            matchGroup(ad, klassPat)?.let(PoeItem.Klass::fromRepr)
+        if (klass == PoeItem.Klass.Currency) {
+            return parseCurrency(ad)
+        }
         val rarity = getRarity(ad) ?: return null
         val mods = findAllExplicitMods(ad)
         val quals = findQualities(ad)
-        return PoeItem(
+        return PoeRollableItem(
             klass = klass,
             rarity = rarity,
             explicitMods = mods,
             qualities = quals
         )
+    }
+
+    private fun parseCurrency(ad: String): PoeCurrency? {
+        val stackSize =
+            matchGroup(ad, stackSizePat)?.toIntOrNull() ?: return null
+        val type = ad.lines().asSequence().mapNotNull { line ->
+            PoeCurrency.KnownType.entries.firstOrNull { cty ->
+                cty.repr == line
+            }
+        }.firstOrNull() ?: PoeCurrency.UnknownType
+        return PoeCurrency(type, stackSize)
     }
 
     private fun matchGroup(
@@ -370,19 +471,19 @@ object PoeItemParser {
         }
     }
 
-    private fun getRarity(ad: String): PoeItem.Rarity? {
-        return matchGroup(ad, rarityPat)?.let(PoeItem.Rarity::valueOf)
+    private fun getRarity(ad: String): PoeRollableItem.Rarity? {
+        return matchGroup(ad, rarityPat)?.let(PoeRollableItem.Rarity::valueOf)
     }
 
-    private fun findAllExplicitMods(ad: String): List<PoeItem.ExplicitMod> {
+    private fun findAllExplicitMods(ad: String): List<PoeRollableItem.ExplicitMod> {
         val m = explicitModPat.matcher(ad)
         return generateSequence {
             if (m.find()) {
                 val pos = m.group("pos")
                 val name = m.group("name")
                 val tier = m.group("tier")?.toIntOrNull()
-                PoeItem.ExplicitMod(
-                    loc = PoeItem.ExplicitModLocation.valueOf(pos),
+                PoeRollableItem.ExplicitMod(
+                    loc = PoeRollableItem.ExplicitModLocation.valueOf(pos),
                     name = name,
                     tier = tier,
                 )
@@ -392,7 +493,7 @@ object PoeItemParser {
         }.toList()
     }
 
-    private fun findQualities(ad: String): List<PoeItem.Quality> {
+    private fun findQualities(ad: String): List<PoeRollableItem.Quality> {
         val m = qualPat.matcher(ad)
         return generateSequence {
             if (m.find()) {
@@ -400,9 +501,9 @@ object PoeItemParser {
                 val value =
                     rawPct.toIntOrNull() ?: error("Unknown qual pct: $rawPct")
                 val name = m.group("name")
-                val qualName = PoeItem.QualName.fromName(name)
+                val qualName = PoeRollableItem.QualName.fromName(name)
                     ?: error("Unknown qual type: $name")
-                PoeItem.Quality(
+                PoeRollableItem.Quality(
                     name = qualName,
                     value = value,
                 )
@@ -523,7 +624,7 @@ object PoeAutoAlt {
  * Shared interface between the actual crafting interface and the simulator.
  */
 interface PoeItemCrafter {
-    suspend fun getCurrentItem(): PoeItem
+    suspend fun getCurrentItem(): PoeRollableItem
 
     suspend fun transmute()
     suspend fun alternate()
@@ -536,16 +637,16 @@ interface PoeItemCrafter {
 
 private class RealCrafterOnCurrencyTab : PoeItemCrafter {
     // Cached when there's no operation.
-    private var cachedCurrentItem: PoeItem? = null
+    private var cachedCurrentItem: PoeRollableItem? = null
 
-    override suspend fun getCurrentItem(): PoeItem {
+    override suspend fun getCurrentItem(): PoeRollableItem {
         cachedCurrentItem?.let { return it }
 
         MouseHooks.moveTo(PoeCurrencyTab.item)
         safeDelayK(50.milliseconds)
 
         val ad = PoeInteractor.getAdvancedDescriptionOfItemUnderMouse() ?: ""
-        val parsed = PoeItemParser.parse(ad) ?: error("Can't parse: $ad")
+        val parsed = PoeItemParser.parseAsRollable(ad)
         cachedCurrentItem = parsed
         return parsed
     }
@@ -599,7 +700,7 @@ private class RealCrafterOnCurrencyTab : PoeItemCrafter {
 }
 
 private fun interface CraftDecisionMaker {
-    fun getDecision(item: PoeItem): Decision
+    fun getDecision(item: PoeRollableItem): Decision
 
     data class Decision(
         val type: DecisionType,
@@ -635,7 +736,7 @@ private fun interface CraftDecisionMaker {
         )
         val desiredModCount = mustHave.size + 1
 
-        override fun getDecision(item: PoeItem): Decision {
+        override fun getDecision(item: PoeRollableItem): Decision {
             val nMustHave = item.explicitMods.count {
                 it.name in mustHave
             }
@@ -644,7 +745,7 @@ private fun interface CraftDecisionMaker {
                     it.name in oneOfSuffixes
                 }, 1
             )
-            if (item.rarity == PoeItem.Rarity.Magic) {
+            if (item.rarity == PoeRollableItem.Rarity.Magic) {
                 // Ignore res suffix on magic to save regal -- we want
                 // int on magic such that regal has a high chance to land.
                 nOneOf = 0
@@ -661,7 +762,7 @@ private fun interface CraftDecisionMaker {
         private val desiredModNames: List<String>,
         private val desiredModCount: Int,
     ) : CraftDecisionMaker {
-        override fun getDecision(item: PoeItem): Decision {
+        override fun getDecision(item: PoeRollableItem): Decision {
             val matches = item.explicitMods.count {
                 it.name in desiredModNames
             }
@@ -739,13 +840,13 @@ private suspend fun craftClusterOnce(
     val why: String
 
     when (item.rarity) {
-        PoeItem.Rarity.Normal -> {
+        PoeRollableItem.Rarity.Normal -> {
             require(!shouldGoBack)
             why = "transmute because normal"
             c.transmute()
         }
 
-        PoeItem.Rarity.Magic -> {
+        PoeRollableItem.Rarity.Magic -> {
             require(!shouldGoBack)
             // Check mod
 
@@ -784,7 +885,7 @@ private suspend fun craftClusterOnce(
             }
         }
 
-        PoeItem.Rarity.Rare -> {
+        PoeRollableItem.Rarity.Rare -> {
             if (shouldProceed) {
                 c.exalt()
                 why = "exalt to add mod"
@@ -805,90 +906,46 @@ fun main() {
     val input = """
 Item Class: Maps
 Rarity: Rare
-Chaos Zenith
+Agony Sepulchre
 Sanctuary Map
 --------
 Map Tier: 17
-Item Quantity: +159% (augmented)
-Item Rarity: +121% (augmented)
-Monster Pack Size: +46% (augmented)
+Item Quantity: +124% (augmented)
+Item Rarity: +105% (augmented)
+Monster Pack Size: +38% (augmented)
 More Maps: +50% (augmented)
-More Currency: +179% (augmented)
-Quality: +20% (augmented)
+More Scarabs: +53% (augmented)
+More Currency: +109% (augmented)
 --------
 Item Level: 84
 --------
 Monster Level: 84
 --------
-Delirium Reward Type: Armour (enchant)
-Players in Area are 20% Delirious (enchant)
---------
-{ Prefix Modifier "Prismatic" (Tier: 1) }
-Monsters gain 183(180-200)% of their Physical Damage as Extra Damage of a random Element
-{ Prefix Modifier "Oppressive" (Tier: 1) }
-Monsters have +100% chance to Suppress Spell Damage
-(50% of Damage from Suppressed Hits and Ailments they inflict is prevented)
+{ Prefix Modifier "Parasitic" (Tier: 1) }
+15% of Damage Players' Totems take from Hits is taken from their Summoner's Life instead
 { Prefix Modifier "Empowered" — Elemental, Fire, Cold, Lightning, Ailment }
 Monsters have a 20% chance to Ignite, Freeze and Shock on Hit
-{ Suffix Modifier "Decaying" (Tier: 1) }
-Area contains Unstable Tentacle Fiends
+{ Prefix Modifier "Savage" (Tier: 1) }
+40(30-40)% increased Monster Damage
+{ Suffix Modifier "of Domination" (Tier: 1) }
+Unique Monsters have a random Shrine Buff
 { Suffix Modifier "of Defiance" (Tier: 1) }
 Debuffs on Monsters expire 100% faster
-{ Suffix Modifier "of the Juggernaut" (Tier: 1) }
-Monsters cannot be Stunned — Unscalable Value
-Monsters' Action Speed cannot be modified to below Base Value
-Monsters' Movement Speed cannot be modified to below Base Value
+{ Suffix Modifier "of Stasis" — Life, Mana, Defences, Energy Shield }
+Players cannot Regenerate Life, Mana or Energy Shield — Unscalable Value
 --------
 Travel to this Map by using it in a personal Map Device. Maps can only be used once.
 --------
 Modifiable only with Chaos Orbs, Vaal Orbs, Delirium Orbs and Chisels
 
+
         """
 
-    val output = PoeItemParser.parse(map2) ?: error("Can't parse")
+    val output = PoeItemParser.parseAsRollable(input)
     println(output)
-    println(PoeRollMap.getMapScoreForAbyss(output))
+    println(PoeRollMap.getMapScoreForAbyss(output).fmt())
 }
 
-val map2 = """
-    Item Class: Maps
-    Rarity: Rare
-    Morbid Crate
-    Sanctuary Map
-    --------
-    Map Tier: 17
-    Item Quantity: +148% (augmented)
-    Item Rarity: +140% (augmented)
-    Monster Pack Size: +38% (augmented)
-    More Scarabs: +90% (augmented)
-    More Currency: +126% (augmented)
-    Quality (Rarity): +5% (augmented)
-    --------
-    Item Level: 84
-    --------
-    Monster Level: 84
-    --------
-    { Prefix Modifier "Afflicting" (Tier: 1) }
-    All Monster Damage can Ignite, Freeze and Shock
-    (Ignite deals Fire Damage over time, based on the base Fire Damage of the Skill, for 4 seconds)
-    (Freeze lowers Enemy Action Speed to zero, preventing them from acting. Duration is based on the Cold Damage of the Hit)
-    (Shock increases Damage taken by up to 50%, depending on the amount of Lightning Damage in the hit, for 2 seconds)
-    Monsters Ignite, Freeze and Shock on Hit
-    { Prefix Modifier "Resistant" — Elemental, Chaos, Resistance }
-    +25% Monster Chaos Resistance
-    +40% Monster Elemental Resistances
-    { Prefix Modifier "Equalising" (Tier: 1) }
-    Rare and Unique Monsters remove 5% of Life, Mana and Energy Shield from Players or their Minions on Hit
-    { Suffix Modifier "of Impotence" (Tier: 1) }
-    Players have 25(30-25)% less Area of Effect
-    { Suffix Modifier "of Exposure" — Elemental, Resistance }
-    Players have -11(-12--9)% to all maximum Resistances
-    { Suffix Modifier "of Frenzy" }
-    Monsters gain a Frenzy Charge on Hit
-    --------
-    Travel to this Map by using it in a personal Map Device. Maps can only be used once.
-    --------
-    Modifiable only with Chaos Orbs, Vaal Orbs, Delirium Orbs and Chisels
-
-
-""".trimIndent()
+private fun Number.fmt(): String {
+    return String.format("%.2f", this)
+}
