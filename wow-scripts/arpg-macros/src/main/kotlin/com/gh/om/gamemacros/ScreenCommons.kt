@@ -27,8 +27,12 @@ interface ScreenCommons {
     // HiDPI on Mac will need to scale accordingly.
     fun getPixel(
         x: Int,
-        y: Int
+        y: Int,
     ): Color?
+
+    fun captureScreen(): PixelGetter {
+        return AwtRobotUtil.captureScreen()
+    }
 
     companion object {
         val INSTANCE = when (OS.CURRENT) {
@@ -43,13 +47,13 @@ interface ScreenCommons {
 object Win32ScreenCommons : ScreenCommons {
     override fun activeWindowHas(
         title: String,
-        sampleInterval: Duration
+        sampleInterval: Duration,
     ): Flow<Boolean> {
         val titleChars = title.toCharArray()
 
         fun check(
             buffer: CharArray,
-            size: Int
+            size: Int,
         ): Boolean {
             if (size != titleChars.size) {
                 return false
@@ -62,7 +66,7 @@ object Win32ScreenCommons : ScreenCommons {
 
     override fun getPixel(
         x: Int,
-        y: Int
+        y: Int,
     ): Color? {
         val pixelRef = Win32Api.getPixel(
             x = x,
@@ -82,7 +86,7 @@ object Win32ScreenCommons : ScreenCommons {
 
     fun <A> activeWindowsThat(
         sampleInterval: Duration = Duration.ofMillis(100),
-        transform: (CharArray, Int) -> A
+        transform: (CharArray, Int) -> A,
     ): Flow<A> {
         return callbackFlow {
             val job = launch {
@@ -104,14 +108,14 @@ object Win32ScreenCommons : ScreenCommons {
 private object MacScreenCommons : ScreenCommons {
     override fun activeWindowHas(
         title: String,
-        sampleInterval: Duration
+        sampleInterval: Duration,
     ): Flow<Boolean> {
         return activeWindowsThat(sampleInterval, title::equals)
     }
 
     override fun activeWindowsThat(
         sampleInterval: Duration,
-        predicate: (String) -> Boolean
+        predicate: (String) -> Boolean,
     ): Flow<Boolean> {
         return callbackFlow {
             val job = launch {
@@ -130,7 +134,7 @@ private object MacScreenCommons : ScreenCommons {
 
     override fun getPixel(
         x: Int,
-        y: Int
+        y: Int,
     ): Color {
         // Mac uses HiDPI
         return MacApi.getPixel(x / 2, y / 2)
@@ -153,7 +157,7 @@ object ColorUtil {
     // 0 ~ 255
     fun absoluteDistance(
         x: Color,
-        y: Color
+        y: Color,
     ): Double {
         return (components.sumOf {
             (it(x) - it(y)).toDouble().pow(2)

@@ -1,11 +1,13 @@
 package com.gh.om.gamemacros.complex
 
+import com.gh.om.gamemacros.AwtRobotUtil
 import com.gh.om.gamemacros.ColorUtil
 import com.gh.om.gamemacros.KeyHooks
 import com.gh.om.gamemacros.MouseHooks
-import com.gh.om.gamemacros.ScreenCommons
+import com.gh.om.gamemacros.PixelGetter
 import com.gh.om.gamemacros.complex.PoeDumpBag.bagRows
 import com.gh.om.gamemacros.currentCoroutineScope
+import com.gh.om.gamemacros.get
 import com.gh.om.gamemacros.isPoeAndTriggerKeyEnabled
 import com.gh.om.gamemacros.safeDelay
 import com.gh.om.gamemacros.safeDelayK
@@ -16,13 +18,10 @@ import net.sourceforge.tess4j.Tesseract
 import net.sourceforge.tess4j.TesseractException
 import java.awt.Color
 import java.awt.Dimension
-import java.awt.Image
 import java.awt.Point
 import java.awt.Rectangle
-import java.awt.Robot
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
-import java.awt.image.BufferedImage
 import java.util.regex.Pattern
 import kotlin.io.path.Path
 import kotlin.io.path.div
@@ -41,8 +40,6 @@ object PoeRerollKirac {
     )
     val missionDescription =
         Rectangle(missionDescriptionTL, missionDescriptionSize)
-    val missionDescriptionScaledForAwt =
-        scaleFromPhysicalToAwt(missionDescription)
 
     val stackSizePat = Pattern.compile("""Stack Size: (\d+)/""")
 
@@ -59,10 +56,6 @@ object PoeRerollKirac {
         }
     }
 
-    val robot by lazy {
-        Robot()
-    }
-
     suspend fun main() {
         val isPoe = isPoeAndTriggerKeyEnabled()
 
@@ -76,12 +69,14 @@ object PoeRerollKirac {
             // Find all non-empty bag slots that may have reports
             MouseHooks.moveTo(PoeGraphicConstants.emptySpaceInRightSideOfBag)
             safeDelayK(100.milliseconds)
-            val rerollItemSlots = PoeGraphicConstants.allGrids(
-                start = PoeGraphicConstants.firstItemInBag,
-                rows = bagRows,
-                columns = 2,
-                gridSize = 70,
-            ).filter(PoeGraphicConstants::gridHasItem)
+            val rerollItemSlots = PoeGraphicConstants.filterPoints(
+                PoeGraphicConstants.allGrids(
+                    start = PoeGraphicConstants.firstItemInBag,
+                    rows = bagRows,
+                    columns = 2,
+                    gridSize = 70,
+                )
+            )
 
             for (slot in rerollItemSlots) {
                 if (!isPoe.value) {
@@ -132,7 +127,7 @@ object PoeRerollKirac {
             }
 
             // 2. Check if any mission matches
-            if (locateMissionThat(::isMissionOfInterest)) {
+            if (locateMissionThat(shouldContinue, ::isMissionOfInterest)) {
                 // Done!
                 return true
             }
@@ -164,18 +159,26 @@ object PoeRerollKirac {
         }
     }
 
-    suspend fun locateMissionThat(predicate: (String) -> Boolean): Boolean {
+    suspend fun locateMissionThat(
+        shouldContinue: () -> Boolean,
+        predicate: (String) -> Boolean,
+    ): Boolean {
         // 1. Find the non-empty mission grids, by checking grid color.
 
         // Move cursor to bag to avoid blocking the mission grid.
         MouseHooks.moveTo(PoeGraphicConstants.emptySpaceInRightSideOfBag)
-        safeDelayK(30.milliseconds)
+        safeDelayK(100.milliseconds)
 
-        val missions =
-            missionGridCoordinates().takeWhile(PoeGraphicConstants::gridHasItem)
+        val missions = PoeGraphicConstants.filterPoints(
+            missionGridCoordinates(),
+            getColor = PoeGraphicConstants::getAverageColor
+        )
 
         // 2. Check each by copying their content.
         for ((i, p) in missions.withIndex()) {
+            if (!shouldContinue()) {
+                break
+            }
             MouseHooks.moveTo(p)
             // Need larger delay for robot to capture successfully.
             safeDelayK(100.milliseconds)
@@ -196,10 +199,7 @@ object PoeRerollKirac {
         val t = Toolkit.getDefaultToolkit()
         // My display setting uses 2.25x scaling,
         // so this method gives much better result.
-        val captures = robot
-            .createMultiResolutionScreenCapture(missionDescriptionScaledForAwt)
-            .resolutionVariants
-        val capture = captures.last().toBufferedImage()
+        val capture = AwtRobotUtil.capture(missionDescription)
         return try {
             tess.doOCR(capture)
         } catch (e: TesseractException) {
@@ -208,35 +208,6 @@ object PoeRerollKirac {
         }
     }
 
-    private fun Image.toBufferedImage(): BufferedImage {
-        if (this is BufferedImage) {
-            return this
-        }
-
-        val bi = BufferedImage(
-            getWidth(null),
-            getHeight(null),
-            BufferedImage.TYPE_INT_ARGB
-        );
-
-        val g = bi.createGraphics()
-        g.drawImage(this, 0, 0, null)
-        g.dispose()
-        return bi
-    }
-
-    private fun scaleFromPhysicalToAwt(r: Rectangle): Rectangle {
-        return Rectangle(
-            r.x.scaleFromPhysicalToAwt(),
-            r.y.scaleFromPhysicalToAwt(),
-            r.width.scaleFromPhysicalToAwt(),
-            r.height.scaleFromPhysicalToAwt()
-        )
-    }
-
-    private fun Int.scaleFromPhysicalToAwt(): Int {
-        return (this / 2.25).toInt()
-    }
 }
 
 /**
@@ -276,6 +247,24 @@ object PoeDumpBag {
         LEADER_KEY.isEnabled("09").collect(::handle)
     }
 
+    suspend fun moveFromHeistLocker() {
+        val isPoe = isPoeAndTriggerKeyEnabled()
+
+        suspend fun handle(pressed: Boolean) {
+            if (!pressed) {
+                return
+            }
+            dumpFromSource(
+                nameOfSource = "heist locker",
+                sourceSlots = heistLockerSlots(),
+                forced = false,
+                filterHasItem = PoeGraphicConstants::filterUnmatchedHeistContracts,
+                shouldContinue = isPoe::value
+            )
+        }
+        LEADER_KEY.isEnabled("12").collect(::handle)
+    }
+
     private suspend fun bagToStashEx(
         hotkeys: String,
         forced: Boolean,
@@ -300,7 +289,12 @@ object PoeDumpBag {
             sourceSlots = bagSlots(),
             forced = forced,
             shouldContinue = shouldContinue
-        )
+        ) {
+            PoeGraphicConstants.filterPoints(
+                points = it,
+                getColor = PoeGraphicConstants::getAverageColor
+            )
+        }
     }
 
     private suspend fun dumpFromSource(
@@ -308,17 +302,21 @@ object PoeDumpBag {
         sourceSlots: Sequence<Point>,
         forced: Boolean,
         shouldContinue: () -> Boolean,
+        filterHasItem: (Sequence<Point>) -> List<Point> = {
+            PoeGraphicConstants.filterPoints(it)
+        },
     ) {
 
         // Move cursor to bag to avoid blocking the mission grid.
         MouseHooks.moveTo(PoeGraphicConstants.emptySpaceInRightSideOfBag)
         safeDelayK(30.milliseconds)
 
+        val t0 = System.nanoTime()
         // Find the non-empty slots
-        val slots = sourceSlots
-            .filter(PoeGraphicConstants::gridHasItem)
-            .toList()
-        println("Non-empty $nameOfSource slots = ${slots.size}")
+        val slots = filterHasItem(sourceSlots)
+        val t1 = System.nanoTime()
+        val dt = (t1 - t0) / 1000_000
+        println("Non-empty $nameOfSource slots = ${slots.size}. Time spent: ${dt}ms")
 
         for (slot in slots) {
             if (!shouldContinue()) {
@@ -357,8 +355,16 @@ object PoeDumpBag {
         columns = mapStashColumns,
         gridSize = 64,
     )
+
+    private fun heistLockerSlots() = PoeGraphicConstants.allGrids(
+        start = PoeGraphicConstants.firstItemInHeistLocker,
+        rows = 6,
+        columns = 11,
+        gridSize = PoeGraphicConstants.heistLockerGridSize,
+    )
 }
 
+// Under 2560x1440
 object PoeGraphicConstants {
     val firstItemInBag = Point(1727, 813)
     val firstItemInMapStash = Point(88, 642)
@@ -372,6 +378,10 @@ object PoeGraphicConstants {
     val bagGridSize = 70
     val mapGridSize = 64
     val emptyGridColor = Color(7, 8, 9)
+    val unfilteredHeistContract = Color(45, 45, 45)
+
+    val firstItemInHeistLocker = Point(550, 554)
+    val heistLockerGridSize = 57
 
     fun allGrids(
         start: Point,
@@ -396,25 +406,58 @@ object PoeGraphicConstants {
     /**
      * Caveat: the mouse position will change.
      */
-    suspend fun filterHasItem(grids: Sequence<Point>): List<Point> {
+    suspend fun safeCaptureThenFilterHasItem(
+        grids: Sequence<Point>,
+        hasItem: (Color) -> Boolean = ::gridColorHasItem,
+    ): List<Point> {
         MouseHooks.moveTo(emptySpaceInRightSideOfBag)
         safeDelayK(30.milliseconds)
-        return grids.filter(::gridHasItem).toList()
+        return filterPoints(grids, hasItem)
     }
 
-    /**
-     * A "grid" as in bag slot or kirac mission slot.
-     */
-    fun gridHasItem(point: Point): Boolean {
-        val color = ScreenCommons.INSTANCE.getPixel(
-            point.x, point.y
-        ) ?: return true
+    fun getAverageColor(
+        pixelGetter: PixelGetter,
+        point: Point,
+    ): Color {
+        return MouseCap.getAverageColor(point.x, point.y) { x0, y0 ->
+            pixelGetter.get(x0, y0)
+        }
+    }
+
+    fun filterPoints(
+        points: Sequence<Point>,
+        predicate: (Color) -> Boolean = ::gridColorHasItem,
+        getColor: (PixelGetter, Point) -> Color = PixelGetter::get,
+    ): List<Point> {
+        val pg = AwtRobotUtil.captureScreen()
+        return points.filter {
+            val color = getColor(pg, it)
+            predicate(color)
+        }.toList()
+    }
+
+    fun filterUnmatchedHeistContracts(
+        points: Sequence<Point>,
+    ): List<Point> {
+        fun predicate(color: Color) =
+            colorMatches(color, unfilteredHeistContract, 30)
+
+        return filterPoints(points, ::predicate, ::getAverageColor)
+    }
+
+    fun gridColorHasItem(color: Color) =
+        !colorMatches(color, emptyGridColor, 10)
+
+    fun colorMatches(
+        color: Color,
+        expected: Color,
+        maxDistance: Int,
+    ): Boolean {
         val dist = ColorUtil.absoluteDistance(
             color,
-            emptyGridColor
+            expected
         )
-        // println("$point color = $color, dist = $dist")
-        return dist > 4
+        return dist < maxDistance
     }
 }
 
@@ -480,9 +523,9 @@ object PoeInteractor {
     suspend fun getDescriptionOfItemUnderMouse(): String? {
         withControlPressed {
             KeyHooks.postPress(NativeKeyEvent.VC_C)
-            safeDelayK(15.milliseconds)
+            safeDelayK(30.milliseconds)
             KeyHooks.postRelease(NativeKeyEvent.VC_C)
-            safeDelayK(15.milliseconds)
+            safeDelayK(30.milliseconds)
         }
 
         // Simulate that humans need 0.1s to read item stat.
@@ -501,6 +544,40 @@ object PoeInteractor {
         // Simulate that humans need 0.1s to read item stat.
         safeDelayK(100.milliseconds)
         return getStringFromClipboard()
+    }
+
+    suspend fun getCountAt(
+        point: Point,
+        type: PoeCurrency.KnownType,
+    ): Int {
+        MouseHooks.moveTo(point)
+        safeDelayK(30.milliseconds)
+
+        val d = getDescriptionOfItemUnderMouse() ?: ""
+        val currency = PoeItemParser.parse(d) as? PoeCurrency
+        return if (currency?.type == type) {
+            currency.stackSize
+        } else {
+            0
+        }
+    }
+
+    suspend fun applyCurrencyTo(
+        currency: Point,
+        item: Point,
+    ) {
+        MouseHooks.postClick(
+            point = currency,
+            button = NativeMouseEvent.BUTTON2,
+            moveFirst = true
+        )
+        safeDelayK(30.milliseconds)
+        MouseHooks.postClick(
+            point = item,
+            button = NativeMouseEvent.BUTTON1,
+            moveFirst = true
+        )
+        safeDelayK(30.milliseconds)
     }
 }
 
