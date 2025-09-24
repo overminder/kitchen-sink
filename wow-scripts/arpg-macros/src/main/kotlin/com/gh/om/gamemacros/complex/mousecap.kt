@@ -9,6 +9,7 @@ import com.gh.om.gamemacros.safeDelay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.awt.Color
+import java.awt.Point
 import java.time.Duration
 import java.time.LocalDateTime
 
@@ -42,14 +43,13 @@ object MouseCap {
     fun getAverageColor(
         x: Int,
         y: Int,
+        ranges: Sequence<Point> = genRectRanges(2, 2),
         getter: (Int, Int) -> Color? = ScreenCommons.INSTANCE::getPixel,
     ): Color {
-        val colors = mutableListOf<Color>()
-        for (dx in -1..1) {
-            for (dy in -1..1) {
-                getter(x + dx * 2, y + dy * 2)?.let(colors::add)
-            }
-        }
+        val colors = ranges.mapNotNull { vec ->
+            getter(x + vec.x, y + vec.y)
+        }.toList()
+
         fun averageOf(part: (Color) -> Int) =
             colors.sumOf(part).toDouble() / colors.size
         return Color(
@@ -62,10 +62,27 @@ object MouseCap {
     fun getAverageColorFast(
         x: Int,
         y: Int,
+        ranges: Sequence<Point> = genRectRanges(30, 30),
     ): Color {
         val getter = ScreenCommons.INSTANCE.captureScreen()
-        return getAverageColor(x, y) { x0, y0 ->
+        return getAverageColor(x, y, ranges) { x0, y0 ->
             getter.get(x0, y0)
+        }
+    }
+
+    fun genRectRanges(
+        width: Int,
+        height: Int,
+    ): Sequence<Point> {
+        val halfWidth = width / 2
+        val halfHeight = height / 2
+
+        return sequence {
+            for (dx in -halfWidth..width) {
+                for (dy in -halfHeight..height) {
+                    yield(Point(dx, dy))
+                }
+            }
         }
     }
 }

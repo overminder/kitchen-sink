@@ -1,6 +1,7 @@
 package com.gh.om.gamemacros.complex
 
 import com.gh.om.gamemacros.MouseHooks
+import com.gh.om.gamemacros.complex.PoeItem.Klass.MiscMap
 import com.gh.om.gamemacros.complex.PoeRollableItem.MapAug
 import com.gh.om.gamemacros.isPoeAndTriggerKeyEnabled
 import com.gh.om.gamemacros.safeDelayK
@@ -16,6 +17,7 @@ sealed interface PoeItem {
     enum class Klass(val repr: String) {
         Currency("Stackable Currency"),
         Map("Maps"),
+        MiscMap("Misc Map Items"),
         Jewels("Jewels");
 
         companion object {
@@ -25,6 +27,15 @@ sealed interface PoeItem {
         }
     }
 }
+
+fun PoeItem.Klass?.isMapLike(): Boolean {
+    return when (this) {
+        PoeItem.Klass.Map, MiscMap -> true
+
+        else -> false
+    }
+}
+
 
 fun interface PoeAffixMatcher {
     fun matches(affix: PoeRollableItem.ExplicitMod): Boolean
@@ -151,14 +162,7 @@ fun PoeRollableItem.hasAffixThat(
 }
 
 object PoeAltAugRegal {
-    val shockAvoidAbyss = listOf(
-        // 40 ES
-        "Resplendent",
-        // 50% to avoid shock
-        "of the Lightning Rod",
-        // Int or str-int
-        "of Intelligence",
-        "of Spirit",
+    val sharedBaseJewelResMods = listOf(
         // single res, harvest swappable
         "of the Dragon",
         "of the Beast",
@@ -167,6 +171,16 @@ object PoeAltAugRegal {
         "of the Hearth",
         // all res
         "of Resistance",
+    )
+
+    val shockAvoidAbyss = listOf(
+        // 40 ES
+        "Resplendent",
+        // 50% to avoid shock
+        "of the Lightning Rod",
+        // Int or str-int
+        "of Intelligence",
+        "of Spirit",
         // crit multi
         "of Potency",
         // movement speed
@@ -181,7 +195,24 @@ object PoeAltAugRegal {
         "of Arcing",
         // bow or wand lighting attack damage
         "Electrocuting",
-    )
+    ) + sharedBaseJewelResMods
+
+    val wanderCobalt = listOf(
+        // Prefixes
+        "Battlemage's", // shield spell inc
+        "Jinxing", // wand AS
+        "Charging", // shield AS
+        "Shimmering", // ES%
+        // Suffixes
+        "of Zeal", // hybrid AS
+        "of Berserking", // AS
+        "of Intelligence", // int
+        "of Spirit", // str-int
+        "of Potency", // crit multi
+        "of the Phoenix", // max fire res
+        "of the Kraken", // max cold res
+        "of the Leviathan", // max lightning res
+    ) + sharedBaseJewelResMods
 
     val intStackCluster = listOf(
         // 12 ES
@@ -214,11 +245,12 @@ object PoeAltAugRegal {
 
     private suspend fun craftOnce(crafter: RealCrafterOnCurrencyTab): Boolean {
         val before = crafter.getCurrentItem()
-        val decision = CraftMethods.chaosOnce(
+        val decision = CraftMethods.altAugRegalExaltOnce(
             c = crafter,
             // CraftDecisionMaker.IntStackClusterAllowSingleRes,
             // CraftDecisionMaker.ByDesiredMods(intStackCluster, 2),
-            CraftDecisionMaker.gloveTwoEs,
+            CraftDecisionMaker.ByDesiredMods(wanderCobalt, 3),
+            // CraftDecisionMaker.gloveTwoEs,
         )
         // println("$decision on $before")
         return decision.done
@@ -306,7 +338,7 @@ object PoeItemParser {
         }
         val rarity = getRarity(ad) ?: return null
         val mods = findAllExplicitMods(ad)
-        val quals = if (klass == PoeItem.Klass.Map) {
+        val quals = if (klass.isMapLike()) {
             // XXX fix this (cluster "added grant: 3%" also matched)
             findQualities(ad)
         } else {
@@ -658,9 +690,9 @@ private fun interface CraftDecisionMaker {
             // 3 AS (attack or shield cluster)
             "of Mastery",
         )
-        val oneOfRes = listOf(
+        val oneOfRes = listOf<String>(
             // 4 res
-            // "of the Kaleidoscope",
+            "of the Kaleidoscope",
             // Elem res
             "of the Drake",
             "of the Penguin",
@@ -822,7 +854,7 @@ private object CraftMethods {
         return decision.copy(why = decision.why + ", impl = " + why)
     }
 
-    private suspend fun altAugRegalExaltOnce(
+    suspend fun altAugRegalExaltOnce(
         c: PoeItemCrafter,
         dm: CraftDecisionMaker,
     ): CraftDecisionMaker.Decision {

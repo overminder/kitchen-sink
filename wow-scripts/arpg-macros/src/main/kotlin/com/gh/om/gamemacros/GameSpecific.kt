@@ -43,6 +43,7 @@ object GameSpecific {
         PoeDumpBag::bagToStashForced,
         PoeDumpBag::moveMapFromStashToBag,
         PoeDumpBag::moveFromHeistLocker,
+        PoeDumpBag::moveFromRegularStash,
         PoeAltAugRegal::main,
         PoeHarvestReforge::main,
         PoeRollMap::main,

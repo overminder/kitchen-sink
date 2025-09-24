@@ -265,6 +265,24 @@ object PoeDumpBag {
         LEADER_KEY.isEnabled("12").collect(::handle)
     }
 
+    suspend fun moveFromRegularStash() {
+        val isPoe = isPoeAndTriggerKeyEnabled()
+
+        suspend fun handle(pressed: Boolean) {
+            if (!pressed) {
+                return
+            }
+            dumpFromSource(
+                nameOfSource = "regular stash",
+                sourceSlots = regularStashSlots(),
+                forced = false,
+                filterHasItem = PoeGraphicConstants::filterUnmatchedHeistContracts,
+                shouldContinue = isPoe::value
+            )
+        }
+        LEADER_KEY.isEnabled("13").collect(::handle)
+    }
+
     private suspend fun bagToStashEx(
         hotkeys: String,
         forced: Boolean,
@@ -362,6 +380,13 @@ object PoeDumpBag {
         columns = 11,
         gridSize = PoeGraphicConstants.heistLockerGridSize,
     )
+
+    private fun regularStashSlots() = PoeGraphicConstants.allGrids(
+        start = PoeGraphicConstants.firstItemInRegularStash,
+        rows = 12,
+        columns = 5,
+        gridSize = PoeGraphicConstants.bagGridSize,
+    )
 }
 
 // Under 2560x1440
@@ -381,6 +406,7 @@ object PoeGraphicConstants {
     val unfilteredHeistContract = Color(45, 45, 45)
 
     val firstItemInHeistLocker = Point(550, 554)
+    val firstItemInRegularStash = Point(57, 201)
     val heistLockerGridSize = 57
 
     fun allGrids(
@@ -418,8 +444,13 @@ object PoeGraphicConstants {
     fun getAverageColor(
         pixelGetter: PixelGetter,
         point: Point,
+        range: Int = 30,
     ): Color {
-        return MouseCap.getAverageColor(point.x, point.y) { x0, y0 ->
+        return MouseCap.getAverageColor(
+            point.x,
+            point.y,
+            MouseCap.genRectRanges(range, range)
+        ) { x0, y0 ->
             pixelGetter.get(x0, y0)
         }
     }
@@ -442,7 +473,19 @@ object PoeGraphicConstants {
         fun predicate(color: Color) =
             colorMatches(color, unfilteredHeistContract, 30)
 
-        return filterPoints(points, ::predicate, ::getAverageColor)
+        return filterPoints(points, ::predicate) { pg, p ->
+            MouseCap.getAverageColor(
+                p.x,
+                p.y,
+                (-1..1).asSequence().flatMap { dx ->
+                    (-1..1).map { dy ->
+                        Point(dx * 2, dy * 2)
+                    }
+                }
+            ) { x0, y0 ->
+                pg.get(x0, y0)
+            }
+        }
     }
 
     fun gridColorHasItem(color: Color) =

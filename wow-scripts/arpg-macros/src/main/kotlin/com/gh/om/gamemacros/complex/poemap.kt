@@ -35,6 +35,7 @@ interface PoeMapScorer {
 class PoeMapScorerImpl(
     private val packSizeWeight: Double,
     private val quantWeight: Double = 1.0,
+    private val rarityWeight: Double = 0.0,
     private val currencyWeight: Double,
     private val scarabWeight: Double,
     private val mapWeight: Double = 0.0,
@@ -43,12 +44,14 @@ class PoeMapScorerImpl(
     val threshold: Double,
     val hasBadMods: (PoeRollableItem) -> Boolean = { false },
     val extraScorer: (PoeRollableItem) -> Double = { 1.0 },
+    private val weightDivider: Double? = null,
 ) : PoeMapScorer {
-    private val totalWeight = sequenceOf(
+    private val totalWeight: Double = sequenceOf(
         genericWeight,
         currencyWeight,
         scarabWeight,
         mapWeight,
+        rarityWeight,
     ).sum()
 
     override fun isGoodMap(map: PoeRollableItem): Boolean {
@@ -65,7 +68,7 @@ class PoeMapScorerImpl(
     }
 
     override fun getScore(input: PoeRollableItem): Double {
-        require(input.klass == PoeItem.Klass.Map)
+        require(input.klass.isMapLike())
 
         val currency =
             getRealPctValue(input.qualities, PoeRollableItem.MapAug.Currency)
@@ -73,6 +76,8 @@ class PoeMapScorerImpl(
             getRealPctValue(input.qualities, PoeRollableItem.MapAug.Scarab)
         val quant =
             getRealPctValue(input.qualities, PoeRollableItem.MapAug.Quant)
+        val rarity =
+            getRealPctValue(input.qualities, PoeRollableItem.MapAug.Rarity)
         val pack = getRealPctValue(input.qualities, PoeRollableItem.MapAug.Pack)
         val map = getRealPctValue(input.qualities, PoeRollableItem.MapAug.Map)
 
@@ -86,11 +91,13 @@ class PoeMapScorerImpl(
         val dropMulti = packMulti * quantMulti
         val currencyMulti = ((currency.toDouble() / 100) * atlasMulti) + 1
         val scarabMulti = ((scarab.toDouble() / 100) * atlasMulti) + 1
+        val rarityMulti = ((rarity.toDouble() / 100) * atlasMulti) + 1
         val mapMulti = ((map.toDouble() / 100) * atlasMulti) + 1
         val weightedSum = genericWeight + currencyMulti * currencyWeight +
-                scarabMulti * scarabWeight + mapMulti * mapWeight
-        // normalize by weight = 1
-        val normScore = weightedSum * dropMulti / totalWeight
+                scarabMulti * scarabWeight + mapMulti * mapWeight +
+                rarityMulti * rarityWeight
+        // normalize by weightDivider
+        val normScore = weightedSum * dropMulti / (weightDivider ?: totalWeight)
         return normScore * extraScorer(input)
     }
 
@@ -126,42 +133,85 @@ class PoeMapScorerImpl(
 
         val ABYSS = PoeMapScorerImpl(
             packSizeWeight = 0.4,
-            currencyWeight = 0.8,
-            scarabWeight = 1.8,
-            mapWeight = 0.4,
-            threshold = 10.5,
+            currencyWeight = 0.4,
+            scarabWeight = 1.0,
+            genericWeight = 0.3,
+            mapWeight = 0.05,
+            rarityWeight = 0.1,
+            // WD=1, PS=0.4, scarab=0.66, c=0.33:
+            // 10.5 for single target reroll, 14 for multiple target
+            threshold = 9.0,
             hasBadMods = ::hasBadModsForAbyss,
         )
 
         val abyssModWithDescriptionToAvoid = listOf(
             // -37% res is too bad. However this also matches t16 -12% res,
-            // so a descriptin check is needed to disambiguate.
+            // so a description check is needed to disambiguate.
             "of Exposure" to "-20%"
         )
 
-        val mobDefenseMods = listOf(
-            PoeAffixMatcher.byNumericDescr("Buffered") {
-                it >= 40
-            },
-            PoeAffixMatcher.byNumericDescr("Fecund") {
-                it >= 70
-            },
-            PoeAffixMatcher.byNumericDescr("of Toughness") {
-                it >= 35
-            },
-            PoeAffixMatcher.byNumericDescr("of Impotence") {
-                it >= 25
-            }
+        val mobDamageMods = listOf<Pair<PoeAffixMatcher, Number>>(
+            // T17 double crit
+            PoeAffixMatcher.byNumericDescr("of Deadliness") {
+                it > 400
+            } to 2.5,
+            // T17 -max res
+            PoeAffixMatcher.byNumericDescr("of Exposure") {
+                it >= 20
+            } to 2.5,
+            // T17 area + proj
+            PoeAffixMatcher.byName("Magnifying") to 2,
+            // T17 -defence
+            PoeAffixMatcher.byName("of Miring") to 2,
+            // T17 phys as 200% extra elem
+            PoeAffixMatcher.byName("Prismatic") to 2,
+            // T17 remove -- this is still dangerous
+            PoeAffixMatcher.byName("Equalising") to 2,
+            // Shaper touched adds lots of damage
+            PoeAffixMatcher.byName("Valdo's") to 1.5,
+            // M4D is simply 50% more
+            PoeAffixMatcher.byName("Retributive") to 1.5,
+            // Meteor is usually fine, unless coupled with something else
+            PoeAffixMatcher.byName("of Imbibing") to 2,
+            // 15% pen
+            PoeAffixMatcher.byName("of Penetration") to 2,
+            // Ignites (immunity would be nice)
+            PoeAffixMatcher.byName("Afflicting") to 2,
+            PoeAffixMatcher.byName("Conflagrating") to 2,
         )
 
-        val alwaysAnnoyingMods = listOf(
+        val mobDefenseMods = listOf<Pair<PoeAffixMatcher, Number>>(
+            // ES
+            PoeAffixMatcher.byNumericDescr("Buffered") {
+                it >= 40
+            } to 2.4,
+            // Life
+            PoeAffixMatcher.byNumericDescr("Fecund") {
+                it >= 70
+            } to 2.6,
+            // Crit reduction
+            PoeAffixMatcher.byNumericDescr("of Toughness") {
+                it >= 35
+            } to 2.2,
+            // AOE reduction
+            PoeAffixMatcher.byNumericDescr("of Impotence") {
+                it >= 25
+            } to 1.5,
+            // Resistance
+            PoeAffixMatcher.byName("Protected") to 1.2,
+        )
+
+        val alwaysAvoidMods = listOf(
             // 78% scarab is nice but volatile is too annoying
             "Volatile",
             // 56% rarity is a joke, compared to the 3 seconds lag
             "Cycling",
+        )
+
+        val alwaysAnnoyingMods = listOf(
             // Tentacles make mapping much slower
             "Decaying",
-        )
+        ) + alwaysAvoidMods
 
         val alvaModsToAvoid = listOf(
             // Buff expiration means shrine buff will be gone faster
@@ -169,6 +219,9 @@ class PoeMapScorerImpl(
             // Awakener rune can spawn in incursion which is really bad
             // due to lagging
             "of Desolation",
+            // Lagging + drowning orb is bad combination. Runegraft of warp
+            // will make the debuff go faster so reaction time is even shorter.
+            "Hungering",
         ) + alwaysAnnoyingMods
 
         val moreDropMods = listOf(
@@ -196,17 +249,31 @@ class PoeMapScorerImpl(
             return shouldAvoid || shouldAvoidSpecific
         }
 
+        fun hasBadModsForAlva(item: PoeRollableItem): Boolean {
+            val mobDamageMulti = mobDamageMods.filter { (m, _) ->
+                item.hasAffixThat(m::matches)
+            }.map {
+                it.second.toDouble()
+            }.fold(1.0, Double::times)
+            val mobDefenseMulti = mobDefenseMods.filter { (m, _) ->
+                item.hasAffixThat(m::matches)
+            }.map {
+                it.second.toDouble()
+            }.fold(1.0, Double::times)
+
+            return alvaModsToAvoid.any(item::hasAffix) ||
+                    mobDamageMulti > 9 || mobDefenseMulti > 3.5
+        }
+
         val ALVA = PoeMapScorerImpl(
             packSizeWeight = 1.0,
+            rarityWeight = 0.2,
             currencyWeight = 1.0,
             scarabWeight = 0.0,
-            threshold = 20.0,
-            hasBadMods = { item ->
-                alvaModsToAvoid.any(item::hasAffix) ||
-                        mobDefenseMods.count { matcher ->
-                            item.hasAffixThat(matcher::matches)
-                        } > 1
-            },
+            // 22 for t16.5, 28 for t17
+            threshold = 28.0,
+            weightDivider = 1.0,
+            hasBadMods = ::hasBadModsForAlva,
             extraScorer = { item ->
                 val countOfMoreDropMods = item.explicitMods.count { mod ->
                     moreDropMods.any { it.matches(mod) }
@@ -229,63 +296,72 @@ class PoeMapScorerImpl(
             currencyWeight = 0.0,
             scarabWeight = 0.0,
             genericWeight = 1.0,
-            // 3.0: around 110 IIQ, 52 Pack. Need 23c
-            threshold = 3.0,
+            // 3.0: around 110 IIQ, 52 Pack. Need 23c for single rolling
+            // 3.4 is also fine when multi-rolling (~50c?)
+            threshold = 3.4,
+            hasBadMods = { item ->
+                alwaysAvoidMods.any(item::hasAffix)
+            }
         )
 
+        // TODO: need a way to auto-categorize the results.
         val ANY = PoeMapScorer.anyGood(
             listOf(
-                ABYSS,
                 AWAKEN_HARVEST,
-                MAP,
-                ALVA,
+                ABYSS,
+                // MAP,
+                // ALVA,
             )
+        )
+
+        val INVITATION = PoeMapScorerImpl(
+            packSizeWeight = 0.0,
+            quantWeight = 1.0,
+            currencyWeight = 0.0,
+            scarabWeight = 0.0,
+            genericWeight = 1.0,
+            atlasMulti = 1.0,
+            threshold = 1.8,
         )
     }
 }
 
 fun main() {
     val input = """
-Item Class: Maps
+Item Class: Misc Map Items
 Rarity: Rare
-Exposed Turf
-City Square Map
+Otherworldly Inscription
+Screaming Invitation
 --------
-Map Tier: 16
-Item Quantity: +109% (augmented)
-Item Rarity: +66% (augmented)
-Monster Pack Size: +40% (augmented)
-More Maps: +50% (augmented)
-More Currency: +196% (augmented)
+Item Quantity: +71% (augmented)
+Item Rarity: +42% (augmented)
 --------
-Item Level: 85
---------
-Monster Level: 83
+Item Level: 84
 --------
 { Implicit Modifier }
-Area is Influenced by the Originator's Memories — Unscalable Value (implicit)
+Modifiers to Item Quantity affect the amount of rewards dropped by the boss (implicit)
 --------
-{ Prefix Modifier "Equalising" (Tier: 1) }
-Rare and Unique Monsters remove 5% of Life, Mana and Energy Shield from Players or their Minions on Hit
-{ Prefix Modifier "Fecund" (Tier: 1) }
-98(90-100)% more Monster Life
-{ Suffix Modifier "of Desolation" (Tier: 1) }
-Area has patches of Awakeners' Desolation
-{ Suffix Modifier "of Endurance" (Tier: 1) }
-Monsters have +1 to Maximum Endurance Charges
-Monsters gain an Endurance Charge when hit
-{ Suffix Modifier "of Fatigue" }
-Players have 40% less Cooldown Recovery Rate
+{ Prefix Modifier "Mirrored" (Tier: 1) — Damage, Elemental }
+Monsters reflect 18% of Elemental Damage
+{ Prefix Modifier "Burning" (Tier: 1) — Damage, Physical, Elemental, Fire }
+Monsters deal 110(90-110)% extra Physical Damage as Fire
+{ Suffix Modifier "of Drought" (Tier: 1) }
+Players gain 50% reduced Flask Charges
+{ Suffix Modifier "of Impotence" (Tier: 1) }
+Players have 25% less Area of Effect
+{ Suffix Modifier "of Exposure" (Tier: 1) — Elemental, Resistance }
+Players have -10(-12--9)% to all maximum Resistances
 --------
-Travel to this Map by using it in a personal Map Device. Maps can only be used once.
-
-
+From the heart of the Tangle, the Eater of Worlds
+reaches out for control of the Atlas.
+--------
+Open portals to Absence of Symmetry and Harmony by using this item in a personal Map Device.
 
         """
 
     val output = PoeItemParser.parseAsRollable(input)
     println(output)
-    val scorer = PoeMapScorerImpl.ALVA
+    val scorer = PoeMapScorerImpl.INVITATION
     val score = scorer.getScore(output).fmt()
     val bad = scorer.hasBadMods(output)
     println("score = $score, bad = $bad")
@@ -418,10 +494,10 @@ object PoeRollMap {
             }
             // rollMapsUntilDone(isPoe::value)
             rollMapsUntilDoneEx(
-                scorer = PoeMapScorerImpl.ANY,
+                scorer = PoeMapScorerImpl.ABYSS,
                 mapsToRoll = bagSlots().toList(),
-                // rerollProvider = ChaosRerollProvider(1000),
-                rerollProvider = ScourAlchRerollProvider(1000),
+                rerollProvider = ChaosRerollProvider(1000),
+                // rerollProvider = ScourAlchRerollProvider(1500),
                 shouldContinue = isPoe::value,
             )
         }
@@ -469,7 +545,7 @@ object PoeRollMap {
             }
             val mapSlot = mutMapRemaining.last()
             val map = getMapAt(mapSlot)
-            require(map.klass == PoeItem.Klass.Map) {
+            require(map.klass.isMapLike()) {
                 "Not a map: $map"
             }
             if (scorer.isGoodMap(map)) {
