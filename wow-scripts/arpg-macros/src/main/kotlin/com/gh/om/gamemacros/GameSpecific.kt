@@ -47,6 +47,7 @@ object GameSpecific {
         PoeAltAugRegal::main,
         PoeHarvestReforge::main,
         PoeRollMap::main,
+        PoeRollMap::sortInStash,
     )
 
     init {

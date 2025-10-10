@@ -140,7 +140,7 @@ class PoeMapScorerImpl(
             rarityWeight = 0.1,
             // WD=1, PS=0.4, scarab=0.66, c=0.33:
             // 10.5 for single target reroll, 14 for multiple target
-            threshold = 9.0,
+            threshold = 11.5,
             hasBadMods = ::hasBadModsForAbyss,
         )
 
@@ -267,18 +267,18 @@ class PoeMapScorerImpl(
 
         val ALVA = PoeMapScorerImpl(
             packSizeWeight = 1.0,
-            rarityWeight = 0.2,
+            rarityWeight = 0.4,
             currencyWeight = 1.0,
             scarabWeight = 0.0,
-            // 22 for t16.5, 28 for t17
-            threshold = 28.0,
-            weightDivider = 1.0,
+            // default WD: 20-22 for t16.5, 28 for t17
+            threshold = 20.0,
+            // weightDivider = 1.0,
             hasBadMods = ::hasBadModsForAlva,
             extraScorer = { item ->
                 val countOfMoreDropMods = item.explicitMods.count { mod ->
                     moreDropMods.any { it.matches(mod) }
                 }
-                1 + countOfMoreDropMods * 0.08
+                1 + countOfMoreDropMods * 0.05
             }
         )
 
@@ -494,14 +494,33 @@ object PoeRollMap {
             }
             // rollMapsUntilDone(isPoe::value)
             rollMapsUntilDoneEx(
-                scorer = PoeMapScorerImpl.ABYSS,
+                scorer = PoeMapScorerImpl.INVITATION,
                 mapsToRoll = bagSlots().toList(),
-                rerollProvider = ChaosRerollProvider(1000),
-                // rerollProvider = ScourAlchRerollProvider(1500),
+                // rerollProvider = ChaosRerollProvider(1000),
+                rerollProvider = ScourAlchRerollProvider(1500),
                 shouldContinue = isPoe::value,
             )
         }
         LEADER_KEY.isEnabled("11").collect(::handle)
+    }
+
+    suspend fun sortInStash() {
+        val isPoe = isPoeAndTriggerKeyEnabled()
+
+        suspend fun handle(pressed: Boolean) {
+            if (!pressed) {
+                return
+            }
+            val scorer = PoeMapScorerImpl.ALVA
+            val (inputs, tempStorage) = stashItemsAndNext()
+            doSortInStash(
+                scorer = scorer,
+                shouldContinue = isPoe::value,
+                inputs = inputs,
+                outputs = stashSlots().toList()
+            )
+        }
+        LEADER_KEY.isEnabled("14").collect(::handle)
     }
 
     /**
@@ -565,6 +584,58 @@ object PoeRollMap {
         report()
     }
 
+    private suspend fun doSortInStash(
+        scorer: PoeMapScorer,
+        shouldContinue: () -> Boolean,
+        inputs: List<Point>,
+        outputs: List<Point>
+    ) {
+        val scoredPoints = mutableListOf<Pair<Point, Double>>()
+        for (input in inputs) {
+            if (!shouldContinue()) {
+                return
+            }
+            MouseHooks.moveTo(input)
+            safeDelayK(30.milliseconds)
+            val ad = PoeInteractor.getAdvancedDescriptionOfItemUnderMouse() ?: ""
+            val item = PoeItemParser.parseAsRollable(ad)
+            scoredPoints += input to scorer.getScore(item)
+        }
+        // Sort score by high to low
+        scoredPoints.sortBy { -it.second }
+        val scoresDisplay = scoredPoints.map { it.second.fmt() }
+        val scoresAvg = scoredPoints.map { it.second }.average().fmt()
+        println("${scoredPoints.size} maps, avg score ${scoresAvg}, each: $scoresDisplay")
+
+        // In-place sort require cycle detection: Find sccs, then for each scc do circular
+        // move. Oh I realized this is similar to register allocation on phi nodes.
+        // If we relax the space requirement a bit, it's a lot easier: just move them to bags first.
+
+        for ((point, _) in scoredPoints) {
+            if (!shouldContinue()) {
+                return
+            }
+            PoeInteractor.withControlPressed {
+                MouseHooks.postClick(point, delayMs = 30, moveFirst = true)
+            }
+        }
+
+        val bagSlots = PoeGraphicConstants.allGrids(
+            start = PoeGraphicConstants.firstItemInBag,
+            rows = PoeDumpBag.bagRows,
+            columns = 10,
+            gridSize = PoeGraphicConstants.bagGridSize,
+        ).take(inputs.size)
+        for (slot in bagSlots) {
+            if (!shouldContinue()) {
+                return
+            }
+            PoeInteractor.withControlShiftPressed {
+                MouseHooks.postClick(slot, delayMs = 30, moveFirst = true)
+            }
+        }
+    }
+
     private suspend fun bagSlots(): List<Point> {
         val grids = PoeGraphicConstants.allGrids(
             start = PoeGraphicConstants.firstItemInBag,
@@ -576,4 +647,24 @@ object PoeRollMap {
         return PoeGraphicConstants.safeCaptureThenFilterHasItem(grids)
     }
 
+    private fun stashSlots(): Sequence<Point> {
+        return PoeGraphicConstants.allGrids(
+            start = PoeGraphicConstants.firstItemInRegularStash,
+            rows = 12,
+            // Sort half stash at a time
+            columns = 6,
+            gridSize = PoeGraphicConstants.bagGridSize,
+        )
+    }
+
+    /**
+     * @return The stash slots with items, and the next slot
+     */
+    private suspend fun stashItemsAndNext(): Pair<List<Point>, Point> {
+        val grids = stashSlots()
+        val hasItem = PoeGraphicConstants.safeCaptureThenFilterHasItem(grids)
+        val gridList = grids.toList()
+        val lastItemIx = gridList.indexOf(hasItem.last())
+        return hasItem to gridList[lastItemIx + 1]
+    }
 }

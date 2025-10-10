@@ -44,6 +44,7 @@ object PoeRerollKirac {
     val stackSizePat = Pattern.compile("""Stack Size: (\d+)/""")
 
     val numberOfGrids = 4
+    val startQuestButtion = Point(1139, 894)
 
     val userHome =
         Path(System.getProperty("user.home"))
@@ -83,6 +84,9 @@ object PoeRerollKirac {
                     return
                 }
                 if (reroll(slot, isPoe::value)) {
+                    // Found: start the quest
+                    safeDelayK(30.milliseconds)
+                    MouseHooks.postClick(startQuestButtion, moveFirst = true)
                     return
                 }
             }
@@ -123,7 +127,7 @@ object PoeRerollKirac {
 
         repeat(stackSize) {
             if (!shouldContinue()) {
-                return true
+                return false
             }
 
             // 2. Check if any mission matches
@@ -276,7 +280,6 @@ object PoeDumpBag {
                 nameOfSource = "regular stash",
                 sourceSlots = regularStashSlots(),
                 forced = false,
-                filterHasItem = PoeGraphicConstants::filterUnmatchedHeistContracts,
                 shouldContinue = isPoe::value
             )
         }
@@ -384,7 +387,7 @@ object PoeDumpBag {
     private fun regularStashSlots() = PoeGraphicConstants.allGrids(
         start = PoeGraphicConstants.firstItemInRegularStash,
         rows = 12,
-        columns = 5,
+        columns = 8,
         gridSize = PoeGraphicConstants.bagGridSize,
     )
 }
@@ -554,6 +557,13 @@ object PoeStackedDeck {
 object PoeInteractor {
     suspend fun withControlPressed(inner: suspend () -> Unit) {
         KeyHooks.withModifierKey(NativeKeyEvent.VC_CONTROL, inner)
+    }
+
+    // For force move items
+    suspend fun withControlShiftPressed(inner: suspend () -> Unit) {
+        withControlPressed {
+            KeyHooks.withModifierKey(NativeKeyEvent.VC_SHIFT, inner)
+        }
     }
 
     // For copying advanced item description

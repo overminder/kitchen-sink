@@ -245,12 +245,12 @@ object PoeAltAugRegal {
 
     private suspend fun craftOnce(crafter: RealCrafterOnCurrencyTab): Boolean {
         val before = crafter.getCurrentItem()
-        val decision = CraftMethods.altAugRegalExaltOnce(
+        val decision = CraftMethods.scourAlchOnce(
             c = crafter,
             // CraftDecisionMaker.IntStackClusterAllowSingleRes,
             // CraftDecisionMaker.ByDesiredMods(intStackCluster, 2),
-            CraftDecisionMaker.ByDesiredMods(wanderCobalt, 3),
-            // CraftDecisionMaker.gloveTwoEs,
+            // CraftDecisionMaker.ByDesiredMods(wanderCobalt, 3),
+            CraftDecisionMaker.gloveTwoEs,
         )
         // println("$decision on $before")
         return decision.done
@@ -618,6 +618,8 @@ private class RealCrafterOnCurrencyTab : PoeItemCrafter {
             NativeMouseEvent.BUTTON1,
             moveFirst = true
         )
+
+        safeDelayK(30.milliseconds)
     }
 
     override suspend fun transmute() {
@@ -820,6 +822,41 @@ private fun interface CraftDecisionMaker {
  * Every execution advances one step. Returns True if crafting is done.
  */
 private object CraftMethods {
+    suspend fun scourAlchOnce(
+        c: PoeItemCrafter,
+        dm: CraftDecisionMaker,
+    ): CraftDecisionMaker.Decision {
+        val item = c.getCurrentItem()
+
+        val decision = dm.getDecision(item)
+
+        if (decision.type == CraftDecisionMaker.DecisionType.Done) {
+            return decision
+        }
+
+        val why: String
+
+        when (item.rarity) {
+            PoeRollableItem.Rarity.Normal -> {
+                why = "alch because normal"
+                c.alch()
+            }
+
+            PoeRollableItem.Rarity.Magic -> {
+                why = "scour - alch because magic"
+                c.scour()
+                c.alch()
+            }
+
+            PoeRollableItem.Rarity.Rare -> {
+                why = "chaos because rare"
+                c.scour()
+                c.alch()
+            }
+        }
+        return decision.copy(why = decision.why + ", impl = " + why)
+    }
+
     suspend fun chaosOnce(
         c: PoeItemCrafter,
         dm: CraftDecisionMaker,
