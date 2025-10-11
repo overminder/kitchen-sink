@@ -1,6 +1,8 @@
 package com.gh.om.gamemacros.complex
 
 import com.gh.om.gamemacros.MouseHooks
+import com.gh.om.gamemacros.complex.PoeRollMap.bagSlots
+import com.gh.om.gamemacros.complex.PoeRollMap.rollMapsUntilDoneEx
 import com.gh.om.gamemacros.complex.PoeRollableItem.Rarity.*
 import com.gh.om.gamemacros.isPoeAndTriggerKeyEnabled
 import com.gh.om.gamemacros.safeDelayK
@@ -668,3 +670,4 @@ object PoeRollMap {
         return hasItem to gridList[lastItemIx + 1]
     }
 }
+
