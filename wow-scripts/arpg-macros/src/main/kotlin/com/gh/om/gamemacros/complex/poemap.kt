@@ -1,8 +1,6 @@
 package com.gh.om.gamemacros.complex
 
 import com.gh.om.gamemacros.MouseHooks
-import com.gh.om.gamemacros.complex.PoeRollMap.bagSlots
-import com.gh.om.gamemacros.complex.PoeRollMap.rollMapsUntilDoneEx
 import com.gh.om.gamemacros.complex.PoeRollableItem.Rarity.*
 import com.gh.om.gamemacros.isPoeAndTriggerKeyEnabled
 import com.gh.om.gamemacros.safeDelayK
@@ -494,12 +492,11 @@ object PoeRollMap {
             if (!pressed) {
                 return
             }
-            // rollMapsUntilDone(isPoe::value)
-            rollMapsUntilDoneEx(
+            rollMapsUntilDone(
                 scorer = PoeMapScorerImpl.INVITATION,
                 mapsToRoll = bagSlots().toList(),
-                // rerollProvider = ChaosRerollProvider(1000),
-                rerollProvider = ScourAlchRerollProvider(1500),
+                rerollProvider = ChaosRerollProvider(1000),
+                // rerollProvider = ScourAlchRerollProvider(1500),
                 shouldContinue = isPoe::value,
             )
         }
@@ -536,7 +533,7 @@ object PoeRollMap {
         return PoeItemParser.parseAsRollable(ad)
     }
 
-    suspend fun rollMapsUntilDoneEx(
+    suspend fun rollMapsUntilDone(
         scorer: PoeMapScorer,
         mapsToRoll: List<Point>,
         rerollProvider: RerollProvider,

@@ -1,14 +1,17 @@
 package com.gh.om.gamemacros.complex
 
 import com.gh.om.gamemacros.MouseHooks
+import com.gh.om.gamemacros.complex.CraftDecisionMaker.IntStackClusterAllowSingleRes.byDesiredOneSideMods
+import com.gh.om.gamemacros.complex.PoeAltAugRegal.brandClusterDescription
+import com.gh.om.gamemacros.complex.PoeAltAugRegal.lightningClusterForBrandDescriptions
 import com.gh.om.gamemacros.complex.PoeItem.Klass.MiscMap
-import com.gh.om.gamemacros.complex.PoeRollableItem.MapAug
 import com.gh.om.gamemacros.isPoeAndTriggerKeyEnabled
 import com.gh.om.gamemacros.safeDelayK
 import com.github.kwhat.jnativehook.mouse.NativeMouseEvent
 import java.awt.Point
 import java.util.regex.Pattern
 import kotlin.math.min
+import kotlin.text.contains
 import kotlin.time.Duration.Companion.milliseconds
 
 // More comprehensive crafting: transmute, alt, aug, regal, exalt.
@@ -173,11 +176,16 @@ object PoeAltAugRegal {
         "of Resistance",
     )
 
-    val shockAvoidAbyss = listOf(
-        // 40 ES
+    // 50% to avoid shock
+    val SHOCK_AVOID = "of the Lightning Rod"
+
+    // 6-8% phasing
+    val PHASING = "of Phasing"
+
+    val baseIntStackAbyss = listOf(
+        // t1 & t2 ES
         "Resplendent",
-        // 50% to avoid shock
-        "of the Lightning Rod",
+        "Incandescent",
         // Int or str-int
         "of Intelligence",
         "of Spirit",
@@ -185,17 +193,19 @@ object PoeAltAugRegal {
         "of Potency",
         // movement speed
         "of Momentum",
-        // attack speed when crit (why is this on hypnotic?)
+        // AS when crit (why is this also on hypnotic?)
         "of Opportunity",
-        "of Phasing",
         // Searching only
         // AS
         "of Berserking",
         // Lightning attack damage
         "of Arcing",
-        // bow or wand lighting attack damage
+        // t1 & t2 bow or wand lighting attack damage
         "Electrocuting",
+        "Discharging",
     ) + sharedBaseJewelResMods
+
+    val shockAvoidPhasingAbyss = baseIntStackAbyss + SHOCK_AVOID + PHASING
 
     val wanderCobalt = listOf(
         // Prefixes
@@ -223,6 +233,36 @@ object PoeAltAugRegal {
         "of the Prodigy",
     )
 
+    fun notableOf(names: List<String>) = names.map {
+        "1 Added Passive Skill is $it"
+    }
+
+    val lightningClusterForBrandDescriptions = notableOf(
+        listOf(
+            "Inspired Oppression",
+            "Remarkable",
+            "Overshock",
+            "Prismatic Heart",
+            "Sadist",
+            "Thunderstruck",
+            "Disorienting Display",
+            "Doryani's Lesson",
+            "Widespread Destruction"
+        )
+    )
+
+    val brandClusterDescription = notableOf(
+        listOf(
+            "Grand Design",
+            "Remarkable",
+        )
+    )
+
+    val gemLevelAmulet = listOf(
+        // All +1
+        "Exalter's",
+    )
+
     suspend fun main() {
         val isPoe = isPoeAndTriggerKeyEnabled()
 
@@ -231,7 +271,7 @@ object PoeAltAugRegal {
                 return
             }
             val crafter = RealCrafterOnCurrencyTab()
-            repeat(7000) {
+            repeat(2000) {
                 if (!isPoe.value) {
                     return
                 }
@@ -245,12 +285,12 @@ object PoeAltAugRegal {
 
     private suspend fun craftOnce(crafter: RealCrafterOnCurrencyTab): Boolean {
         val before = crafter.getCurrentItem()
-        val decision = CraftMethods.scourAlchOnce(
+        val decision = CraftMethods.altAugRegalExaltOnce(
             c = crafter,
             // CraftDecisionMaker.IntStackClusterAllowSingleRes,
             // CraftDecisionMaker.ByDesiredMods(intStackCluster, 2),
-            // CraftDecisionMaker.ByDesiredMods(wanderCobalt, 3),
-            CraftDecisionMaker.gloveTwoEs,
+            // CraftDecisionMaker.ByDesiredMods(gemLevelAmulet, 1),
+            CraftDecisionMaker.lightningClusterForBrand,
         )
         // println("$decision on $before")
         return decision.done
@@ -724,14 +764,21 @@ private fun interface CraftDecisionMaker {
         }
     }
 
-    class ByDesiredMods(
-        private val desiredModNames: List<String>,
+    fun byDesiredMods(
+        desiredModNames: List<String>,
+        desiredModCount: Int,
+    ): CraftDecisionMaker = ByDesiredModsEx(
+        desiredModCount = desiredModCount,
+    ) {
+        it.name in desiredModNames
+    }
+
+    class ByDesiredModsEx(
         private val desiredModCount: Int,
+        private val doesModMatch: (PoeRollableItem.ExplicitMod) -> Boolean,
     ) : CraftDecisionMaker {
         override fun getDecision(item: PoeRollableItem): Decision {
-            val matches = item.explicitMods.count {
-                it.name in desiredModNames
-            }
+            val matches = item.explicitMods.count(doesModMatch)
 
             return byMatches(
                 matches = matches,
@@ -741,19 +788,28 @@ private fun interface CraftDecisionMaker {
         }
     }
 
-    class ByDesiredOneSideMods(
-        private val desiredModNames: List<String>,
-        private val side: PoeRollableItem.ExplicitModLocation,
-    ) : CraftDecisionMaker {
-        override fun getDecision(item: PoeRollableItem): Decision {
-            val modsOnSide = item.explicitMods.filter {
-                it.loc == side
-            }
-            val matches = modsOnSide.count {
+    fun byDesiredOneSideMods(
+        desiredModNames: List<String>,
+        side: PoeRollableItem.ExplicitModLocation,
+    ): CraftDecisionMaker {
+        return ByDesiredOneSideModsEx(side = side, desiredModCount = desiredModNames.size) { mods ->
+            mods.count {
                 it.name in desiredModNames
             }
+        }
+    }
+
+    // For alt-aug-regal, where regal can land on either side
+    class ByDesiredOneSideModsEx(
+        private val side: PoeRollableItem.ExplicitModLocation,
+        private val desiredModCount: Int,
+        private val getMatchedMods: (List<PoeRollableItem.ExplicitMod>) -> Int,
+    ) : CraftDecisionMaker {
+        override fun getDecision(item: PoeRollableItem): Decision {
+            val modsOnSide = item.explicitMods.filter { it.loc == side }
+            val matches = getMatchedMods(modsOnSide)
             if (item.rarity == PoeRollableItem.Rarity.Rare &&
-                matches < desiredModNames.size
+                matches < desiredModCount
             ) {
                 return Decision(
                     type = DecisionType.Reset,
@@ -763,20 +819,37 @@ private fun interface CraftDecisionMaker {
 
             return byMatches(
                 matches = matches,
-                desiredModCount = desiredModNames.size,
+                desiredModCount = desiredModCount,
                 nMods = modsOnSide.size
             )
         }
     }
 
     companion object {
-        val gloveTwoEs = ByDesiredOneSideMods(
+        val gloveTwoEs = byDesiredOneSideMods(
             listOf(
                 "Seething",
                 "Unassailable",
             ),
             PoeRollableItem.ExplicitModLocation.Prefix
         )
+
+        fun matchesDescription(mod: PoeRollableItem.ExplicitMod, descriptions: List<String>): Boolean {
+            return descriptions.any { it in mod.description }
+        }
+
+        val brandCluster = ByDesiredOneSideModsEx(
+            PoeRollableItem.ExplicitModLocation.Prefix,
+            2,
+        ) { mods ->
+            mods.count { mod ->
+                matchesDescription(mod, brandClusterDescription)
+            }
+        }
+
+        val lightningClusterForBrand = ByDesiredModsEx(3) {
+            matchesDescription(it, lightningClusterForBrandDescriptions)
+        }
 
         /**
          * @param matches The number of matched affixes on the current item
@@ -983,33 +1056,30 @@ fun main() {
     val toParse = """
         Item Class: Jewels
         Rarity: Rare
-        Rapture Joy
-        Large Cluster Jewel
+        Kraken Star
+        Medium Cluster Jewel
         --------
         Requirements:
-        Level: 67
+        Level: 54
         --------
-        Item Level: 85
+        Item Level: 83
         --------
-        Adds 12 Passive Skills (enchant)
+        Adds 5 Passive Skills (enchant)
         (Added Passive Skills are never considered to be in Radius by other Jewels) (enchant)
         (All Added Passive Skills are Small unless otherwise specified) (enchant)
-        2 Added Passive Skills are Jewel Sockets (enchant)
-        Added Small Passive Skills grant: 10% increased Spell Damage (enchant)
+        1 Added Passive Skill is a Jewel Socket (enchant)
+        Added Small Passive Skills grant: 12% increased Brand Damage (enchant)
         (Passive Skills that are not Notable, Masteries, Keystones, or Jewel Sockets are Small) (enchant)
         --------
-        { Prefix Modifier "Powerful" (Tier: 1) }
-        Added Small Passive Skills have 35% increased Effect (fractured)
-        { Prefix Modifier "Glowing" (Tier: 1) — Defences, Energy Shield }
-        Added Small Passive Skills also grant: +12(10-12) to Maximum Energy Shield
-        { Suffix Modifier "of the Prodigy" (Tier: 1) — Attribute }
-        Added Small Passive Skills also grant: +7(6-8) to Intelligence
-        { Suffix Modifier "of the Kaleidoscope" (Tier: 1) — Elemental, Resistance }
-        Added Small Passive Skills also grant: +4% to all Elemental Resistances
+        { Prefix Modifier "Glimmering" (Tier: 2) — Defences, Energy Shield }
+        Added Small Passive Skills also grant: +7(6-9) to Maximum Energy Shield
+        { Prefix Modifier "Notable" (Tier: 1) — Caster, Speed }
+        1 Added Passive Skill is Remarkable — Unscalable Value
+        { Suffix Modifier "of the Crystal" (Tier: 3) — Elemental, Resistance }
+        Added Small Passive Skills also grant: +2% to all Elemental Resistances
         --------
-        Place into an allocated Large Jewel Socket on the Passive Skill Tree. Added passives do not interact with jewel radiuses. Right click to remove from the Socket.
-        --------
-        Fractured Item
+        Place into an allocated Medium or Large Jewel Socket on the Passive Skill Tree. Added passives do not interact with jewel radiuses. Right click to remove from the Socket.
+
 
     """.trimIndent()
 }
