@@ -7,6 +7,7 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 
 private fun innerMain() {
+    println("Launching ${GameSpecific.ALL.size} GameSpecific macros")
     runBlocking {
         val tasks = GameSpecific.ALL.map { mkTask ->
             async { mkTask() }

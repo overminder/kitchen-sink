@@ -285,12 +285,12 @@ object PoeAltAugRegal {
 
     private suspend fun craftOnce(crafter: RealCrafterOnCurrencyTab): Boolean {
         val before = crafter.getCurrentItem()
-        val decision = CraftMethods.altAugRegalExaltOnce(
+        val decision = CraftMethods.chaosOnce(
             c = crafter,
             // CraftDecisionMaker.IntStackClusterAllowSingleRes,
-            // CraftDecisionMaker.ByDesiredMods(intStackCluster, 2),
+            // CraftDecisionMaker.byDesiredMods(intStackCluster, 2),
             // CraftDecisionMaker.ByDesiredMods(gemLevelAmulet, 1),
-            CraftDecisionMaker.lightningClusterForBrand,
+            CraftDecisionMaker.intStackAmulet,
         )
         // println("$decision on $before")
         return decision.done
@@ -516,22 +516,19 @@ object PoeCurrencyTab {
 
 object PoeAutoAlt {
 
-    val intStackWandWiderAffixes = listOf(
-        "per 1",
-        "Runic",
-        "Acclaim",
-        "Incision",
-        "Destruction",
-        "Vapourising",
-    )
-
     val intStackWandPrefixes = listOf(
-        // Includes both spell per 16 and lightning per 10
-        "per 1",
+        "with this Weapon per 10 Intelligence",
+        "Spell Damage per 16 Intelligence",
         // T1 Spell%
         "Runic",
         // T1 Lightning attack#
         "Vapourising",
+    )
+
+    val intStackWandWiderAffixes = intStackWandPrefixes + listOf(
+        "Acclaim",
+        "Incision",
+        "Destruction",
     )
 
     val intShield = listOf(
@@ -561,11 +558,11 @@ object PoeAutoAlt {
             if (!pressed) {
                 return
             }
-            repeat(500) {
+            repeat(3000) {
                 if (!isPoe.value) {
                     return
                 }
-                if (getAndCheckStat(intShield)) {
+                if (getAndCheckStat(intStackWandPrefixes)) {
                     return
                 }
                 altOnceToItemInCurrencyTab()
@@ -764,15 +761,6 @@ private fun interface CraftDecisionMaker {
         }
     }
 
-    fun byDesiredMods(
-        desiredModNames: List<String>,
-        desiredModCount: Int,
-    ): CraftDecisionMaker = ByDesiredModsEx(
-        desiredModCount = desiredModCount,
-    ) {
-        it.name in desiredModNames
-    }
-
     class ByDesiredModsEx(
         private val desiredModCount: Int,
         private val doesModMatch: (PoeRollableItem.ExplicitMod) -> Boolean,
@@ -847,6 +835,25 @@ private fun interface CraftDecisionMaker {
             }
         }
 
+        val intStackSceptre = ByDesiredOneSideModsEx(
+            PoeRollableItem.ExplicitModLocation.Prefix,
+            1,
+        ) { mods ->
+            mods.count { mod ->
+                // "with this Weapon per 16 Intelligence" in mod.description
+                "per 16 Intelligence" in mod.description
+            }
+        }
+
+        val intStackAmulet = ByDesiredOneSideModsEx(
+            PoeRollableItem.ExplicitModLocation.Suffix,
+            1,
+        ) { mods ->
+            mods.count { mod ->
+                "increased Intelligence" in mod.description
+            }
+        }
+
         val lightningClusterForBrand = ByDesiredModsEx(3) {
             matchesDescription(it, lightningClusterForBrandDescriptions)
         }
@@ -888,6 +895,16 @@ private fun interface CraftDecisionMaker {
             }
             return Decision(type, why)
         }
+
+        fun byDesiredMods(
+            desiredModNames: List<String>,
+            desiredModCount: Int,
+        ): CraftDecisionMaker = ByDesiredModsEx(
+            desiredModCount = desiredModCount,
+        ) {
+            it.name in desiredModNames
+        }
+
     }
 }
 

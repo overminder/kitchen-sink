@@ -27,7 +27,7 @@ object GameSpecific {
         ::triggerSkillsInD4,
         ::townHotkeyInPoe,
         ::townHotkeyInPoe2,
-        // ::autoFlaskInPoe,
+        ::autoFlaskInPoe,
         // ::tripleClickInPoe,
         // ::novaOfFrostboltsInPoe,
         // ::detonateMineInPoe,
@@ -253,8 +253,8 @@ object GameSpecific {
         suspend fun insertSpells() {
             val sequencer = KeySequencer.from(
                 listOf(
-                    PoeKeyMapping.plagueBearer to 300.0,
-                    PoeKeyMapping.focus to 300.0,
+                    PoeKeyMapping.graftSkill to 300.0,
+                    // PoeKeyMapping.focus to 300.0,
                 )
             )
             runSeq(
@@ -462,7 +462,7 @@ object GameSpecific {
         // Keys to trigger flasks
         val skillKeys = setOf(PoeKeyMapping.attack)
 
-        val fm = BuffManager(PoeFlasks.mbTincture.toKeeper())
+        val fm = BuffManager(PoeFlasks.all.toKeeper())
         // val fm = BuffManager(PoeFlasks.all.toKeeper())
 
         val isPoe = isPoeAndTriggerKeyEnabled()
@@ -509,14 +509,24 @@ object GameSpecific {
 }
 
 private object PoeFlasks {
+    val leveling1Qs = Config.alt(3)
     val leveling2Qs = Config.alt(4, 5)
     val leveling3Qs = Config.alt(3, 4, 5)
+    val leveling4Qs = Config.alt(2, 3, 4, 5)
     val leveling2Qs1U =
         Config.Par(
             listOf(
                 // Config.One(2),
                 Config.One(3),
                 Config.alt(4, 5)
+            )
+        )
+    val boss3Qs =
+        Config.Par(
+            listOf(
+                Config.One(1),
+                Config.One(2),
+                Config.alt(3, 4, 5)
             )
         )
     val leveling2Qs2U =
@@ -723,7 +733,7 @@ object PoeKeyMapping {
     val focus = "R"
 
     // 3.26: auto open chest
-    val plagueBearer = "F"
+    val graftSkill = "F"
     val unearth = "S"
 
     val pauseMacro = "F4"

@@ -1,0 +1,1736 @@
+{
+  "baseitem": {
+    "cn": "Maps",
+    "name": 35,
+    "link_name": "<a class=\"ItemClasses\" href=\"Maps\">Maps</a>",
+    "attr": [
+      1094
+    ],
+    "tags": "uber_tier_map",
+    "opts": {
+      "low_tier": "Low",
+      "mid_tier": "Mid",
+      "top_tier": "Top",
+      "uber_tier": "Uber",
+      "old": "Old"
+    }
+  },
+  "config": {
+    "normal": {
+      "show_type": "clickable",
+      "icon": "",
+      "title": "",
+      "display_tier": true,
+      "display_chance": true
+    },
+    "shaper": {
+      "type": "shaper",
+      "show_type": "clickable",
+      "icon": "<img loading='lazy' src='https://cdn.poedb.tw/image/item/popup/shaper-symbol.webp'/>",
+      "title": "The Shaper",
+      "display_chance": true
+    },
+    "elder": {
+      "type": "elder",
+      "show_type": "clickable",
+      "icon": "<img loading='lazy' src='https://cdn.poedb.tw/image/item/popup/elder-symbol.webp'/>",
+      "title": "The Elder",
+      "display_chance": true
+    },
+    "crusader": {
+      "type": "crusader",
+      "show_type": "clickable",
+      "icon": "<img loading='lazy' src='https://cdn.poedb.tw/image/item/popup/crusader-symbol.webp'/>",
+      "title": "The Crusader",
+      "display_chance": true
+    },
+    "redeemer": {
+      "type": "redeemer",
+      "show_type": "clickable",
+      "icon": "<img loading='lazy' src='https://cdn.poedb.tw/image/item/popup/redeemer-symbol.webp'/>",
+      "title": "The Redeemer",
+      "display_chance": true
+    },
+    "hunter": {
+      "type": "hunter",
+      "show_type": "clickable",
+      "icon": "<img loading='lazy' src='https://cdn.poedb.tw/image/item/popup/hunter-symbol.webp'/>",
+      "title": "The Hunter",
+      "display_chance": true
+    },
+    "warlord": {
+      "type": "warlord",
+      "show_type": "clickable",
+      "icon": "<img loading='lazy' src='https://cdn.poedb.tw/image/item/popup/warlord-symbol.webp'/>",
+      "title": "The Warlord",
+      "display_chance": true
+    },
+    "delve": {
+      "type": "delve",
+      "show_type": "clickable",
+      "icon": "<span class=\"MinimapIcons\"><img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/DelveMineralVein.webp\" width=\"39\"/></span>",
+      "title": "Delve",
+      "display_chance": true
+    },
+    "incursion": {
+      "type": "incursion",
+      "show_type": "clickable",
+      "icon": "<span class=\"MinimapIcons\"><img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/IncursionCraftingBench.webp\" width=\"39\"/></span>",
+      "title": "Incursion",
+      "display_chance": false
+    },
+    "desecrated": {
+      "type": "desecrated",
+      "show_type": "clickable",
+      "icon": "",
+      "title": "Abyssalify",
+      "display_chance": false
+    },
+    "veiled": {
+      "type": "veiled",
+      "show_type": "clickable",
+      "icon": "<img loading='lazy' src='https://cdn.poedb.tw/image/item/popup/veiled-symbol.webp'/>",
+      "title": "Veiled",
+      "display_chance": true
+    },
+    "master": {
+      "type": "master",
+      "show_type": "clickable",
+      "icon": "<span class=\"MinimapIcons\"><img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/CraftingUnlockObject.webp\" width=\"39\"/></span>",
+      "title": "Crafting Bench",
+      "display_chance": false
+    },
+    "essence": {
+      "type": "essence",
+      "show_type": "clickable",
+      "icon": "<span class=\"MinimapIcons\"><img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/Essence.webp\" width=\"39\"/></span>",
+      "title": "Essence",
+      "display_chance": false
+    },
+    "bestiary": {
+      "type": "bestiary",
+      "show_type": "clickable",
+      "icon": "<span class=\"MinimapIcons\"><img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/BestiaryRareMonster.webp\" width=\"39\"/></span>",
+      "title": "Bestiary",
+      "display_chance": false
+    },
+    "warbands": {
+      "type": "warbands",
+      "show_type": "clickable",
+      "title": "Warbands",
+      "display_chance": false
+    },
+    "sentinel": {
+      "type": "sentinel",
+      "show_type": "clickable",
+      "icon": "<img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DItems/Currency/Sentinel/ArmourRecombinator.webp\" width=\"39\"/>",
+      "title": "Recombinator",
+      "display_chance": false
+    },
+    "infamous": {
+      "type": "infamous",
+      "show_type": "clickable",
+      "title": "Infamous",
+      "icon": "<img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/MercenaryEncounter.webp\" width=\"39\"/>",
+      "display_chance": false
+    },
+    "haunted": {
+      "type": "haunted",
+      "show_type": "clickable",
+      "icon": "<span class=\"MinimapIcons\"><img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/NecropolisCorpse.webp\" width=\"39\"/></span>",
+      "title": "Haunted Modifiers",
+      "display_chance": true
+    },
+    "socketable": {
+      "type": "socketable",
+      "show_type": "clickable",
+      "title": "SoulCore",
+      "display_chance": false
+    },
+    "enchant": {
+      "type": "enchant",
+      "show_type": "clickable",
+      "title": "Enchant",
+      "display_chance": false
+    },
+    "corrupted": {
+      "type": "corrupted",
+      "show_type": "clickable",
+      "icon": "<img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DItems/Currency/CurrencyVaal.webp\" width=\"39\"/>",
+      "title": "Corrupted",
+      "display_chance": false
+    },
+    "searing": {
+      "type": "searing",
+      "show_type": "clickable",
+      "icon": "<span class=\"MinimapIcons\"><img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/CleansingFireAltar.webp\" width=\"39\"/></span>",
+      "title": "The Searing Exarch",
+      "display_chance": false
+    },
+    "eater": {
+      "type": "eater",
+      "show_type": "clickable",
+      "icon": "<span class=\"MinimapIcons\"><img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/TangleAltar.webp\" width=\"39\"/></span>",
+      "title": "The Eater of Worlds",
+      "display_chance": false
+    },
+    "synthesis": {
+      "type": "synthesis",
+      "show_type": "clickable",
+      "icon": "<img loading=\"lazy\" src=\"https://cdn.poedb.tw/image/Art/2DArt/minimap/player/SynthesisFragmentEntrance.webp\" width=\"39\"/>",
+      "title": "Synthesis",
+      "display_chance": false
+    },
+    "synthesis_corrupted": {
+      "type": "synthesis_corrupted",
+      "show_type": "clickable",
+      "title": "Synthesis Corrupted",
+      "display_chance": false
+    },
+    "scourgeup": {
+      "type": "scourgeup",
+      "show_type": "clickable",
+      "title": "Scourge Beneficial",
+      "display_chance": true
+    },
+    "scourgedown": {
+      "type": "scourgedown",
+      "show_type": "clickable",
+      "title": "Scourge Detrimental",
+      "display_chance": true
+    }
+  },
+  "gen": {
+    "1": "Prefix",
+    "2": "Suffix"
+  },
+  "opt": {
+    "ModDomainsID": 5,
+    "ids": [
+      0,
+      57,
+      1094
+    ],
+    "attr": [
+      1094
+    ],
+    "ItemClassesCode": "Map",
+    "ItemClassesID": 35,
+    "tags": "uber_tier_map"
+  },
+  "normal": [
+    {
+      "Name": "Chaining",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MabUberModChaining"
+      ],
+      "DropChance": 50,
+      "str": "Monsters' skills Chain <span class='mod-value'>3</span> additional times<br>Monsters' Projectiles can Chain when colliding with Terrain<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>45</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModChain"
+    },
+    {
+      "Name": "of Power",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapMonstersPowerChargeOnHit"
+      ],
+      "DropChance": 100,
+      "str": "Monsters have <span class='mod-value'>+1</span> to Maximum Power Charges<br>Monsters gain a Power Charge on Hit<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>50</span>% more Maps found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModPowerCharges"
+    },
+    {
+      "Name": "of Frenzy",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapMonstersFrenzyChargeOnHit"
+      ],
+      "DropChance": 100,
+      "str": "Monsters have <span class='mod-value'>+1</span> to Maximum Frenzy Charges<br>Monsters gain a Frenzy Charge on Hit<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>50</span>% more Maps found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModFrenzyCharges"
+    },
+    {
+      "Name": "of Endurance",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapMonstersEnduranceChargeOnHit"
+      ],
+      "DropChance": 100,
+      "str": "Monsters have <span class='mod-value'>+1</span> to Maximum Endurance Charges<br>Monsters gain an Endurance Charge when hit<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>50</span>% more Maps found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModEnduranceCharges"
+    },
+    {
+      "Name": "of Exposure",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapPlayerMaxResists"
+      ],
+      "DropChance": 50,
+      "str": "Players have <span class='mod-value'>-20</span>% to all maximum Resistances<br><span class='mod-value'>19</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>11</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>15</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMinusMax"
+    },
+    {
+      "Name": "Cycling",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModDamageRotation"
+      ],
+      "DropChance": 50,
+      "str": "Players and their Minions deal no damage for 3 out of every 10 seconds<br><span class='mod-value'>19</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>56</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModDamageRotation"
+    },
+    {
+      "Name": "Magnifying",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapMonsterMultipleProjectiles",
+        "MapMonsterAreaOfEffect"
+      ],
+      "DropChance": 100,
+      "str": "Monsters have <span class='mod-value'>100</span>% increased Area of Effect<br>Monsters fire <span class='mod-value'>2</span> additional Projectiles<br><span class='mod-value'>19</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>45</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>7</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModProjAOE"
+    },
+    {
+      "Name": "of Deadliness",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapMonsterCriticalStrikesAndDamage"
+      ],
+      "DropChance": 100,
+      "str": "Monsters have <span class='mod-value'>(650&ndash;700)</span>% increased Critical Strike Chance<br><span class='mod-value'>+(70&ndash;75)</span>% to Monster Critical Strike Multiplier<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>45</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModCrit"
+    },
+    {
+      "Name": "of Venom",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapPoisoning"
+      ],
+      "DropChance": 50,
+      "str": "Monsters Poison on Hit<br>All Damage from Monsters' Hits can Poison<br>Monsters have <span class='mod-value'>100</span>% increased Poison Duration<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>36</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModPoison"
+    },
+    {
+      "Name": "Savage",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapMonsterDamage"
+      ],
+      "DropChance": 100,
+      "str": "<span class='mod-value'>(30&ndash;40)</span>% increased Monster Damage<br><span class='mod-value'>19</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>45</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>7</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMonsterDamage"
+    },
+    {
+      "Name": "Buffered",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapMonstersMaximumLifeAddedEnergyShield"
+      ],
+      "DropChance": 100,
+      "str": "Monsters gain <span class='mod-value'>(70&ndash;80)</span>% of Maximum Life as Extra Maximum Energy Shield<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>50</span>% more Maps found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModLifeAsEnergyShield"
+    },
+    {
+      "Name": "Enthralled",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapBossIsPossessed"
+      ],
+      "DropChance": 50,
+      "str": "Unique Bosses are Possessed<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>45</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModPossessedBoss"
+    },
+    {
+      "Name": "Oppressive",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapMonstersChanceToSuppressSpells"
+      ],
+      "DropChance": 60,
+      "str": "Monsters have <span class='mod-value'>+100</span>% chance to Suppress Spell Damage<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>50</span>% more Maps found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMonsterSuppress"
+    },
+    {
+      "Name": "Stalwart",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModMonsterAttackBlock"
+      ],
+      "DropChance": 60,
+      "str": "Monsters have <span class='mod-value'>+50</span>% Chance to Block Attack Damage<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>70</span>% more Currency found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMonsterAttackBlock"
+    },
+    {
+      "Name": "of Congealment",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapMonsterLifeLeechImmunity"
+      ],
+      "DropChance": 30,
+      "str": "Players have <span class='mod-value'>(50&ndash;60)</span>% reduced Maximum total Life, Mana and Energy Shield Recovery per second from Leech<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>36</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModLessPlayerLeech"
+    },
+    {
+      "Name": "Punishing",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapMonsterPhysicalReflection",
+        "MapMonsterElementalReflection"
+      ],
+      "DropChance": 40,
+      "str": "Monsters reflect <span class='mod-value'>20</span>% of Physical Damage<br>Monsters reflect <span class='mod-value'>20</span>% of Elemental Damage<br><span class='mod-value'>10</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>70</span>% more Currency found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModReflect"
+    },
+    {
+      "Name": "of Curses",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapPlayerTemporalChains",
+        "MapPlayerVulnerability",
+        "MapPlayerElementalWeakness"
+      ],
+      "DropChance": 60,
+      "str": "Players are Cursed with Vulnerability<br>Players are Cursed with Temporal Chains<br>Players are Cursed with Elemental Weakness<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>11</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size<br><span class='mod-value'>50</span>% more Scarabs found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModCurses"
+    },
+    {
+      "Name": "of Impotence",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapPlayersAoERadius"
+      ],
+      "DropChance": 100,
+      "str": "Players have <span class='mod-value'>(25&ndash;30)</span>% less Area of Effect<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>56</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModAOEPlayer"
+    },
+    {
+      "Name": "of Toughness",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapMonstersBaseSelfCriticalMultiplier"
+      ],
+      "DropChance": 30,
+      "str": "Monsters take <span class='mod-value'>(35&ndash;45)</span>% reduced Extra Damage from Critical Strikes<br><span class='mod-value'>10</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>45</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModCritDefence"
+    },
+    {
+      "Name": "Fecund",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapMonsterLife"
+      ],
+      "DropChance": 100,
+      "str": "<span class='mod-value'>(90&ndash;100)</span>% more Monster Life<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>70</span>% more Currency found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMonsterLife"
+    },
+    {
+      "Name": "Antagonist's",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapRareMonsters"
+      ],
+      "DropChance": 30,
+      "str": "<span class='mod-value'>(35&ndash;45)</span>% increased number of Rare Monsters<br>Rare Monsters each have <span class='mod-value'>1</span> additional Modifier<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModRareMonsters"
+    },
+    {
+      "Name": "of Domination",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModShrineBuff"
+      ],
+      "DropChance": 50,
+      "str": "Unique Monsters have a random Shrine Buff<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>50</span>% more Maps found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModShrineBuff"
+    },
+    {
+      "Name": "Grasping",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModVines"
+      ],
+      "DropChance": 50,
+      "str": "Monsters inflict <span class='mod-value'>2</span> Grasping Vines on Hit<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>60</span>% more Maps found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModVines"
+    },
+    {
+      "Name": "Volatile",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModVolatiles"
+      ],
+      "DropChance": 50,
+      "str": "Rare Monsters have Volatile Cores<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>11</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>78</span>% more Scarabs found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModVolatiles"
+    },
+    {
+      "Name": "of Petrification",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModAmbush"
+      ],
+      "DropChance": 50,
+      "str": "Area contains Petrification Statues<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>50</span>% more Scarabs found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModPetrify"
+    },
+    {
+      "Name": "Prismatic",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModDamageAsElemental"
+      ],
+      "DropChance": 100,
+      "str": "Monsters gain <span class='mod-value'>(180&ndash;200)</span>% of their Physical Damage as Extra Damage of a random Element<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>56</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModDamageAsElemental"
+    },
+    {
+      "Name": "Profane",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapMonsterChaosDamage"
+      ],
+      "DropChance": 50,
+      "str": "Monsters gain <span class='mod-value'>(80&ndash;100)</span>% of their Physical Damage as Extra Chaos Damage<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>36</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModDamageAsChaos"
+    },
+    {
+      "Name": "Fleet",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapTurbo"
+      ],
+      "DropChance": 100,
+      "str": "<span class='mod-value'>(25&ndash;30)</span>% increased Monster Movement Speed<br><span class='mod-value'>(35&ndash;45)</span>% increased Monster Attack Speed<br><span class='mod-value'>(35&ndash;45)</span>% increased Monster Cast Speed<br><span class='mod-value'>19</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>45</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>7</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModTurbo"
+    },
+    {
+      "Name": "Ultimate",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModAmbush"
+      ],
+      "DropChance": 50,
+      "str": "Players are assaulted by Bloodstained Sawblades<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>70</span>% more Currency found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModSawblades"
+    },
+    {
+      "Name": "of the Juggernaut",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapMonstersCantBeSlowedOrTaunted"
+      ],
+      "DropChance": 40,
+      "str": "Monsters cannot be Stunned<br>Monsters' Action Speed cannot be modified to below Base Value<br>Monsters' Movement Speed cannot be modified to below Base Value<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>70</span>% more Currency found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModJuggernaut"
+    },
+    {
+      "Name": "of Imbibing",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModFlaskMeteor"
+      ],
+      "DropChance": 50,
+      "str": "Players are targeted by a Meteor when they use a Flask<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>70</span>% more Currency found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModFlaskMeteor"
+    },
+    {
+      "Name": "of Miring",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModGlobalDefences"
+      ],
+      "DropChance": 60,
+      "str": "Players have <span class='mod-value'>(25&ndash;30)</span>% less Defences<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>50</span>% more Scarabs found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModGlobalDefences"
+    },
+    {
+      "Name": "Hungering",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModAmbush"
+      ],
+      "DropChance": 50,
+      "str": "Area contains Drowning Orbs<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>15</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModDrowningOrbs"
+    },
+    {
+      "Name": "Protected",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapMonstersAllResistances",
+        "MapMonsterPhysicalResistance"
+      ],
+      "DropChance": 100,
+      "str": "+<span class='mod-value'>50</span>% Monster Physical Damage Reduction<br>+<span class='mod-value'>35</span>% Monster Chaos Resistance<br>+<span class='mod-value'>55</span>% Monster Elemental Resistances<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>50</span>% more Maps found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModResistancePDR"
+    },
+    {
+      "Name": "Afflicting",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModMonsterAilments"
+      ],
+      "DropChance": 50,
+      "str": "All Monster Damage can Ignite, Freeze and Shock<br>Monsters Ignite, Freeze and Shock on Hit<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>90</span>% more Scarabs found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMonsterAilments"
+    },
+    {
+      "Name": "of Transience",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapPlayerBuffsExpireFaster"
+      ],
+      "DropChance": 60,
+      "str": "Buffs on Players expire <span class='mod-value'>100</span>% faster<br><span class='mod-value'>10</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>6</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>4</span>% increased Pack size<br><span class='mod-value'>50</span>% more Scarabs found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModBuffExpiry"
+    },
+    {
+      "Name": "of Penetration",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModEleDamagePenetration"
+      ],
+      "DropChance": 50,
+      "str": "Monster Damage Penetrates <span class='mod-value'>15</span>% Elemental Resistances<br><span class='mod-value'>19</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>58</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModEleDamagePenetration"
+    },
+    {
+      "Name": "of Deceleration",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModActionSpeed"
+      ],
+      "DropChance": 50,
+      "str": "Players have <span class='mod-value'>3</span>% reduced Action Speed for each time they've used a Skill Recently<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>65</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModActionSpeed"
+    },
+    {
+      "Name": "Retributive",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModMarkedForDeath"
+      ],
+      "DropChance": 60,
+      "str": "Players are Marked for Death for <span class='mod-value'>10</span> seconds<br/>after killing a Rare or Unique monster<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>70</span>% more Currency found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMarkedForDeath"
+    },
+    {
+      "Name": "Equalising",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModPercentDamage"
+      ],
+      "DropChance": 50,
+      "str": "Rare and Unique Monsters remove <span class='mod-value'>5</span>% of Life, Mana and Energy Shield from Players or their Minions on Hit<br><span class='mod-value'>19</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>12</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size<br><span class='mod-value'>126</span>% more Currency found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModPercentDamage"
+    },
+    {
+      "Name": "Decaying",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModElderNovas"
+      ],
+      "DropChance": 50,
+      "str": "Area contains Unstable Tentacle Fiends<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>11</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>15</span>% increased Pack size<br><span class=\"secondary\">map monster elder nova on death % chance [100]</span>",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModElderNovas"
+    },
+    {
+      "Name": "Impaling",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModImpaleDetonation"
+      ],
+      "DropChance": 50,
+      "str": "Monsters' Attacks Impale on Hit<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>11</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>84</span>% more Currency found in Area<br>When a fifth Impale is inflicted on a Player,<br/>Impales are removed to Reflect their Physical Damage multiplied<br/>by their remaining Hits to that Player and their Allies within 1.8 metres",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModImpaleDetonation"
+    },
+    {
+      "Name": "of Desolation",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapGroundEffect"
+      ],
+      "DropChance": 50,
+      "str": "Area has patches of Awakeners' Desolation<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>11</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>15</span>% increased Pack size<br><span class=\"secondary\">map ground effect patches per 100 tiles [20]</span><br><span class=\"secondary\">map ground effect radius [12]</span>",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModSirusGround"
+    },
+    {
+      "Name": "Valdo's",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModShaperTouched"
+      ],
+      "DropChance": 50,
+      "str": "Rare monsters in area are Shaper-Touched<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>11</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>15</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModShaperTouched"
+    },
+    {
+      "Name": "Sabotaging",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModTrapMineCount"
+      ],
+      "DropChance": 30,
+      "str": "Player Skills which Throw Mines throw 1 fewer Mine<br>Player Skills which Throw Traps throw 1 fewer Trap<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>53</span>% more Scarabs found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModTrapMineCount"
+    },
+    {
+      "Name": "of Revolt",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModMinionSpeed"
+      ],
+      "DropChance": 30,
+      "str": "Players' Minions have <span class='mod-value'>50</span>% less Attack Speed<br>Players' Minions have <span class='mod-value'>50</span>% less Cast Speed<br>Players' Minions have <span class='mod-value'>50</span>% less Movement Speed<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>33</span>% more Scarabs found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMinionSpeed"
+    },
+    {
+      "Name": "Parasitic",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModTotemLife"
+      ],
+      "DropChance": 30,
+      "str": "<span class='mod-value'>15</span>% of Damage Players' Totems take from Hits is taken from their Summoner's Life instead<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size<br><span class='mod-value'>53</span>% more Scarabs found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModTotemLife"
+    },
+    {
+      "Name": "Synthetic",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModSynthMiniboss"
+      ],
+      "DropChance": 50,
+      "str": "Map Boss is accompanied by a Synthesis Boss<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>15</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModSynthMiniboss"
+    },
+    {
+      "Name": "of Defiance",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModMonsterDebuffSpeed"
+      ],
+      "DropChance": 40,
+      "str": "Debuffs on Monsters expire <span class='mod-value'>100</span>% faster<br><span class='mod-value'>16</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>12</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>6</span>% increased Pack size<br><span class='mod-value'>109</span>% more Currency found in Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMonsterDebuffSpeed"
+    },
+    {
+      "Name": "Searing",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapUberModExarch"
+      ],
+      "DropChance": 50,
+      "str": "Area contains Runes of the Searing Exarch<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>15</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModExarch"
+    },
+    {
+      "Name": "of Collection",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModMavenFollower"
+      ],
+      "DropChance": 50,
+      "str": "The Maven interferes with Players<br><span class='mod-value'>13</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>15</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModMavenFollower"
+    },
+    {
+      "Name": "of Splinters",
+      "Level": "1",
+      "ModGenerationTypeID": "2",
+      "ModFamilyList": [
+        "MapUberModRareFracture"
+      ],
+      "DropChance": 30,
+      "str": "<span class='mod-value'>25</span>% chance for Rare Monsters to Fracture on death<br><span class='mod-value'>19</span>% increased Quantity of Items found in this Area<br><span class='mod-value'>8</span>% increased Rarity of Items found in this Area<br><span class='mod-value'>5</span>% increased Pack size",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapUberModRareFracture"
+    }
+  ],
+  "corrupted": [
+    {
+      "ModFamilyList": [
+        "MapItemDropQuantity"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "75",
+      "str": "<span class='mod-value'>+(10&ndash;20)</span>% Item Quantity",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionItemQuantity",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionItemQuantity"
+    },
+    {
+      "ModFamilyList": [
+        "MapItemDropRarity"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "75",
+      "str": "<span class='mod-value'>+(8&ndash;12)</span>% Item Rarity",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionItemRarity",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionItemRarity"
+    },
+    {
+      "ModFamilyList": [
+        "MapPackSize"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "55",
+      "str": "<span class='mod-value'>+(5&ndash;10)</span>% Pack Size",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionPackSize",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionPackSize"
+    },
+    {
+      "ModFamilyList": [
+        "MapModEffect"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "10",
+      "str": "<span class='mod-value'>(10&ndash;20)</span>% increased Explicit Modifier magnitudes",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionModEffect",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionModEffect"
+    },
+    {
+      "ModFamilyList": [
+        "MapCorruptSideArea"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "40",
+      "str": "Contains a Vaal Side Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionVaalSideArea",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionVaalSideArea"
+    },
+    {
+      "ModFamilyList": [
+        "MapCorruptVessel"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "78",
+      "DropChance": "10",
+      "str": "Area contains an additional guarded Exquisite Vaal Vessel",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionVaalVessel",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionVaalVessel"
+    },
+    {
+      "ModFamilyList": [
+        "MapCorruptBossCorrupt"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "40",
+      "str": "Unique Monsters drop Corrupted Items",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionBossCorruption",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionBossCorruption"
+    },
+    {
+      "ModFamilyList": [
+        "MapCorruptSoulGainPrevention"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "20",
+      "str": "Players' Vaal Skills do not apply Soul Gain Prevention",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionSoulGainPrevention",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionSoulGainPrevention"
+    },
+    {
+      "ModFamilyList": [
+        "MapCorruptionFreeCraft"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "40",
+      "str": "Map Crafting options for this Map have no cost",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionFreeCraft",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionFreeCraft"
+    },
+    {
+      "ModFamilyList": [
+        "MapCorruptionAtlasEffect"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "10",
+      "str": "Atlas Passives have <span class='mod-value'>(10&ndash;15)</span>% increased Effect on Area",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionAtlasEffect",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionAtlasEffect"
+    },
+    {
+      "ModFamilyList": [
+        "MapCorruptionQualityToPackSize"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "20",
+      "str": "Quality applies to Pack Size instead of Item Quantity",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionQualityToPackSize",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionQualityToPackSize"
+    },
+    {
+      "ModFamilyList": [
+        "MapCorruptionRandomScarab"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "15",
+      "str": "Area has an additional random Scarab effect",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionRandomScarab",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionRandomScarab"
+    },
+    {
+      "ModFamilyList": [
+        "MapCorruptionRandomAtlasNotables"
+      ],
+      "ModGenerationTypeID": "5",
+      "Level": "1",
+      "DropChance": "15",
+      "str": "Area is affected by <span class='mod-value'>(5&ndash;15)</span> additional random Unallocated Notable Atlas Passives",
+      "fossil_no": [],
+      "mod_no": [],
+      "Name": "MapCorruptionRandomAtlasNotables",
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FMapCorruptionRandomAtlasNotables"
+    }
+  ],
+  "haunted": [],
+  "master": [],
+  "essence": [],
+  "delve": [
+    {
+      "Name": "Subterranean",
+      "Level": "1",
+      "ModGenerationTypeID": "1",
+      "ModFamilyList": [
+        "MapMonsterPacks"
+      ],
+      "DropChance": "1000",
+      "str": "% increased Experience gain<br>Area is inhabited by the Vaal<br>Found Items have <span class='mod-value'>10</span>% chance to drop Corrupted in Area<br><span class=\"secondary\">map item drop quantity +% [20]</span><br><span class=\"secondary\">map item drop rarity +% [20]</span><br><span class=\"secondary\">map pack size +% [10]</span>",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FDelveMapMonsterPacksVaalMapWorlds1"
+    }
+  ],
+  "incursion": [],
+  "veiled": [],
+  "bestiary": [],
+  "warbands": [],
+  "scourgeup": [
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeAdditionalBoss"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeAdditionalBoss",
+      "ModGenerationTypeID": "24",
+      "DropChance": 850,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeAdditionalBoss"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeTaintedCurrencyDrops"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeTaintedCurrencyDrops_",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeTaintedCurrencyDrops_"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeScourgedItemDrops"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeScourgedItemDrops_",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeScourgedItemDrops_"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersMapDropChance"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersMapDropChance_",
+      "ModGenerationTypeID": "24",
+      "DropChance": 10000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersMapDropChance_"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersInfluenceItemDropChance"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersInfluenceItemDropChance",
+      "ModGenerationTypeID": "24",
+      "DropChance": 2000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersInfluenceItemDropChance"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersBasicCurrencyItemDropChance"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersBasicCurrencyItemDropChance",
+      "ModGenerationTypeID": "24",
+      "DropChance": 13333,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersBasicCurrencyItemDropChance"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersDropItemsOneLevelHigher"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersDropItemsOneLevelHigher",
+      "ModGenerationTypeID": "24",
+      "DropChance": 850,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersDropItemsOneLevelHigher"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersAbyssJewel"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersAbyssJewel",
+      "ModGenerationTypeID": "24",
+      "DropChance": 10000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersAbyssJewel"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersBlightOil"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersBlightOil",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersBlightOil"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersBreachSplinters"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersBreachSplinters",
+      "ModGenerationTypeID": "24",
+      "DropChance": 10000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersBreachSplinters"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersDeliriumSplinters"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersDeliriumSplinters",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersDeliriumSplinters"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersDelveFossils"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersDelveFossils",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersDelveFossils"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersEnchantedItem"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersEnchantedItem",
+      "ModGenerationTypeID": "24",
+      "DropChance": 10000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersEnchantedItem"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersEssence"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersEssence",
+      "ModGenerationTypeID": "24",
+      "DropChance": 10000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersEssence"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersExpeditionCurrency"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersExpeditionCurrency",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersExpeditionCurrency"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersFracturedItem"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersFracturedItem_",
+      "ModGenerationTypeID": "24",
+      "DropChance": 2000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersFracturedItem_"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersGems"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersGems",
+      "ModGenerationTypeID": "24",
+      "DropChance": 10000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersGems"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersIncubators"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersIncubators_",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersIncubators_"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersLegionSplinters"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersLegionSplinters",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersLegionSplinters"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersMetamorphCatalysts"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersMetamorphCatalysts",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersMetamorphCatalysts"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersScarabs"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersScarabs_",
+      "ModGenerationTypeID": "24",
+      "DropChance": 2000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersScarabs_"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersStackedDecks"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersStackedDecks",
+      "ModGenerationTypeID": "24",
+      "DropChance": 6650,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersStackedDecks"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeUpsideMapHellscapeRareMonstersUniqueItem"
+      ],
+      "Level": "1",
+      "Name": "HellscapeUpsideMapHellscapeRareMonstersUniqueItem",
+      "ModGenerationTypeID": "24",
+      "DropChance": 10000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeUpsideMapHellscapeRareMonstersUniqueItem"
+    }
+  ],
+  "scourgedown": [
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapLoseLifePerSecondWhileInHellscape"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapLoseLifePerSecondWhileInHellscape",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapLoseLifePerSecondWhileInHellscape"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapLoseEnergyShieldPerSecondWhileInHellscape_"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapLoseEnergyShieldPerSecondWhileInHellscape__",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapLoseEnergyShieldPerSecondWhileInHellscape__"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapArmourWhileInHellscape"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapArmourWhileInHellscape",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapArmourWhileInHellscape"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapEvasionWhileInHellscape"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapEvasionWhileInHellscape",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapEvasionWhileInHellscape"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapBlockChanceWhileInHellscape"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapBlockChanceWhileInHellscape____",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapBlockChanceWhileInHellscape____"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapSpellSuppressionWhileInHellscape"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapSpellSuppressionWhileInHellscape",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapSpellSuppressionWhileInHellscape"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapMovementSpeedWhileInHellscape"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapMovementSpeedWhileInHellscape",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapMovementSpeedWhileInHellscape"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapHellscapeMonsterLife"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapHellscapeMonsterLife",
+      "ModGenerationTypeID": "25",
+      "DropChance": 4000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapHellscapeMonsterLife"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapHellscapeMonsterDamage_"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapHellscapeMonsterDamage_",
+      "ModGenerationTypeID": "25",
+      "DropChance": 4000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapHellscapeMonsterDamage_"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapHellscapeMonstersTakeLessDamage_"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapHellscapeMonstersTakeLessDamage_",
+      "ModGenerationTypeID": "25",
+      "DropChance": 4000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapHellscapeMonstersTakeLessDamage_"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapHellscapeMonstersRegenerateLife_"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapHellscapeMonstersRegenerateLife__",
+      "ModGenerationTypeID": "25",
+      "DropChance": 2000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapHellscapeMonstersRegenerateLife__"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapTakeDamageWhenShifting"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapTakePhysicalDamageWhenShifting",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapTakePhysicalDamageWhenShifting"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapTakeDamageWhenShifting"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapTakeFireDamageWhenShifting",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapTakeFireDamageWhenShifting"
+    },
+    {
+      "ModFamilyList": [
+        "HellscapeDownsideMapTakeDamageWhenShifting"
+      ],
+      "Level": "1",
+      "Name": "HellscapeDownsideMapTakeLightningDamageWhenShifting_",
+      "ModGenerationTypeID": "25",
+      "DropChance": 1000,
+      "spanClass": "scourgeMod",
+      "str": "",
+      "fossil_no": [],
+      "mod_no": [],
+      "mod_fossil_item": [],
+      "hover": "?s=Data%5CMods%2FHellscapeDownsideMapTakeLightningDamageWhenShifting_"
+    }
+  ],
+  "sentinel": [],
+  "infamous": [],
+  "synthesis": [],
+  "synthesis_corrupted": [],
+  "searing": [],
+  "eater": [],
+  "elder": [],
+  "shaper": [],
+  "crusader": [],
+  "redeemer": [],
+  "hunter": [],
+  "warlord": [],
+  "enchant": [],
+  "desecrated": []
+}

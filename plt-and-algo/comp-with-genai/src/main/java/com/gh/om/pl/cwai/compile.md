@@ -1,4 +1,6 @@
-# Inefficiency in the interpreter
+# Architectural design of a simple JIT compiler
+
+## Inefficiency in the interpreter
 
 The evaluation rules mentioned in interp.md are high-level and concise. However, our interpreter is not optimized for speed. It does a lot of work that can be done at compile time. For instance,
 
@@ -10,7 +12,7 @@ The evaluation rules mentioned in interp.md are high-level and concise. However,
 - Visiting the AST is a lot of work. The actual evaluation can be just a few instructions. For instance, every time the interpreter visits an EInt, it needs to do a type-check and extract its value. A compiler can emit a single instruction
   `mov $rax, <int>`.
 
-# Simple stack-based compiler
+## Simple stack-based compiler
 
 When emitting machine code, operations often need to use registers as operands. Registers are fast to access, but they are limited in number and requires register allocation if we want to use them for everything. For now, we'll use a simple stack-based approach:
 
