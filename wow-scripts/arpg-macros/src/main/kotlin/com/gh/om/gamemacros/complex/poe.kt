@@ -9,7 +9,6 @@ import com.gh.om.gamemacros.complex.PoeDumpBag.bagRows
 import com.gh.om.gamemacros.currentCoroutineScope
 import com.gh.om.gamemacros.get
 import com.gh.om.gamemacros.isPoeAndTriggerKeyEnabled
-import com.gh.om.gamemacros.safeDelay
 import com.gh.om.gamemacros.safeDelayK
 import com.github.kwhat.jnativehook.keyboard.NativeKeyEvent
 import com.github.kwhat.jnativehook.mouse.NativeMouseEvent
@@ -395,6 +394,12 @@ object PoeDumpBag {
 // Under 2560x1440
 object PoeGraphicConstants {
     val firstItemInBag = Point(1727, 813)
+    val secondItemInBag: Point
+        get() {
+            val res = Point(firstItemInBag)
+            res.translate(0, bagGridSize)
+            return res
+        }
     val firstItemInMapStash = Point(88, 642)
 
     // Moving mouse to here hides any tooltip
@@ -411,6 +416,16 @@ object PoeGraphicConstants {
     val firstItemInHeistLocker = Point(550, 554)
     val firstItemInRegularStash = Point(57, 201)
     val heistLockerGridSize = 57
+
+    suspend fun allBagItems(columns: Int = 10): List<Point> {
+        val slots = allGrids(
+            start = firstItemInBag,
+            rows = bagRows,
+            columns = columns,
+            gridSize = bagGridSize,
+        )
+        return safeCaptureThenFilterHasItem(slots)
+    }
 
     fun allGrids(
         start: Point,
@@ -492,7 +507,7 @@ object PoeGraphicConstants {
     }
 
     fun gridColorHasItem(color: Color) =
-        !colorMatches(color, emptyGridColor, 10)
+        !colorMatches(color, emptyGridColor, 7)
 
     fun colorMatches(
         color: Color,
@@ -507,56 +522,53 @@ object PoeGraphicConstants {
     }
 }
 
-object PoeStackedDeck {
-    val firstItemInBag = PoeGraphicConstants.firstItemInBag
-    val ground = Point(1628, 813)
+/**
+ * Was for stacked deck, but 3.27 brings QOL changes so that's no longer needed.
+ * Instead, 3.27 is poverty league so we have to turn in low-value div cards.
+ */
+object PoeDivCard {
+    val tradeButton = Point(842, 989)
+    val tradeInoutWindow = Point(837, 596)
 
-    suspend fun unstackEntireStack() {
+    suspend fun turnInFromBag() {
         val isPoe = isPoeAndTriggerKeyEnabled()
-
-        val mouseEvents =
-            MouseHooks.motionEvents().stateIn(currentCoroutineScope())
 
         suspend fun handle(pressed: Boolean) {
             if (!pressed) {
                 return
             }
-            // So we can start from any slot in bag
-            val initial = mouseEvents.value.point
-            repeat(20) {
+            for (slot in PoeGraphicConstants.allBagItems()) {
                 if (!isPoe.value) {
                     return
                 }
-                unstackOnce(initial = initial)
+                tradeOnce(slot)
             }
         }
         LEADER_KEY.isEnabled("03").collect(::handle)
     }
 
-    private suspend fun unstackOnce(initial: Point = firstItemInBag) {
-        // Right click deck
-        MouseHooks.postClick(
-            x = initial.x,
-            y = initial.y,
-            button = NativeMouseEvent.BUTTON2,
-            delayMs = 50,
-            moveFirst = true,
-        )
-        safeDelay()
-        MouseHooks.postClick(
-            x = ground.x,
-            y = ground.y,
-            button = NativeMouseEvent.BUTTON1,
-            delayMs = 50,
-            moveFirst = true,
-        )
-        safeDelay()
+    private suspend fun tradeOnce(slot: Point) {
+        // Move item to trade window
+        PoeInteractor.controlLeftClick(slot)
+        safeDelayK(30.milliseconds)
+        // Do trade
+        MouseHooks.postClick(tradeButton, moveFirst = true)
+        safeDelayK(30.milliseconds)
+        // Move item back to bag
+        PoeInteractor.controlLeftClick(tradeInoutWindow)
+        safeDelayK(30.milliseconds)
     }
 }
 
 object PoeInteractor {
     suspend fun withControlPressed(inner: suspend () -> Unit) {
         KeyHooks.withModifierKey(NativeKeyEvent.VC_CONTROL, inner)
+    }
+
+    suspend fun controlLeftClick(point: Point) {
+        withControlPressed {
+            MouseHooks.postClick(point, moveFirst = true)
+        }
     }
 
     // For force move items
@@ -602,13 +614,21 @@ object PoeInteractor {
     suspend fun getCountAt(
         point: Point,
         type: PoeCurrency.KnownType,
+    ): Int = getCountAt(point, listOf(type))
+
+    suspend fun getCountAt(
+        point: Point,
+        /**
+         * One of the types must match
+         */
+        types: List<PoeCurrency.KnownType>,
     ): Int {
         MouseHooks.moveTo(point)
         safeDelayK(30.milliseconds)
 
         val d = getDescriptionOfItemUnderMouse() ?: ""
         val currency = PoeItemParser.parse(d) as? PoeCurrency
-        return if (currency?.type == type) {
+        return if (currency != null && currency.type in types) {
             currency.stackSize
         } else {
             0

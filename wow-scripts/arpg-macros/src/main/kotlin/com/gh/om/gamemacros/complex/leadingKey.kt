@@ -14,12 +14,16 @@ class LeaderKeyDetector(
     private val leaderKey: Set<String>,
     private val gracePeriod: Duration = 1.seconds,
 ) {
+    // To keep track of commands to avoid dup
+    private val commands = mutableSetOf<String>()
+
     init {
         require(leaderKey.isNotEmpty())
     }
 
     fun isEnabled(command: String): Flow<Boolean> {
         require(command.isNotEmpty())
+        require(commands.add(command)) { "Command $command is already registered" }
 
         val commandList = command.toList().map { it.toString() }
         // The idea is that a flow that keeps track of the currently pressed

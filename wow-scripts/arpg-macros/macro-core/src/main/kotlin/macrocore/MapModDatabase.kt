@@ -1,6 +1,4 @@
-import com.gh.om.gamemacros.complex.PoeRollableItem
-import com.gh.om.gamemacros.complex.fmt
-import com.gh.om.gamemacros.complex.isMapLike
+package macrocore
 
 data class PoeMapDifficulty(
     val playerDamageTaken: Double,
@@ -14,24 +12,68 @@ data class PoeMapDifficulty(
         return playerDamageTaken <= other.playerDamageTaken && monsterEhp <= other.monsterEhp
     }
 
-    operator fun times(other: Double) = PoeMapDifficulty(playerDamageTaken * other, monsterEhp * other)
+    operator fun times(other: Double) =
+        PoeMapDifficulty(playerDamageTaken * other, monsterEhp * other)
 
     companion object {
-        // TODO include a mini-pob for more accurate difficulty calculation
-        val earlyGame = PoeMapDifficulty(
-            2.2,
-            3.0,
-        )
-        val midGame = PoeMapDifficulty(
-            4.0,
-            6.0,
-        )
-        val lateGame = PoeMapDifficulty(
-            20.0,
-            20.0,
-        )
+        val earlyGame = PoeMapDifficulty(2.2, 3.0)
+        val midGame = PoeMapDifficulty(4.0, 6.0)
+        val lateGame = PoeMapDifficulty(20.0, 20.0)
     }
 }
+
+fun Number.fmt(): String = String.format("%.2f", this)
+
+data class MapModDescriptor(
+    val keywords: List<String>,
+    val variableIndex: Int? = null,
+    val variableRange: IntRange? = null,
+    val morePlayerDamageTakenMultiForVariable: Double? = null,
+    val morePlayerDamageTakenMulti: Double? = null,
+    val moreMonsterHpMultiForVariable: Double? = null,
+    val moreMonsterHpMulti: Double? = null,
+)
+
+private val rangePat = """\([0-9]+-[0-9]+\)""".toRegex()
+private val variablePat = """(-?[0-9]+)""".toRegex()
+
+fun getVariableForMod(mod: PoeRollableItem.ExplicitMod, variableIndex: Int): Int? {
+    val descWithoutRange = mod.description.replace(rangePat, "")
+    return variablePat
+        .findAll(descWithoutRange)
+        .elementAtOrNull(variableIndex)
+        ?.value
+        ?.toInt()
+}
+
+fun findMatchingDescriptor(mod: PoeRollableItem.ExplicitMod): MapModDescriptor {
+    val matches = PoeMapMods.ALL.filter {
+        it.keywords.all { kw -> mod.description.contains(kw, ignoreCase = true) }
+    }
+    if (matches.isEmpty()) {
+        error("Didn't find `${mod.description}`")
+    }
+    if (matches.size > 1) {
+        if (matches.any(overlappingT17Mods::contains)) {
+            // Known case with overlapping descriptions between T16/T17
+        } else {
+            error("Found multiple descriptors for `${mod.description}`: $matches")
+        }
+    }
+    return matches.first()
+}
+
+private val overlappingT17Mods = setOf(
+    T16Mods.punishing,
+    T16Mods.unwavering,
+    T17Mods.ofVenom,
+    T17Mods.ofCurses,
+    T17Mods.magnifying,
+    T17Mods.ofPower,
+    T17Mods.ofFrenzy,
+    T17Mods.ofEndurance,
+    T17Mods.protected,
+)
 
 fun getMapDifficulty(map: PoeRollableItem, atlasMulti: Double = 1.56): PoeMapDifficulty {
     require(map.klass.isMapLike())
@@ -62,166 +104,38 @@ fun getMapDifficulty(map: PoeRollableItem, atlasMulti: Double = 1.56): PoeMapDif
     return PoeMapDifficulty(playerDamageTaken = playerDamageTaken, monsterEhp = monsterHp)
 }
 
-private fun getVariableForMod(mod: PoeRollableItem.ExplicitMod, variableIndex: Int): Int? = variablePat
-    .findAll(getDescriptionWithoutRange(mod))
-    .elementAtOrNull(variableIndex)
-    ?.value
-    ?.toInt()
+// -- T16 Mod Definitions --
 
-private fun getDescriptionWithoutRange(mod: PoeRollableItem.ExplicitMod): String {
-    return mod.description.replace(rangePat, "")
-}
-
-private val rangePat = """\([0-9]+-[0-9]+\)""".toRegex()
-
-private val variablePat = """(-?[0-9]+)""".toRegex()
-
-private fun findMatchingDescriptor(mod: PoeRollableItem.ExplicitMod): MapModDescriptor {
-    val matches = PoeMapMods.ALL.filter {
-        it.keywords.all { kw -> mod.description.contains(kw, ignoreCase = true) }
-    }
-    if (matches.isEmpty()) {
-        error("Didn't find `${mod.description}`")
-    }
-    if (matches.size > 1) {
-        if (matches.any(overlappingT17Mods::contains)) {
-            // Known case to have multiple matches (because the mod descriptions do overlap)
-        } else {
-            error("Found multiple descriptors for `${mod.description}`: $matches")
-        }
-    }
-    return matches.first()
-}
-
-/**
- * The list of mods that have overlapping descriptions between T16 and T17.
- * - Note: When there are overlapping mods, prefer to add the T17 version to this list.
- * - Why: This is necessary to avoid throwing in findMatchingDescriptor.
- */
-private val overlappingT17Mods = setOf(
-    // This t16 mod is added because the t17 punishing mod is missing in T17Mods.
-    T16Mods.punishing,
-    // Overlaps with fecund
-    T16Mods.unwavering,
-
-    T17Mods.ofVenom,
-    T17Mods.ofCurses,
-    T17Mods.magnifying,
-    // T17 charge mods overlap with T16 charge-on-hit mods
-    T17Mods.ofPower,
-    T17Mods.ofFrenzy,
-    T17Mods.ofEndurance,
-    // T17 PDR + res
-    T17Mods.protected,
-)
-
-data class MapModDescriptor(
-    /**
-     * Fixed part of the mod description, not including any variables, or reward related lines such as quantity /
-     * rarity / pack size / currency / scarab / map found.
-     *
-     * When the mod contains multiple variables or lines, this can contain more than one keyword (because
-     * the keywords are separated by variables or line breaks)
-     */
-    val keywords: List<String>,
-    /**
-     * 0-based index of the most important numeric variable in the description.
-     * - This is often 0, indicating that the variable is the first one in the description.
-     * - When the description has multiple variables, this indicates which one to use.
-     * - This should only be null when the mod has no variables.
-     */
-    val variableIndex: Int? = null,
-
-    /**
-     * The range of the variable on [variableIndex]. This is mostly for documentation's purpose.
-     */
-    val variableRange: IntRange? = null,
-
-    /**
-     * The effect of the mod on player damage taken. This is multiplied with the actual variable
-     * to get the final result on the player. For instance, if the mod says "50% increased player damage taken",
-     * then variable will be 50, and this multi should be 1.0. So 50 * 1% = 0.5, indicating that the player is taking
-     * 50% more damage.
-     *
-     * This is null when it doesn't affect player damage taken.
-     */
-    val morePlayerDamageTakenMultiForVariable: Double? = null,
-
-    /**
-     * The effect of the mod on player damage taken. This directly contributes to the final player multi.
-     * For instance, if the mod says "targeted by meteor when using flask", and the meteor deals 50% of player HP,
-     * then this field should be 100, because the player effectively only has half of the HP when the meteor procs.
-     *
-     * This is null when it doesn't affect player damage taken.
-     * This is not scaled by atlas multi (because there's no variable).
-     */
-    val morePlayerDamageTakenMulti: Double? = null,
-
-    /**
-     * The effect of the mod on monster effective health (including resistance and energy shield, which are also
-     * counted as effective health). This is multiplied with the actual variable
-     * to get the final result on the player. For instance, if the mod says "100% increased monster life",
-     * then variable will be 100, and this multi should be 1.0. So 100 * 1% = 1, indicating that monsters have
-     * 100% more health.
-     *
-     * This is null when the mod doesn't affect monster health.
-     */
-    val moreMonsterHpMultiForVariable: Double? = null,
-
-    /**
-     * The effect of the mod on monster effective HP. This directly contributes to the final monster multi.
-     * For instance, if the mod says "monsters steal frenzy charges", and the player has 3 max frenzy charges,
-     * then this field should be 12, because the player loses the 3 * 4% damage per frenzy charge.
-     *
-     * This is null when it doesn't affect monster HP.
-     * This is not scaled by atlas multi (because there's no variable).
-     */
-    val moreMonsterHpMulti: Double? = null,
-)
-
-/**
- * Comes from poet16data.json.
- *
- * Note that the ranges of the mods are unioned against the same mods from poet17data.json.
- */
 object T16Mods {
-    // Monster life/damage
     val fecund = MapModDescriptor(
         keywords = listOf("% more Monster Life"),
         variableIndex = 0,
         variableRange = IntRange(40, 100),
         moreMonsterHpMultiForVariable = 1.0,
     )
-
     val savage = MapModDescriptor(
         keywords = listOf("% increased Monster Damage"),
         variableIndex = 0,
         variableRange = IntRange(22, 40),
         morePlayerDamageTakenMultiForVariable = 1.0,
     )
-
-    // Projectile/AoE
     val chaining = MapModDescriptor(
         keywords = listOf("Monsters' skills Chain ", " additional times"),
         variableIndex = 0,
         variableRange = IntRange(2, 3),
     )
-
     val splitting = MapModDescriptor(
         keywords = listOf("Monsters fire ", " additional Projectiles"),
         variableIndex = 0,
         variableRange = IntRange(2, 2),
         morePlayerDamageTakenMultiForVariable = 5.0,
     )
-
     val ofGiants = MapModDescriptor(
         keywords = listOf("Monsters have ", "% increased Area of Effect"),
         variableIndex = 0,
         variableRange = IntRange(100, 100),
         morePlayerDamageTakenMultiForVariable = 0.05,
     )
-
-    // Crit
     val ofDeadliness = MapModDescriptor(
         keywords = listOf(
             "Monsters have ", "% increased Critical Strike Chance",
@@ -229,30 +143,23 @@ object T16Mods {
         ),
         variableIndex = 1,
         variableRange = IntRange(41, 75),
-        // Assume the worst case (crit) for ehp calc, assuming base 30% crit multi
         morePlayerDamageTakenMultiForVariable = 0.76,
     )
-
-    // Reflect
     val punishing = MapModDescriptor(
         keywords = listOf("Monsters reflect ", "% of Physical Damage"),
         variableIndex = 0,
         variableRange = IntRange(18, 20),
     )
-
     val mirrored = MapModDescriptor(
         keywords = listOf("Monsters reflect ", "% of Elemental Damage"),
         variableIndex = 0,
         variableRange = IntRange(18, 18),
     )
-
-    // Resistances/defences
     val armoured = MapModDescriptor(
         keywords = listOf("% Monster Physical Damage Reduction"),
         variableIndex = 0,
         variableRange = IntRange(40, 40),
     )
-
     val resistant = MapModDescriptor(
         keywords = listOf(
             "% Monster Chaos Resistance",
@@ -260,22 +167,17 @@ object T16Mods {
         ),
         variableIndex = 1,
         variableRange = IntRange(40, 40),
-        // No longer relevant for Esh of the Storm
-        // moreMonsterHpMultiForVariable = 0.2,
     )
-
     val oppressive = MapModDescriptor(
         keywords = listOf("Monsters have +", "% chance to Suppress Spell Damage"),
         variableIndex = 0,
         variableRange = IntRange(60, 100),
     )
-
     val insulation = MapModDescriptor(
         keywords = listOf("Monsters have ", "% chance to Avoid Elemental Ailments"),
         variableIndex = 0,
         variableRange = IntRange(70, 70),
     )
-
     val impervious = MapModDescriptor(
         keywords = listOf(
             "Monsters have a ",
@@ -284,60 +186,46 @@ object T16Mods {
         variableIndex = 0,
         variableRange = IntRange(50, 50),
     )
-
-    // On-hit mechanics
     val impaling = MapModDescriptor(
         keywords = listOf("Monsters' Attacks have ", "% chance to Impale on Hit"),
         variableIndex = 0,
         variableRange = IntRange(60, 60),
         morePlayerDamageTakenMultiForVariable = 0.1,
     )
-
     val empowered = MapModDescriptor(
         keywords = listOf("Monsters have a ", "% chance to Ignite, Freeze and Shock on Hit"),
         variableIndex = 0,
         variableRange = IntRange(20, 20),
         morePlayerDamageTakenMultiForVariable = 0.5,
     )
-
-    // Extra damage conversions
     val burning = MapModDescriptor(
         keywords = listOf("Monsters deal ", "% extra Physical Damage as Fire"),
         variableIndex = 0,
         variableRange = IntRange(90, 110),
         morePlayerDamageTakenMultiForVariable = 1.0,
     )
-
     val freezing = MapModDescriptor(
         keywords = listOf("Monsters deal ", "% extra Physical Damage as Cold"),
         variableIndex = 0,
         variableRange = IntRange(90, 110),
         morePlayerDamageTakenMultiForVariable = 1.0,
     )
-
     val shocking = MapModDescriptor(
         keywords = listOf("Monsters deal ", "% extra Physical Damage as Lightning"),
         variableIndex = 0,
         variableRange = IntRange(90, 110),
         morePlayerDamageTakenMultiForVariable = 1.0,
     )
-
     val profane = MapModDescriptor(
         keywords = listOf("Monsters gain ", "% of their Physical Damage as Extra Chaos Damage"),
         variableIndex = 0,
         variableRange = IntRange(31, 100),
     )
-
-    // Monster ES buffer
     val buffered = MapModDescriptor(
         keywords = listOf("Monsters gain ", "% of Maximum Life as Extra Maximum Energy Shield"),
         variableIndex = 0,
         variableRange = IntRange(40, 80),
-        // Ignored when dealing chaos damage
-        // moreMonsterHpMultiPercentage = 1.0,
     )
-
-    // Boss modifiers
     val overlords = MapModDescriptor(
         keywords = listOf(
             "Unique Boss deals ", "% increased Damage",
@@ -347,7 +235,6 @@ object T16Mods {
         variableRange = IntRange(25, 25),
         morePlayerDamageTakenMultiForVariable = 1.0,
     )
-
     val titans = MapModDescriptor(
         keywords = listOf(
             "Unique Boss has ", "% increased Life",
@@ -357,73 +244,58 @@ object T16Mods {
         variableRange = IntRange(35, 35),
         moreMonsterHpMultiForVariable = 1.0,
     )
-
-    // Player debuffs
     val smothering = MapModDescriptor(
         keywords = listOf("Players have ", "% less Recovery Rate of Life and Energy Shield"),
         variableIndex = 0,
         variableRange = IntRange(60, 60),
         morePlayerDamageTakenMultiForVariable = 1.0,
     )
-
     val drought = MapModDescriptor(
         keywords = listOf("Players gain ", "% reduced Flask Charges"),
         variableIndex = 0,
         variableRange = IntRange(50, 50),
     )
-
     val ofStasis = MapModDescriptor(
         keywords = listOf("Players cannot Regenerate Life, Mana or Energy Shield"),
         morePlayerDamageTakenMulti = 100.0,
     )
-
     val ofBalance = MapModDescriptor(
         keywords = listOf("Players cannot inflict Exposure"),
     )
-
     val ofExposure = MapModDescriptor(
         keywords = listOf("Players have ", "% to all maximum Resistances"),
         variableIndex = 0,
         variableRange = IntRange(-20, -9),
-        // Since the value is negative
         morePlayerDamageTakenMultiForVariable = -10.0,
     )
-
     val ofFatigue = MapModDescriptor(
         keywords = listOf("Players have ", "% less Cooldown Recovery Rate"),
         variableIndex = 0,
         variableRange = IntRange(40, 40),
-        // Affects necro spellslinger
         moreMonsterHpMultiForVariable = 1.2,
     )
-
     val ofTransience = MapModDescriptor(
         keywords = listOf("Buffs on Players expire ", "% faster"),
         variableIndex = 0,
         variableRange = IntRange(70, 100),
     )
-
     val ofDoubt = MapModDescriptor(
         keywords = listOf("Players have ", "% reduced effect of Non-Curse Auras from Skills"),
         variableIndex = 0,
         variableRange = IntRange(60, 60),
-        // Hmm this one is harder to estimate
     )
-
     val ofImprecision = MapModDescriptor(
         keywords = listOf("Players have ", "% less Accuracy Rating"),
         variableIndex = 0,
         variableRange = IntRange(25, 25),
         morePlayerDamageTakenMultiForVariable = 0.2,
     )
-
     val ofImpotence = MapModDescriptor(
         keywords = listOf("Players have ", "% less Area of Effect"),
         variableIndex = 0,
         variableRange = IntRange(25, 30),
         moreMonsterHpMultiForVariable = 0.2,
     )
-
     val ofMiring = MapModDescriptor(
         keywords = listOf(
             "Monsters have ", "% increased Accuracy Rating",
@@ -433,7 +305,6 @@ object T16Mods {
         variableRange = IntRange(-20, -20),
         morePlayerDamageTakenMultiForVariable = -1.0,
     )
-
     val rust = MapModDescriptor(
         keywords = listOf(
             "Players have ", "% less Armour",
@@ -441,80 +312,57 @@ object T16Mods {
         ),
         variableIndex = 1,
         variableRange = IntRange(40, 40),
-        // Huge for block builds, not so for other.
         morePlayerDamageTakenMultiForVariable = 1.5,
     )
-
-    // Charge mods (no numeric variables in description)
     val ofFrenzy = MapModDescriptor(
         keywords = listOf("Monsters gain a Frenzy Charge on Hit"),
     )
-
     val ofEndurance = MapModDescriptor(
         keywords = listOf("Monsters gain an Endurance Charge on Hit"),
     )
-
     val ofPower = MapModDescriptor(
         keywords = listOf("Monsters gain a Power Charge on Hit"),
     )
-
-    // Curses (no numeric variable)
     val ofElementalWeakness = MapModDescriptor(
         keywords = listOf("Players are Cursed with Elemental Weakness"),
     )
-
     val ofVulnerability = MapModDescriptor(
         keywords = listOf("Players are Cursed with Vulnerability"),
     )
-
     val ofEnfeeblement = MapModDescriptor(
         keywords = listOf("Players are Cursed with Enfeeble"),
     )
-
     val ofTemporalChains = MapModDescriptor(
         keywords = listOf("Players are Cursed with Temporal Chains"),
     )
-
-    // Ground effects
     val ofFlames = MapModDescriptor(
         keywords = listOf("Area has patches of Burning Ground"),
     )
-
     val ofIce = MapModDescriptor(
         keywords = listOf("Area has patches of Chilled Ground"),
     )
-
     val ofLightning = MapModDescriptor(
         keywords = listOf("Area has patches of Shocked Ground"),
     )
-
     val ofDesecration = MapModDescriptor(
         keywords = listOf("Area has patches of Desecrated Ground"),
     )
-
     val ofConsecration = MapModDescriptor(
         keywords = listOf("Area has patches of Consecrated Ground"),
     )
-
-    
-
-    // Misc no-variable mods
     val hexproof = MapModDescriptor(
         keywords = listOf("Monsters are Hexproof"),
     )
-
     val hexwarded = MapModDescriptor(
         keywords = listOf("% less effect of Curses on Monsters"),
         variableIndex = 0,
         variableRange = IntRange(60, 60),
         moreMonsterHpMultiForVariable = 0.1,
     )
-
     val conflagrating = MapModDescriptor(
         keywords = listOf("All Monster Damage from Hits always Ignites"),
         morePlayerDamageTakenMulti = 10.0,
     )
-
     val unstoppable = MapModDescriptor(
         keywords = listOf(
             "Monsters cannot be Taunted",
@@ -522,39 +370,27 @@ object T16Mods {
             "Monsters' Movement Speed cannot be modified to below Base Value",
         ),
     )
-
-    
-
     val ofCongealment = MapModDescriptor(
         keywords = listOf("Monsters cannot be Leeched from"),
         morePlayerDamageTakenMulti = 100.0,
     )
-
     val ofBlinding = MapModDescriptor(
         keywords = listOf("Monsters Blind on Hit"),
     )
-
     val ofCarnage = MapModDescriptor(
         keywords = listOf("Monsters Maim on Hit with Attacks"),
     )
-
     val ofImpedance = MapModDescriptor(
         keywords = listOf("Monsters Hinder on Hit with Spells"),
     )
-
     val ofEnervation = MapModDescriptor(
         keywords = listOf("Monsters steal Power, Frenzy and Endurance charges on Hit"),
-        // losing 12% less from endurance
         morePlayerDamageTakenMulti = 13.6,
-        // losing power and frenzy is huge
         moreMonsterHpMulti = 74.0,
     )
-
     val ofVenom = MapModDescriptor(
         keywords = listOf("Monsters Poison on Hit"),
     )
-
-    // Movement/attack/cast speed
     val fleet = MapModDescriptor(
         keywords = listOf(
             "% increased Monster Movement Speed",
@@ -565,79 +401,59 @@ object T16Mods {
         variableRange = IntRange(35, 45),
         morePlayerDamageTakenMultiForVariable = 0.2,
     )
-
-    // No-var descriptive mods
     val abhorrent = MapModDescriptor(
         keywords = listOf("Area is inhabited by Abominations"),
     )
-
-    // Area-inhabited and pack variety mods
     val ceremonial = MapModDescriptor(
         keywords = listOf("Area contains many Totems"),
     )
-
     val skeletal = MapModDescriptor(
         keywords = listOf("Area is inhabited by Skeletons"),
     )
-
     val ofBloodlines = MapModDescriptor(
         keywords = listOf("% increased Magic Monsters"),
         variableIndex = 0,
         variableRange = IntRange(20, 30),
     )
-
     val capricious = MapModDescriptor(
         keywords = listOf("Area is inhabited by Goatmen"),
     )
-
     val slithering = MapModDescriptor(
         keywords = listOf("Area is inhabited by Sea Witches and their Spawn"),
     )
-
     val undead = MapModDescriptor(
         keywords = listOf("Area is inhabited by Undead"),
     )
-
     val emanant = MapModDescriptor(
         keywords = listOf("Area is inhabited by ranged monsters"),
     )
-
     val feral = MapModDescriptor(
         keywords = listOf("Area is inhabited by Animals"),
     )
-
     val demonic = MapModDescriptor(
         keywords = listOf("Area is inhabited by Demons"),
     )
-
     val bipedal = MapModDescriptor(
         keywords = listOf("Area is inhabited by Humanoids"),
     )
-
     val solar = MapModDescriptor(
         keywords = listOf("Area is inhabited by Solaris fanatics"),
     )
-
     val lunar = MapModDescriptor(
         keywords = listOf("Area is inhabited by Lunaris fanatics"),
     )
-
     val haunting = MapModDescriptor(
         keywords = listOf("Area is inhabited by Ghosts"),
     )
-
     val feasting = MapModDescriptor(
         keywords = listOf("Area is inhabited by Cultists of Kitava"),
     )
-
     val multifarious = MapModDescriptor(
         keywords = listOf("Area has increased monster variety"),
     )
-
     val twinned = MapModDescriptor(
         keywords = listOf("Area contains two Unique Bosses"),
     )
-
     val unwavering = MapModDescriptor(
         keywords = listOf("% more Monster Life", "Monsters cannot be Stunned"),
         variableIndex = 0,
@@ -646,89 +462,26 @@ object T16Mods {
     )
 
     val ALL = listOf(
-        fecund,
-        savage,
-        chaining,
-        splitting,
-        ofGiants,
-        ofDeadliness,
-        punishing,
-        mirrored,
-        armoured,
-        resistant,
-        oppressive,
-        insulation,
-        impervious,
-        impaling,
-        empowered,
-        burning,
-        freezing,
-        shocking,
-        profane,
-        buffered,
-        overlords,
-        titans,
-        smothering,
-        drought,
-        ofStasis,
-        ofBalance,
-        ofExposure,
-        ofFatigue,
-        ofTransience,
-        ofDoubt,
-        ofImprecision,
-        ofImpotence,
-        ofMiring,
-        rust,
-        ofFrenzy,
-        ofEndurance,
-        ofPower,
-        ofElementalWeakness,
-        ofVulnerability,
-        ofEnfeeblement,
-        ofTemporalChains,
-        ofFlames,
-        ofIce,
-        ofLightning,
-        ofDesecration,
-        ofConsecration,
-        hexproof,
-        hexwarded,
-        conflagrating,
-        unstoppable,
-        ofCongealment,
-        ofBlinding,
-        ofCarnage,
-        ofImpedance,
-        ofEnervation,
-        ofVenom,
-        fleet,
-        ofBloodlines,
-        ceremonial,
-        skeletal,
-        capricious,
-        slithering,
-        undead,
-        emanant,
-        feral,
-        demonic,
-        bipedal,
-        solar,
-        lunar,
-        haunting,
-        feasting,
-        multifarious,
-        abhorrent,
-        twinned,
+        fecund, savage, chaining, splitting, ofGiants, ofDeadliness,
+        punishing, mirrored, armoured, resistant, oppressive, insulation,
+        impervious, impaling, empowered, burning, freezing, shocking,
+        profane, buffered, overlords, titans, smothering, drought,
+        ofStasis, ofBalance, ofExposure, ofFatigue, ofTransience, ofDoubt,
+        ofImprecision, ofImpotence, ofMiring, rust, ofFrenzy, ofEndurance,
+        ofPower, ofElementalWeakness, ofVulnerability, ofEnfeeblement,
+        ofTemporalChains, ofFlames, ofIce, ofLightning, ofDesecration,
+        ofConsecration, hexproof, hexwarded, conflagrating, unstoppable,
+        ofCongealment, ofBlinding, ofCarnage, ofImpedance, ofEnervation,
+        ofVenom, fleet, ofBloodlines, ceremonial, skeletal, capricious,
+        slithering, undead, emanant, feral, demonic, bipedal, solar,
+        lunar, haunting, feasting, multifarious, abhorrent, twinned,
         unwavering,
     )
 }
 
-/**
- * Comes from poet17data.json, minus any mods that already exist in [T16Mods].
- */
-object T17Mods {
+// -- T17 Mod Definitions --
 
+object T17Mods {
     val ofPower = MapModDescriptor(
         keywords = listOf(
             "Monsters have +", " to Maximum Power Charges",
@@ -738,7 +491,6 @@ object T17Mods {
         variableRange = IntRange(1, 1),
         morePlayerDamageTakenMultiForVariable = 10.0,
     )
-
     val ofFrenzy = MapModDescriptor(
         keywords = listOf(
             "Monsters have +", " to Maximum Frenzy Charges",
@@ -748,7 +500,6 @@ object T17Mods {
         variableRange = IntRange(1, 1),
         morePlayerDamageTakenMultiForVariable = 10.0,
     )
-
     val ofEndurance = MapModDescriptor(
         keywords = listOf(
             "Monsters have +", " to Maximum Endurance Charges",
@@ -757,35 +508,26 @@ object T17Mods {
         variableIndex = 0,
         variableRange = IntRange(1, 1),
     )
-
     val volatile = MapModDescriptor(
         keywords = listOf("Rare Monsters have Volatile Cores"),
-        // 27k - 41k damage, suppressable. With 75% res and 43% suppression effect,
-        // this is 5.8k damage max. Any slight increase will be an oneshot.
-        // With 90% res, arctic armor, 46% suppression effect, this is 1.6k which is almost nothing.
         morePlayerDamageTakenMulti = 100.0,
     )
-
     val enthralled = MapModDescriptor(
         keywords = listOf("Unique Bosses are Possessed"),
     )
-
     val grasping = MapModDescriptor(
         keywords = listOf("Monsters inflict ", " Grasping Vines on Hit"),
         variableIndex = 0,
         variableRange = IntRange(2, 2),
     )
-
     val ofPetrification = MapModDescriptor(
         keywords = listOf("Area contains Petrification Statues"),
     )
-
     val ofToughness = MapModDescriptor(
         keywords = listOf("Monsters take ", "% reduced Extra Damage from Critical Strikes"),
         variableIndex = 0,
         variableRange = IntRange(35, 45),
     )
-
     val cycling = MapModDescriptor(
         keywords = listOf(
             "Players and their Minions deal no damage for ",
@@ -795,7 +537,6 @@ object T17Mods {
         variableIndex = 0,
         variableRange = IntRange(3, 3),
     )
-
     val magnifying = MapModDescriptor(
         keywords = listOf(
             "Monsters have ",
@@ -807,9 +548,6 @@ object T17Mods {
         variableRange = IntRange(100, 100),
         morePlayerDamageTakenMultiForVariable = 0.3,
     )
-
-    
-
     val ofVenom = MapModDescriptor(
         keywords = listOf(
             "Monsters Poison on Hit",
@@ -819,24 +557,17 @@ object T17Mods {
         variableIndex = 0,
         variableRange = IntRange(100, 100),
     )
-
-    
-
     val stalwart = MapModDescriptor(
         keywords = listOf("Monsters have +", "% Chance to Block Attack Damage"),
         variableIndex = 0,
         variableRange = IntRange(50, 50),
     )
-
     val ofCongealment = MapModDescriptor(
         keywords = listOf("Players have ", "% reduced Maximum total Life, Mana and Energy Shield Recovery per second from Leech"),
         variableIndex = 0,
         variableRange = IntRange(50, 60),
         morePlayerDamageTakenMultiForVariable = 0.3,
     )
-
-    
-
     val ofCurses = MapModDescriptor(
         keywords = listOf(
             "Players are Cursed with Vulnerability",
@@ -844,7 +575,6 @@ object T17Mods {
             "Players are Cursed with Elemental Weakness",
         ),
     )
-
     val antagonists = MapModDescriptor(
         keywords = listOf(
             "% increased number of Rare Monsters",
@@ -853,24 +583,18 @@ object T17Mods {
         variableIndex = 0,
         variableRange = IntRange(35, 45),
     )
-
     val ofDomination = MapModDescriptor(
         keywords = listOf("Unique Monsters have a random Shrine Buff"),
     )
-
-    
-
     val prismatic = MapModDescriptor(
         keywords = listOf("Monsters gain ", "% of their Physical Damage as Extra Damage of a random Element"),
         variableIndex = 0,
         variableRange = IntRange(180, 200),
         morePlayerDamageTakenMultiForVariable = 1.0,
     )
-
     val ultimate = MapModDescriptor(
         keywords = listOf("Players are assaulted by Bloodstained Sawblades"),
     )
-
     val ofTheJuggernaut = MapModDescriptor(
         keywords = listOf(
             "Monsters cannot be Stunned",
@@ -878,24 +602,18 @@ object T17Mods {
             "Monsters' Movement Speed cannot be modified to below Base Value",
         ),
     )
-
     val ofImbibing = MapModDescriptor(
         keywords = listOf("Players are targeted by a Meteor when they use a Flask"),
-        // Mageblood makes us immune
-        // morePlayerDamageTakenMulti = 100.0,
     )
-
     val ofMiring = MapModDescriptor(
         keywords = listOf("Players have ", "% less Defences"),
         variableIndex = 0,
         variableRange = IntRange(25, 30),
         morePlayerDamageTakenMultiForVariable = 2.0,
     )
-
     val hungering = MapModDescriptor(
         keywords = listOf("Area contains Drowning Orbs"),
     )
-
     val protected = MapModDescriptor(
         keywords = listOf(
             "% Monster Physical Damage Reduction",
@@ -904,10 +622,7 @@ object T17Mods {
         ),
         variableIndex = 0,
         variableRange = IntRange(50, 50),
-        // No longer relevant for Esh of the Storm
-        // moreMonsterHpMultiForVariable = 0.2,
     )
-
     val afflicting = MapModDescriptor(
         keywords = listOf(
             "All Monster Damage can Ignite, Freeze and Shock",
@@ -915,22 +630,17 @@ object T17Mods {
         ),
         morePlayerDamageTakenMulti = 10.0,
     )
-
-    
-
     val ofPenetration = MapModDescriptor(
         keywords = listOf("Monster Damage Penetrates ", "% Elemental Resistances"),
         variableIndex = 0,
         variableRange = IntRange(15, 15),
         morePlayerDamageTakenMultiForVariable = 10.0,
     )
-
     val ofDeceleration = MapModDescriptor(
         keywords = listOf("Players have ", "% reduced Action Speed for each time they've used a Skill Recently"),
         variableIndex = 0,
         variableRange = IntRange(3, 3),
     )
-
     val retributive = MapModDescriptor(
         keywords = listOf(
             "Players are Marked for Death for ",
@@ -941,19 +651,15 @@ object T17Mods {
         variableRange = IntRange(10, 10),
         morePlayerDamageTakenMulti = 50.0,
     )
-
     val equalising = MapModDescriptor(
         keywords = listOf("Rare and Unique Monsters remove ", "% of Life, Mana and Energy Shield from Players or their Minions on Hit"),
         variableIndex = 0,
         variableRange = IntRange(5, 5),
-        // We have ES on block shield since this is not too bad
-        morePlayerDamageTakenMultiForVariable = 3.0
+        morePlayerDamageTakenMultiForVariable = 3.0,
     )
-
     val decaying = MapModDescriptor(
         keywords = listOf("Area contains Unstable Tentacle Fiends"),
     )
-
     val impaling = MapModDescriptor(
         keywords = listOf(
             "Monsters' Attacks Impale on Hit",
@@ -961,17 +667,13 @@ object T17Mods {
         ),
         morePlayerDamageTakenMultiForVariable = 0.1,
     )
-
     val ofDesolation = MapModDescriptor(
         keywords = listOf("Area has patches of Awakeners' Desolation"),
     )
-
     val valdos = MapModDescriptor(
         keywords = listOf("Rare monsters in area are Shaper-Touched"),
-        // This really hurts!
         morePlayerDamageTakenMulti = 150.0,
     )
-
     val sabotaging = MapModDescriptor(
         keywords = listOf(
             "Player Skills which Throw Mines throw ", " fewer Mine",
@@ -980,7 +682,6 @@ object T17Mods {
         variableIndex = 0,
         variableRange = IntRange(1, 1),
     )
-
     val ofRevolt = MapModDescriptor(
         keywords = listOf(
             "Players' Minions have ", "% less Attack Speed",
@@ -990,31 +691,25 @@ object T17Mods {
         variableIndex = 0,
         variableRange = IntRange(50, 50),
     )
-
     val parasitic = MapModDescriptor(
         keywords = listOf("% of Damage Players' Totems take from Hits is taken from their Summoner's Life instead"),
         variableIndex = 0,
         variableRange = IntRange(15, 15),
     )
-
     val synthetic = MapModDescriptor(
         keywords = listOf("Map Boss is accompanied by a Synthesis Boss"),
     )
-
     val ofDefiance = MapModDescriptor(
         keywords = listOf("Debuffs on Monsters expire ", "% faster"),
         variableIndex = 0,
         variableRange = IntRange(100, 100),
     )
-
     val searing = MapModDescriptor(
         keywords = listOf("Area contains Runes of the Searing Exarch"),
     )
-
     val ofCollection = MapModDescriptor(
         keywords = listOf("The Maven interferes with Players"),
     )
-
     val ofSplinters = MapModDescriptor(
         keywords = listOf("% chance for Rare Monsters to Fracture on death"),
         variableIndex = 0,
@@ -1022,47 +717,14 @@ object T17Mods {
     )
 
     val ALL = listOf(
-        ofPower,
-        ofFrenzy,
-        ofEndurance,
-        cycling,
-        magnifying,
-        ofVenom,
-        stalwart,
-        ofCongealment,
-        volatile,
-        enthralled,
-        grasping,
-        ofPetrification,
-        ofToughness,
-        
-        antagonists,
-        ofDomination,
-        prismatic,
-        ultimate,
-        ofTheJuggernaut,
-        ofImbibing,
-        ofMiring,
-        hungering,
-        protected,
-        afflicting,
-        ofPenetration,
-        ofDeceleration,
-        retributive,
-        equalising,
-        decaying,
-        impaling,
-        ofDesolation,
-        valdos,
-        sabotaging,
-        ofRevolt,
-        parasitic,
-        synthetic,
-        ofDefiance,
-        searing,
-        ofCollection,
-        ofCurses,
-        ofSplinters,
+        ofPower, ofFrenzy, ofEndurance, cycling, magnifying, ofVenom,
+        stalwart, ofCongealment, volatile, enthralled, grasping,
+        ofPetrification, ofToughness, antagonists, ofDomination,
+        prismatic, ultimate, ofTheJuggernaut, ofImbibing, ofMiring,
+        hungering, protected, afflicting, ofPenetration, ofDeceleration,
+        retributive, equalising, decaying, impaling, ofDesolation,
+        valdos, sabotaging, ofRevolt, parasitic, synthetic, ofDefiance,
+        searing, ofCollection, ofCurses, ofSplinters,
     )
 }
 
@@ -1070,37 +732,13 @@ object PoeMapMods {
     val ALL = T17Mods.ALL + T16Mods.ALL
 
     val alwaysAnnoying = listOf(
-        // Still a lot of damage until 90% res
-        // T17Mods.volatile,
-        // Lag
         T17Mods.cycling,
-
-        // Constant attention
         T17Mods.decaying,
         T17Mods.hungering,
-
-        // Floor stuff
-        // T17Mods.ofDesolation,
-        // Exarch is worse than awakener because runes can dynamically spawn under you,
-        // while awakener's desolation is static.
         T17Mods.searing,
     )
 
-    val otherBadMods = listOf<MapModDescriptor>(
-        // Refl
-        // T16Mods.punishing,
-        // T16Mods.mirrored,
-
-        // Regen mods now have their own multi
-        // T16Mods.smothering,
-        // T16Mods.ofStasis,
-        // T16Mods.ofCongealment,
-        // T17Mods.ofCongealment,
-
-        // Action speed
-        // T17Mods.ofPetrification,
-        // T17Mods.ofDeceleration,
-    )
+    val otherBadMods = listOf<MapModDescriptor>()
 
     val allBadMods = alwaysAnnoying + otherBadMods
 
@@ -1113,8 +751,7 @@ object PoeMapMods {
             it in allBadMods
         }
 
-        // Special case for combined bad mods. For instance, vcore deals 1.5k on 90 res, but
-        // -20 (x1.6) res makes it deal 6k.
+        // Special case: volatile + exposure is very dangerous
         if (T17Mods.volatile in descriptors && T16Mods.ofExposure in descriptors) {
             val exposureMod = item.explicitMods.first {
                 findMatchingDescriptor(it) == T16Mods.ofExposure

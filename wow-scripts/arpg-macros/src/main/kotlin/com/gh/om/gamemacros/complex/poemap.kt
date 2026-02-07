@@ -1,7 +1,8 @@
 package com.gh.om.gamemacros.complex
 
-import MapDifficulty
+import PoeMapDifficulty
 import com.gh.om.gamemacros.MouseHooks
+import com.gh.om.gamemacros.complex.PoeMapScorer.Output
 import com.gh.om.gamemacros.complex.PoeRollableItem.Rarity.*
 import com.gh.om.gamemacros.isPoeAndTriggerKeyEnabled
 import com.gh.om.gamemacros.safeDelayK
@@ -10,40 +11,48 @@ import java.awt.Point
 import kotlin.math.min
 import kotlin.time.Duration.Companion.milliseconds
 
-interface PoeMapScorer {
-    fun evaluate(map: PoeRollableItem): Output
+interface PoeMapScorer : PoeMultiRoll.ItemChecker<PoeMapScorer.Output> {
+    override fun generateReport(results: List<Output>): String {
+        return generateReportImpl(results)
+    }
 
     data class Output(
+        val scorer: String,
         val score: Double,
         val scoreThreshold: Double,
-        val difficulty: MapDifficulty,
+        val difficulty: PoeMapDifficulty,
         val easyEnough: Boolean,
         val badMods: List<PoeRollableItem.ExplicitMod>,
-    ) {
-        fun isGood(): Boolean {
+    ): PoeMultiRoll.CheckResult {
+        override val isGood: Boolean get() {
             return score >= scoreThreshold && easyEnough && badMods.isEmpty()
         }
     }
 
     companion object {
-        fun anyGood(
+        fun bestOf(
             xs: List<PoeMapScorer>,
         ): PoeMapScorer {
             require(xs.isNotEmpty())
 
             return object : PoeMapScorer {
-                override fun evaluate(map: PoeRollableItem): Output {
-                    val outputs = xs.map { it.evaluate(map) }
-                    val firstGood = outputs.firstOrNull { it.isGood() }
-                    return firstGood ?: outputs.first()
+                override fun evaluate(item: PoeRollableItem): Output {
+                    val outputs = xs.mapTo(mutableListOf()) { it.evaluate(item) }
+                    // Sort by best to worst
+                    outputs.sortByDescending {
+                        it.score / it.scoreThreshold
+                    }
+                    return outputs.first()
                 }
             }
         }
+
     }
 }
 
 // TODO also consider extra quality?
 class PoeMapScorerImpl(
+    private val name: String,
     private val packSizeWeight: Double,
     private val quantWeight: Double = 1.0,
     private val rarityWeight: Double = 0.0,
@@ -52,12 +61,20 @@ class PoeMapScorerImpl(
     private val mapWeight: Double = 0.0,
     private val genericWeight: Double = 0.0,
     private val atlasMulti: Double = 1.56,
-    private val maxDifficulty: MapDifficulty? = null,
+    private val maxDifficulty: PoeMapDifficulty? = null,
+    /**
+     * Map is good only if it has a score >= [threshold].
+     */
     val threshold: Double,
+    /**
+     * Modifier to [threshold] and [maxDifficulty] (inversely) when the map is a zana influenced (originator) map.
+     * This is often <1 as a discount, since it's harder to roll zana maps.
+     */
+    private val zanaInfluenceMulti: Double = 0.8,
     val getBadMods: (PoeRollableItem) -> List<PoeRollableItem.ExplicitMod> = PoeMapMods::getBadMods,
     val extraScorer: (PoeRollableItem) -> Double = { 1.0 },
     private val weightDivider: Double? = null,
-) : PoeMapScorer {
+) : PoeMapScorer, PoeMultiRoll.ItemChecker<PoeMapScorer.Output> {
     private val totalWeight: Double = sequenceOf(
         genericWeight,
         currencyWeight,
@@ -66,21 +83,31 @@ class PoeMapScorerImpl(
         rarityWeight,
     ).sum()
 
-    override fun evaluate(map: PoeRollableItem): PoeMapScorer.Output {
-        val score = getScore(map)
-        val difficulty = getMapDifficulty(map)
-        val easyEnough = if (maxDifficulty != null) {
-            difficulty.strictlyLessOrEqualTo(maxDifficulty)
+    override fun evaluate(item: PoeRollableItem): PoeMapScorer.Output {
+        val score = getScore(item)
+        val difficulty = getMapDifficulty(item)
+        val actualThreshold: Double
+        val actualMaxDifficulty: PoeMapDifficulty?
+        if (item.klass == PoeItem.Map(PoeItem.MapTier.T16_5)) {
+            actualThreshold = threshold * zanaInfluenceMulti
+            actualMaxDifficulty = maxDifficulty?.times(1 / zanaInfluenceMulti)
+        } else {
+            actualThreshold = threshold
+            actualMaxDifficulty = maxDifficulty
+        }
+        val easyEnough = if (actualMaxDifficulty != null) {
+            difficulty.strictlyLessOrEqualTo(actualMaxDifficulty)
         } else {
             true
         }
         // println("score = ${score.fmt()}, threshold = ${scorer.threshold}, badMods = $hasBadMods")
         return PoeMapScorer.Output(
+            scorer = name,
             score = score,
-            scoreThreshold = threshold,
+            scoreThreshold = actualThreshold,
             difficulty = difficulty,
             easyEnough = easyEnough,
-            badMods = getBadMods(map),
+            badMods = getBadMods(item),
         )
     }
 
@@ -94,15 +121,15 @@ class PoeMapScorerImpl(
         require(input.klass.isMapLike())
 
         val currency =
-            getRealPctValue(input.qualities, PoeRollableItem.MapAug.Currency)
+            getRealPctValue(input.qualities, PoeRollableItem.AugType.Currency)
         val scarab =
-            getRealPctValue(input.qualities, PoeRollableItem.MapAug.Scarab)
+            getRealPctValue(input.qualities, PoeRollableItem.AugType.Scarab)
         val quant =
-            getRealPctValue(input.qualities, PoeRollableItem.MapAug.Quant)
+            getRealPctValue(input.qualities, PoeRollableItem.AugType.Generic)
         val rarity =
-            getRealPctValue(input.qualities, PoeRollableItem.MapAug.Rarity)
-        val pack = getRealPctValue(input.qualities, PoeRollableItem.MapAug.Pack)
-        val map = getRealPctValue(input.qualities, PoeRollableItem.MapAug.Map)
+            getRealPctValue(input.qualities, PoeRollableItem.AugType.Rarity)
+        val pack = getRealPctValue(input.qualities, PoeRollableItem.AugType.Pack)
+        val map = getRealPctValue(input.qualities, PoeRollableItem.AugType.Map)
 
         // Also increase the weight when both are present because qual affects
         // both.. Or maybe simply also consider pack and qual? Basically
@@ -126,21 +153,21 @@ class PoeMapScorerImpl(
 
     fun getRealPctValue(
         quals: List<PoeRollableItem.Quality>,
-        aug: PoeRollableItem.MapAug,
+        aug: PoeRollableItem.AugType,
     ): Int {
         // Each quality improves by
         val chiselMulti = when (aug) {
-            PoeRollableItem.MapAug.Quant -> 1
-            PoeRollableItem.MapAug.Rarity -> 3
-            PoeRollableItem.MapAug.Pack -> 1
-            PoeRollableItem.MapAug.Map -> 5
-            PoeRollableItem.MapAug.Currency -> 5
-            PoeRollableItem.MapAug.Scarab -> 5
-            PoeRollableItem.MapAug.DivCard -> 5
+            PoeRollableItem.AugType.Generic -> 1
+            PoeRollableItem.AugType.Rarity -> 3
+            PoeRollableItem.AugType.Pack -> 1
+            PoeRollableItem.AugType.Map -> 5
+            PoeRollableItem.AugType.Currency -> 5
+            PoeRollableItem.AugType.Scarab -> 5
+            PoeRollableItem.AugType.DivCard -> 5
         }
         val fromChisel = quals.firstOrNull {
             val name = it.name
-            name is PoeRollableItem.QualName.Chisel && name.ty == aug
+            name is PoeRollableItem.QualName.FromCurrency && name.ty == aug
         }
         var nativeQual = quals.firstOrNull {
             val name = it.name
@@ -154,20 +181,25 @@ class PoeMapScorerImpl(
 
     companion object {
         // 3.27: 6 is really good. Maybe use 4 for now.
-        val STRONGBOX = PoeMapScorerImpl(
-            packSizeWeight = 0.8,
-            currencyWeight = 0.4,
+        // 5 is slightly strict when paired with early game difficulty + lots of bad mods
+        // 6 is fine on midGame + fewer bad mods (e.g. refl ok)
+        val SCARAB = PoeMapScorerImpl(
+            "scarab",
+            packSizeWeight = 0.6,
+            currencyWeight = 0.3,
             scarabWeight = 1.0,
             genericWeight = 0.3,
             mapWeight = 0.05,
             rarityWeight = 0.1,
-            // WD=1, PS=0.4, scarab=0.66, c=0.33:
-            // 10.5 for single target reroll, 14 for multiple target
-            threshold = 11.5,
+            // maxDifficulty = PoeMapDifficulty.lateGame,
+            threshold = 6.8,
+            // T16.5 scarab/currency drop is bad so we have an equal bar
+            zanaInfluenceMulti = 0.8,
         )
 
         // 3.26 only
         val ALVA = PoeMapScorerImpl(
+            "alva",
             packSizeWeight = 1.0,
             rarityWeight = 0.4,
             currencyWeight = 1.0,
@@ -177,15 +209,21 @@ class PoeMapScorerImpl(
             // weightDivider = 1.0,
         )
 
+        // 3.27: 9 is okay (100% map, 90 quant).
         val MAP = PoeMapScorerImpl(
+            "map",
             packSizeWeight = 1.0,
             mapWeight = 1.0,
             currencyWeight = 0.0,
             scarabWeight = 0.0,
-            threshold = 12.0,
+            maxDifficulty = PoeMapDifficulty.lateGame,
+            threshold = 10.0,
+            // T16.5 map drop is okay so we have a lower bar
+            zanaInfluenceMulti = 0.7,
         )
 
         val AWAKEN_HARVEST = PoeMapScorerImpl(
+            "harvest",
             packSizeWeight = 0.5,
             quantWeight = 0.5,
             currencyWeight = 0.0,
@@ -193,28 +231,40 @@ class PoeMapScorerImpl(
             genericWeight = 1.0,
             // 3.0: around 110 IIQ, 52 Pack. Need 23c for single rolling
             // 3.4 is also fine when multi-rolling (~50c?)
-            threshold = 3.4,
+            threshold = 2.5,
         )
 
         // TODO: need a way to auto-categorize the results.
-        val ANY = PoeMapScorer.anyGood(
+        val ANY = PoeMapScorer.bestOf(
             listOf(
                 // AWAKEN_HARVEST,
-                STRONGBOX,
+                SCARAB,
                 MAP,
                 // ALVA,
             )
         )
 
         val INVITATION = PoeMapScorerImpl(
+            "invitation",
             packSizeWeight = 0.0,
             quantWeight = 1.0,
             currencyWeight = 0.0,
             scarabWeight = 0.0,
             genericWeight = 1.0,
             atlasMulti = 1.0,
-            threshold = 1.8,
+            // Heard that melding is not affected by IIQ, so threshold is whatever.
+            threshold = 1.7,
         )
+
+        val SCARAB_OR_MAP = object : PoeMapScorer {
+            override fun evaluate(item: PoeRollableItem): Output {
+                return when (item.klass) {
+                    PoeItem.Map(PoeItem.MapTier.T17) -> SCARAB.evaluate(item)
+                    PoeItem.Map(PoeItem.MapTier.T16_5) -> MAP.evaluate(item)
+                    else -> error("Can't evaluate ${item.klass}")
+                }
+            }
+        }
     }
 }
 
@@ -264,7 +314,7 @@ class ChaosRerollProvider(private val fuel: Int = 100) : RerollProvider {
                     item = itemSlot
                 )
                 PoeInteractor.applyCurrencyTo(
-                    currency = PoeCurrencyTab.alch,
+                    currency = PoeCurrencyTab.bindingOrAlch,
                     item = itemSlot
                 )
             }
@@ -272,7 +322,7 @@ class ChaosRerollProvider(private val fuel: Int = 100) : RerollProvider {
             Normal -> {
                 // Alc is enough
                 PoeInteractor.applyCurrencyTo(
-                    currency = PoeCurrencyTab.alch,
+                    currency = PoeCurrencyTab.bindingOrAlch,
                     item = itemSlot
                 )
             }
@@ -283,11 +333,42 @@ class ChaosRerollProvider(private val fuel: Int = 100) : RerollProvider {
                     item = itemSlot
                 )
             }
+
+            Unique -> {
+                error("Can't roll unique")
+            }
         }
     }
 }
 
-class ScourAlchRerollProvider(private val fuel: Int = 100) : RerollProvider {
+/**
+ * Uses chaos to roll T17, and alchemy to roll T16 and below.
+ */
+class ChaosOrAlchMapRerollProvider(fuel: Int = 100) : RerollProvider {
+    private val alch = ScourAlchRerollProvider(fuel)
+    private val chaos = ChaosRerollProvider(fuel)
+
+    override suspend fun hasMore(): Boolean {
+        return alch.hasMore() && chaos.hasMore()
+    }
+
+    override suspend fun applyTo(itemSlot: Point, item: PoeRollableItem) {
+        require(item.klass.isMapLike())
+        val provider = if (item.klass == PoeItem.Map(PoeItem.MapTier.T17)) {
+            chaos
+        } else {
+            alch
+        }
+        provider.applyTo(itemSlot, item)
+    }
+}
+
+@Suppress("unused")
+class ScourAlchRerollProvider(
+    private val fuel: Int = 100,
+    private val scourSlot: Point = PoeCurrencyTab.scour,
+    private val alchSlot: Point = PoeCurrencyTab.bindingOrAlch,
+) : RerollProvider {
     private var cachedAlcAndScourCount: Int? = null
     private var useCount = 0
 
@@ -297,12 +378,12 @@ class ScourAlchRerollProvider(private val fuel: Int = 100) : RerollProvider {
         }
         safeDelayK(30.milliseconds)
         val scourCount = PoeInteractor.getCountAt(
-            PoeCurrencyTab.scour,
+            scourSlot,
             PoeCurrency.KnownType.Scour
         )
         val alcCount = PoeInteractor.getCountAt(
-            PoeCurrencyTab.alch,
-            PoeCurrency.KnownType.Alch
+            alchSlot,
+            listOf(PoeCurrency.KnownType.Alch, PoeCurrency.KnownType.Binding),
         )
         println("alc = $alcCount, scour = $scourCount")
         val res = min(scourCount, alcCount)
@@ -323,19 +404,20 @@ class ScourAlchRerollProvider(private val fuel: Int = 100) : RerollProvider {
         if (item.rarity != Normal) {
             // Scour first
             PoeInteractor.applyCurrencyTo(
-                currency = PoeCurrencyTab.scour,
+                currency = scourSlot,
                 item = itemSlot
             )
         }
         // Then alch
         PoeInteractor.applyCurrencyTo(
-            currency = PoeCurrencyTab.alch,
+            currency = alchSlot,
             item = itemSlot
         )
     }
 }
 
 object PoeRollMap {
+    val kiracInvitationSlot = Point(792, 638)
 
     suspend fun main() {
         val isPoe = isPoeAndTriggerKeyEnabled()
@@ -344,15 +426,35 @@ object PoeRollMap {
             if (!pressed) {
                 return
             }
-            rollMapsUntilDone(
-                scorer = PoeMapScorerImpl.STRONGBOX,
-                mapsToRoll = bagSlots().toList(),
-                rerollProvider = ChaosRerollProvider(1000),
-                // rerollProvider = ScourAlchRerollProvider(1500),
+            PoeMultiRoll.rollItems(
+                checker = PoeMapScorerImpl.SCARAB_OR_MAP,
+                itemsToRoll = bagSlots().toList(),
+                rerollProvider = ChaosOrAlchMapRerollProvider(500),
                 shouldContinue = isPoe::value,
             )
         }
         LEADER_KEY.isEnabled("11").collect(::handle)
+    }
+
+    suspend fun kiracInvitation() {
+        val isPoe = isPoeAndTriggerKeyEnabled()
+
+        suspend fun handle(pressed: Boolean) {
+            if (!pressed) {
+                return
+            }
+            PoeMultiRoll.rollItems(
+                checker = PoeMapScorerImpl.INVITATION,
+                itemsToRoll = listOf(kiracInvitationSlot),
+                rerollProvider = ScourAlchRerollProvider(
+                    100,
+                    scourSlot = PoeGraphicConstants.firstItemInBag,
+                    alchSlot = PoeGraphicConstants.secondItemInBag,
+                ),
+                shouldContinue = isPoe::value,
+            )
+        }
+        LEADER_KEY.isEnabled("17").collect(::handle)
     }
 
     suspend fun sortInStash() {
@@ -362,7 +464,7 @@ object PoeRollMap {
             if (!pressed) {
                 return
             }
-            val scorer = PoeMapScorerImpl.ALVA
+            val scorer = PoeMapScorerImpl.SCARAB
             val (inputs, tempStorage) = stashItemsAndNext()
             doSortInStash(
                 scorer = scorer,
@@ -372,69 +474,6 @@ object PoeRollMap {
             )
         }
         LEADER_KEY.isEnabled("14").collect(::handle)
-    }
-
-    /**
-     * @return Map at [mapSlot]
-     */
-    suspend fun getMapAt(mapSlot: Point): PoeRollableItem {
-        MouseHooks.moveTo(mapSlot)
-        safeDelayK(30.milliseconds)
-
-        val ad = PoeInteractor.getAdvancedDescriptionOfItemUnderMouse() ?: ""
-        return PoeItemParser.parseAsRollable(ad)
-    }
-
-    suspend fun rollMapsUntilDone(
-        scorer: PoeMapScorer,
-        mapsToRoll: List<Point>,
-        rerollProvider: RerollProvider,
-        shouldContinue: () -> Boolean,
-    ) {
-        val rolledMaps = mutableListOf<PoeRollableItem>()
-        var rerollCount = 0
-        val mutMapRemaining = mapsToRoll.toMutableList()
-        // We'll pop rolled maps from the list
-        mutMapRemaining.reverse()
-
-        fun report() {
-            val scores = rolledMaps.map(scorer::evaluate).map {
-                it.score
-            }
-            val avgCost = (rerollCount.toDouble() / scores.size).fmt()
-            val lines = listOf(
-                "Rolled ${scores.size} maps in $rerollCount tries. Avg $avgCost tries",
-                "Average score ${scores.average().fmt()}, each: ${
-                    scores.map(Number::fmt)
-                }",
-            )
-            lines.forEach(::println)
-        }
-
-        while (true) {
-            if (mutMapRemaining.isEmpty() || !shouldContinue()) {
-                break
-            }
-            val mapSlot = mutMapRemaining.last()
-            val map = getMapAt(mapSlot)
-            require(map.klass.isMapLike()) {
-                "Not a map: $map"
-            }
-            if (scorer.evaluate(map).isGood()) {
-                mutMapRemaining.removeLast()
-                rolledMaps.add(map)
-            } else {
-                if (rerollProvider.hasMore()) {
-                    rerollCount += 1
-                    rerollProvider.applyTo(mapSlot, map)
-                } else {
-                    // Not enough currency left
-                    break
-                }
-            }
-        }
-
-        report()
     }
 
     private suspend fun doSortInStash(
@@ -522,3 +561,11 @@ object PoeRollMap {
     }
 }
 
+private fun generateReportImpl(results: List<PoeMapScorer.Output>): String {
+    val scores = results.map { it.score }
+    return "Average score ${scores.average().fmt()}, each: ${
+        results.map {
+            "${it.scorer} ${it.score.fmt()} ${it.difficulty.fmt()}"
+        }
+    }"
+}

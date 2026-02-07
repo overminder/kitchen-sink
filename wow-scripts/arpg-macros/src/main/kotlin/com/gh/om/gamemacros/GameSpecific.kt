@@ -10,7 +10,8 @@ import com.gh.om.gamemacros.complex.PoeDumpBag
 import com.gh.om.gamemacros.complex.PoeHarvestReforge
 import com.gh.om.gamemacros.complex.PoeRerollKirac
 import com.gh.om.gamemacros.complex.PoeRollMap
-import com.gh.om.gamemacros.complex.PoeStackedDeck
+import com.gh.om.gamemacros.complex.PoeDivCard
+import com.gh.om.gamemacros.complex.PoeQualityApplier
 import com.github.kwhat.jnativehook.keyboard.NativeKeyEvent
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
@@ -27,7 +28,7 @@ object GameSpecific {
         ::triggerSkillsInD4,
         ::townHotkeyInPoe,
         ::townHotkeyInPoe2,
-        ::autoFlaskInPoe,
+        // ::autoFlaskInPoe,
         // ::tripleClickInPoe,
         // ::novaOfFrostboltsInPoe,
         // ::detonateMineInPoe,
@@ -36,7 +37,7 @@ object GameSpecific {
 
         ::ctrlClickManyTimesInPoe,
         MouseCap::printMousePos,
-        PoeStackedDeck::unstackEntireStack,
+        PoeDivCard::turnInFromBag,
         PoeAutoAlt::play,
         PoeRerollKirac::main,
         PoeDumpBag::bagToStash,
@@ -44,10 +45,13 @@ object GameSpecific {
         PoeDumpBag::moveMapFromStashToBag,
         PoeDumpBag::moveFromHeistLocker,
         PoeDumpBag::moveFromRegularStash,
-        PoeAltAugRegal::main,
+        PoeAltAugRegal::craftInCurrencyTab,
+        PoeAltAugRegal::multiRoll,
+        PoeQualityApplier::main,
         PoeHarvestReforge::main,
         PoeRollMap::main,
         PoeRollMap::sortInStash,
+        PoeRollMap::kiracInvitation,
     )
 
     init {
@@ -168,18 +172,15 @@ object GameSpecific {
 
         currentCoroutineScope().async {
             triggerKeyOn(
-                "F", listOf(
-                    NativeKeyEvent.VC_Q,
-                    NativeKeyEvent.VC_1,
+                "W", listOf(
                     NativeKeyEvent.VC_2,
+                    NativeKeyEvent.VC_3,
                 )
             )
         }
 
         triggerKeyOn(
-            "E",
-            listOf(
-                NativeKeyEvent.VC_3,
+            "R", listOf(
                 NativeKeyEvent.VC_4,
             )
         )
@@ -253,8 +254,8 @@ object GameSpecific {
         suspend fun insertSpells() {
             val sequencer = KeySequencer.from(
                 listOf(
-                    PoeKeyMapping.graftSkill to 300.0,
-                    // PoeKeyMapping.focus to 300.0,
+                    // PoeKeyMapping.plagueBearer to 550.0,
+                    PoeKeyMapping.focus to 700.0,
                 )
             )
             runSeq(
@@ -462,7 +463,7 @@ object GameSpecific {
         // Keys to trigger flasks
         val skillKeys = setOf(PoeKeyMapping.attack)
 
-        val fm = BuffManager(PoeFlasks.all.toKeeper())
+        val fm = BuffManager(PoeFlasks.mbTincture.toKeeper())
         // val fm = BuffManager(PoeFlasks.all.toKeeper())
 
         val isPoe = isPoeAndTriggerKeyEnabled()
@@ -733,7 +734,7 @@ object PoeKeyMapping {
     val focus = "R"
 
     // 3.26: auto open chest
-    val graftSkill = "F"
+    val plagueBearer = "F"
     val unearth = "S"
 
     val pauseMacro = "F4"
@@ -747,6 +748,7 @@ object PoeKeyMapping {
 
 private suspend fun isTriggerKeyEnabled(
     keysToDisable: Set<String>,
+    duration: Duration = Duration.ofSeconds(3)
 ): Flow<Boolean> {
     val disabledSince = KeyHooks.keyPresses().mapNotNull {
         // Key to temporarily disable triggers
@@ -768,7 +770,7 @@ private suspend fun isTriggerKeyEnabled(
         .map { disabledSince ->
             val now = Instant.now()
             disabledSince == null || now.isAfter(
-                disabledSince.plusSeconds(10)
+                disabledSince.plus(duration)
             )
         }
 }

@@ -6,7 +6,6 @@ import com.gh.om.gamemacros.GmMouse.Button
 import com.gh.om.gamemacros.complex.*
 import com.gh.om.gamemacros.complex.PoeGraphicConstants.emptySpaceInRightSideOfBag
 import com.gh.om.gamemacros.complex.PoeGraphicConstants.gridColorHasItem
-import com.gh.om.gamemacros.complex.PoeRollMap.rollMapsUntilDone
 import com.gh.om.gamemacros.complex.PoeRollableItem.Rarity.Normal
 import com.github.kwhat.jnativehook.keyboard.NativeKeyEvent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -200,9 +199,9 @@ class PoeRollMapWithDeps(val deps: GmDeps) {
             if (!pressed) {
                 return
             }
-            rollMapsUntilDone(
-                scorer = PoeMapScorerImpl.INVITATION,
-                mapsToRoll = bagSlots().toList(),
+            PoeMultiRoll.rollItems(
+                checker = PoeMapScorerImpl.INVITATION,
+                itemsToRoll = bagSlots().toList(),
                 // rerollProvider = ChaosRerollProvider(1000),
                 rerollProvider = ScourAlchRerollProviderWithDeps(deps, 1500),
                 shouldContinue = isPoe::value,

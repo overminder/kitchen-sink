@@ -3,3 +3,6 @@ plugins {
 }
 rootProject.name = "arpg-macros"
 
+include("macro-core")
+include("macro-app")
+

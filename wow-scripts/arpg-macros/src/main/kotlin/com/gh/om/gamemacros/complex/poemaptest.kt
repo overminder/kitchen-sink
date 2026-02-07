@@ -2,41 +2,47 @@ package com.gh.om.gamemacros.complex
 
 fun main() {
     val input = """
+
 Item Class: Maps
 Rarity: Rare
-Pain Cramp
+Ancient Trap
 Fortress Map
 --------
 Map Tier: 17
-Item Quantity: +90% (augmented)
-Item Rarity: +134% (augmented)
-Monster Pack Size: +34% (augmented)
-More Maps: +100% (augmented)
+Item Quantity: +110% (augmented)
+Item Rarity: +54% (augmented)
+Monster Pack Size: +40% (augmented)
+More Scarabs: +78% (augmented)
+More Currency: +140% (augmented)
+Quality: +20% (augmented)
 --------
-Item Level: 85
+Item Level: 84
 --------
 Monster Level: 84
 --------
-{ Prefix Modifier "Prismatic" (Tier: 1) }
-Monsters gain 180(180-200)% of their Physical Damage as Extra Damage of a random Element
+Delirium Reward Type: Weapons (enchant)
+Players in Area are 20% Delirious (enchant)
+--------
+{ Prefix Modifier "Volatile" (Tier: 1) }
+Rare Monsters have Volatile Cores
 
-{ Prefix Modifier "Burning" — Damage, Physical, Elemental, Fire }
-Monsters deal 99(90-110)% extra Physical Damage as Fire
+{ Prefix Modifier "Stalwart" (Tier: 1) }
+Monsters have +50% Chance to Block Attack Damage
 
-{ Prefix Modifier "Magnifying" (Tier: 1) }
-Monsters have 100% increased Area of Effect
-Monsters fire 2 additional Projectiles
+{ Prefix Modifier "Retributive" (Tier: 1) }
+Players are Marked for Death for 10 seconds
+after killing a Rare or Unique monster
+(Players that are Marked for Death take 50% increased Damage)
 
-{ Suffix Modifier "of Power" (Tier: 1) }
-Monsters have +1 to Maximum Power Charges
-Monsters gain a Power Charge on Hit
+{ Suffix Modifier "of Exposure" (Tier: 1) }
+Players have -20% to all maximum Resistances
 
-{ Suffix Modifier "of Impotence" }
-Players have 25% less Area of Effect
+{ Suffix Modifier "of Temporal Chains" — Caster, Curse }
+Players are Cursed with Temporal Chains
+(Temporal Chains is a Hex which reduces Action Speed by 15%, or 9% on Rare or Unique targets, and makes other effects on the target expire 40% slower. It has 50% less effect on Players and lasts 5 seconds)
 
-{ Suffix Modifier "of Endurance" (Tier: 1) }
-Monsters have +1 to Maximum Endurance Charges
-Monsters gain an Endurance Charge when hit
+{ Suffix Modifier "of Splinters" (Tier: 1) }
+25% chance for Rare Monsters to Fracture on death
 
 --------
 Travel to this Map by using it in a personal Map Device. Maps can only be used once.
@@ -44,11 +50,12 @@ Travel to this Map by using it in a personal Map Device. Maps can only be used o
 Modifiable only with Chaos Orbs, Vaal Orbs, Delirium Orbs and Chisels
 
 
+
         """
 
     val parsedMap = PoeItemParser.parseAsRollable(input)
     println(parsedMap)
-    val scorer = PoeMapScorerImpl.MAP
+    val scorer = PoeMapScorerImpl.SCARAB
     val scorerOutput = scorer.evaluate(parsedMap)
     println("$scorerOutput")
 }
