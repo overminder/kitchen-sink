@@ -12,6 +12,7 @@ repositories {
 dependencies {
     // Core
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC.2")
+    implementation("javax.inject:javax.inject:1")
 
     // Testing
     testImplementation(kotlin("test"))
