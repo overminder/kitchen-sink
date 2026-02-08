@@ -24,7 +24,7 @@ class PrintMousePosMacro @Inject constructor(
             .stateIn(CoroutineScope(currentCoroutineContext()))
 
         val shouldContinue = shouldContinueChecker.get(
-            anyWindowTitles = setOf("Path of Exile", "Path of Exile 2")
+            anyWindowTitles = GameTitles.ALL_POE,
         )
 
         return MacroDef.Prepared {

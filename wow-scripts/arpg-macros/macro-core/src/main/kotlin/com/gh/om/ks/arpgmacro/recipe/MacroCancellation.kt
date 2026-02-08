@@ -24,6 +24,7 @@ import kotlin.time.Duration.Companion.seconds
 object GameTitles {
     val POE1 = "Path of Exile"
     val POE2 = "Path of Exile 2"
+    val ALL_POE = setOf(POE1, POE2)
 }
 
 /**

@@ -4,6 +4,8 @@ import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import com.gh.om.ks.arpgmacro.core.Clock
+import com.gh.om.ks.arpgmacro.core.CraftDecisionMaker
+import com.gh.om.ks.arpgmacro.core.CurrencySlots
 import com.gh.om.ks.arpgmacro.core.KeyboardInput
 import com.gh.om.ks.arpgmacro.core.LeaderKeyDetector
 import com.gh.om.ks.arpgmacro.core.MouseOutput
@@ -40,5 +42,15 @@ abstract class MacroModule {
             keyboardInput = keyboardInput,
             clock = clock,
         )
+
+        @Provides
+        @Singleton
+        @JvmStatic
+        fun currencySlots(): CurrencySlots = CURRENCY_TAB_SLOTS
+
+        @Provides
+        @Singleton
+        @JvmStatic
+        fun craftDecisionMaker(): CraftDecisionMaker = CraftPresets.intStackCluster4
     }
 }

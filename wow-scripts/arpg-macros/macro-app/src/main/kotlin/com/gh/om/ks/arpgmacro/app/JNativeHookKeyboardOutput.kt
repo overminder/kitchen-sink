@@ -34,6 +34,7 @@ class JNativeHookKeyboardOutput : KeyboardOutput {
             "Tab" to NativeKeyEvent.VC_TAB,
             "Space" to NativeKeyEvent.VC_SPACE,
             "Backspace" to NativeKeyEvent.VC_BACKSPACE,
+            "/" to NativeKeyEvent.VC_SLASH,
         )
 
         fun resolveKeyCode(name: String): Int {
