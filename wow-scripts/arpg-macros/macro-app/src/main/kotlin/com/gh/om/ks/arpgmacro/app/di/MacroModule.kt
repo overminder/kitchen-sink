@@ -1,8 +1,7 @@
-package com.gh.om.ks.arpgmacro.app
+package com.gh.om.ks.arpgmacro.app.di
 
-import dagger.Binds
-import dagger.Module
-import dagger.Provides
+import com.gh.om.ks.arpgmacro.app.CURRENCY_TAB_SLOTS
+import com.gh.om.ks.arpgmacro.app.CraftPresets
 import com.gh.om.ks.arpgmacro.core.Clock
 import com.gh.om.ks.arpgmacro.core.CraftDecisionMaker
 import com.gh.om.ks.arpgmacro.core.CurrencySlots
@@ -12,6 +11,9 @@ import com.gh.om.ks.arpgmacro.core.MouseOutput
 import com.gh.om.ks.arpgmacro.core.MultiRollLoop
 import com.gh.om.ks.arpgmacro.core.PoeInteractor
 import com.gh.om.ks.arpgmacro.core.PoeInteractorImpl
+import dagger.Binds
+import dagger.Module
+import dagger.Provides
 import javax.inject.Singleton
 
 @Module

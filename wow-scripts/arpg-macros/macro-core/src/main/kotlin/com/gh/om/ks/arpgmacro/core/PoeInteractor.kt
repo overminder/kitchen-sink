@@ -8,11 +8,14 @@ import kotlin.time.Duration.Companion.milliseconds
  * Composes raw keyboard/mouse/clipboard actions into game-specific operations.
  */
 interface PoeInteractor {
+    /**
+     * Advanced description by default.
+     */
     suspend fun getItemDescriptionAt(point: ScreenPoint): String?
     suspend fun applyCurrencyTo(currencySlot: ScreenPoint, itemSlot: ScreenPoint)
     suspend fun ctrlClick(point: ScreenPoint)
     suspend fun ctrlShiftClick(point: ScreenPoint)
-    suspend fun getCurrencyCountAt(point: ScreenPoint, types: List<PoeCurrency.KnownType>): Int
+    suspend fun getCurrencyCountAt(point: ScreenPoint, types: List<PoeCurrency.Type>): Int
 }
 
 class PoeInteractorImpl @Inject constructor(
@@ -88,7 +91,7 @@ class PoeInteractorImpl @Inject constructor(
      */
     override suspend fun getCurrencyCountAt(
         point: ScreenPoint,
-        types: List<PoeCurrency.KnownType>,
+        types: List<PoeCurrency.Type>,
     ): Int {
         mouse.moveTo(point)
         clock.delay(30.milliseconds)

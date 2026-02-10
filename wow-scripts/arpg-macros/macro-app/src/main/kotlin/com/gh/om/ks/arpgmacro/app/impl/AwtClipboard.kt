@@ -1,4 +1,4 @@
-package com.gh.om.ks.arpgmacro.app
+package com.gh.om.ks.arpgmacro.app.impl
 
 import com.gh.om.ks.arpgmacro.core.Clipboard
 import java.awt.Toolkit

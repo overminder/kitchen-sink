@@ -1,5 +1,15 @@
-package com.gh.om.ks.arpgmacro.app
+package com.gh.om.ks.arpgmacro.app.di
 
+import com.gh.om.ks.arpgmacro.app.MacroConfigImpl
+import com.gh.om.ks.arpgmacro.app.impl.RealClock
+import com.gh.om.ks.arpgmacro.app.impl.Win32ActiveWindowChecker
+import com.gh.om.ks.arpgmacro.app.impl.Win32Screen
+import com.gh.om.ks.arpgmacro.app.impl.AwtClipboard
+import com.gh.om.ks.arpgmacro.app.impl.JNativeHookKeyboardInput
+import com.gh.om.ks.arpgmacro.app.impl.JNativeHookKeyboardOutput
+import com.gh.om.ks.arpgmacro.app.impl.JNativeHookMouseInput
+import com.gh.om.ks.arpgmacro.app.impl.JNativeHookMouseOutput
+import com.gh.om.ks.arpgmacro.app.impl.KotlinConsole
 import dagger.Module
 import dagger.Provides
 import com.gh.om.ks.arpgmacro.core.ActiveWindowChecker

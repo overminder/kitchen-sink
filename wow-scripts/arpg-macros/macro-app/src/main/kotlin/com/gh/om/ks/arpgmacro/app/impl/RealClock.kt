@@ -1,4 +1,4 @@
-package com.gh.om.ks.arpgmacro.app
+package com.gh.om.ks.arpgmacro.app.impl
 
 import com.gh.om.ks.arpgmacro.core.Clock
 import kotlin.random.Random

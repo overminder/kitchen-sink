@@ -1,4 +1,4 @@
-package com.gh.om.ks.arpgmacro.app
+package com.gh.om.ks.arpgmacro.app.impl
 
 import com.github.kwhat.jnativehook.GlobalScreen
 import com.github.kwhat.jnativehook.mouse.NativeMouseEvent

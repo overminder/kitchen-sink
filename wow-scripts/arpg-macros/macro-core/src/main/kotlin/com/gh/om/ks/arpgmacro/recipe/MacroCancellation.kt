@@ -16,22 +16,30 @@ import kotlinx.coroutines.isActive
 import com.gh.om.ks.arpgmacro.core.ActiveWindowChecker
 import com.gh.om.ks.arpgmacro.core.GlobalMacroConfig
 import com.gh.om.ks.arpgmacro.core.KeyboardInput
+import com.gh.om.ks.arpgmacro.di.GameType
 import javax.inject.Inject
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 object GameTitles {
-    val POE1 = "Path of Exile"
-    val POE2 = "Path of Exile 2"
-    val ALL_POE = setOf(POE1, POE2)
+    val ALL_POE = GameType.ALL_POE.map(::from)
+
+    fun from(gameType: GameType): String {
+        return when (gameType) {
+            GameType.POE1 -> "Path of Exile"
+            GameType.POE2 -> "Path of Exile 2"
+            GameType.Diablo3 -> "Diablo 3"
+            GameType.Diablo4 -> "Diablo IV"
+        }
+    }
 }
 
 /**
  * Polls ActiveWindowChecker and emits whether the given title is the foreground window.
  */
 fun ActiveWindowChecker.activeWindowFlow(
-    anyTitles: Set<String>,
+    anyTitles: Collection<String>,
     interval: Duration = 100.milliseconds,
 ): Flow<Boolean> = flow {
     while (currentCoroutineContext().isActive) {
@@ -65,7 +73,7 @@ class ShouldContinueChecker @Inject constructor(
     private val config: GlobalMacroConfig,
 ) {
     suspend fun get(
-        anyWindowTitles: Set<String> = setOf(GameTitles.POE1),
+        anyWindowTitles: Collection<String> = setOf(GameTitles.from(GameType.POE1)),
         stopKeys: Set<String> = setOf(config.stopKey)
     ): StateFlow<Boolean> {
         val windowFlow = windowChecker.activeWindowFlow(anyWindowTitles)
@@ -74,21 +82,4 @@ class ShouldContinueChecker @Inject constructor(
             windowActive && keyEnabled
         }.stateIn(CoroutineScope(currentCoroutineContext()))
     }
-}
-
-/**
- * Combines active-window check and stop-key into a single StateFlow<Boolean>.
- * Read .value as shouldContinue. Same pattern as old isPoeAndTriggerKeyEnabled().
- */
-suspend fun macroEnabledFlow(
-    windowChecker: ActiveWindowChecker,
-    keyboardInput: KeyboardInput,
-    anyWindowTitles: Set<String> = setOf(GameTitles.POE1),
-    stopKeys: Set<String> = setOf("F4"),
-): StateFlow<Boolean> {
-    val windowFlow = windowChecker.activeWindowFlow(anyWindowTitles)
-    val keyFlow = keyboardInput.triggerKeyEnabledFlow(stopKeys)
-    return combine(windowFlow, keyFlow) { windowActive, keyEnabled ->
-        windowActive && keyEnabled
-    }.stateIn(CoroutineScope(currentCoroutineContext()))
 }

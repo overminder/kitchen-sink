@@ -13,6 +13,8 @@ sealed interface PoeItem {
         Currency("Stackable Currency"),
         Map("Maps"),
         MiscMap("Misc Map Items"),
+        // POE2
+        Waystone("Waystones"),
         Jewels("Jewels"),
     }
 
@@ -24,10 +26,11 @@ sealed interface PoeItem {
 
     data class Map(val tier: MapTier) : Klass
 
-    data class Weapon(val kind: String) : Klass
-    data class Armor(val kind: ArmorKind) : Klass
+    sealed interface Equipment : Klass
+    // There are a lot of weapon classes, and I'm not listing them all (yet).
+    data class Weapon(val kind: String) : Equipment
 
-    enum class ArmorKind(val repr: String) {
+    enum class NonWeapon(val repr: String) : Equipment {
         Body("Body Armours"),
         Helm("Helmets"),
         Shield("Shields"),
@@ -38,7 +41,7 @@ sealed interface PoeItem {
         Amulet("Amulets");
 
         companion object {
-            fun fromRepr(repr: String): ArmorKind? {
+            fun fromRepr(repr: String): NonWeapon? {
                 return entries.firstOrNull { it.repr == repr }
             }
         }
@@ -49,6 +52,7 @@ fun PoeItem.Klass?.isMapLike(): Boolean {
     return when (this) {
         PoeItem.ConstKlass.Map,
         PoeItem.ConstKlass.MiscMap,
+        PoeItem.ConstKlass.Waystone,
         is PoeItem.Map -> true
         else -> false
     }
@@ -61,13 +65,35 @@ data class PoeCurrency(
     interface Type
 
     enum class KnownType(val repr: String) : Type {
-        Chaos("Chaos Orb"),
         Scour("Orb of Scouring"),
         Alch("Orb of Alchemy"),
         Binding("Orb of Binding"),
+        Annul("Orb of Annulment"),
     }
 
-    object UnknownType : Type
+    /**
+     * Some POE2 currencies have tiers.
+     */
+    enum class Tier(val repr: String) {
+        Greater("Greater"),
+        Perfect("Perfect"),
+    }
+
+    enum class CanHaveTier(val repr: String) {
+        Trans("Orb of Transmutation"),
+        Aug("Orb of Augmentation"),
+        Regal("Regal Orb"),
+        Exalt("Exalted Orb"),
+        Chaos("Chaos Orb"),
+    }
+
+    data class TieredType(val kind: CanHaveTier, val tier: Tier? = null) : Type
+
+    data class UnknownType(val repr: String) : Type
+
+    companion object {
+        val ChaosType = TieredType(CanHaveTier.Chaos)
+    }
 }
 
 data class PoeRollableItem(

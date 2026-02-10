@@ -1,57 +1,101 @@
 package com.gh.om.ks.arpgmacro.app
 
-import com.gh.om.ks.arpgmacro.recipe.TownHotkeyMacro
+import com.gh.om.ks.arpgmacro.app.di.AppComponent
+import com.gh.om.ks.arpgmacro.app.di.DaggerAppComponent
+import com.gh.om.ks.arpgmacro.core.MacroDef
+import com.gh.om.ks.arpgmacro.di.GameType
+import com.gh.om.ks.arpgmacro.recipe.MacroDefsComponent
 import com.github.kwhat.jnativehook.GlobalScreen
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 
+private data class MacroMapping(
+    val triggerKey: String,
+    val whichGame: WhichGame,
+    val whichMacro: (MacroDefsComponent) -> MacroDef,
+)
+
+private sealed class WhichGame {
+    data class Each(val games: List<GameType>) : WhichGame()
+    data object Any : WhichGame()
+
+    companion object {
+        val POE1 = WhichGame.Each(listOf(GameType.POE1))
+        val POE2 = WhichGame.Each(listOf(GameType.POE2))
+        val EACH_POE = WhichGame.Each(listOf(GameType.POE1, GameType.POE2))
+    }
+}
+
+// This makes it clear which macro is triggered by which key, on which game.
+// XXX macros usually know which game they support. Why not ask them?
+private val macroMapping = listOf(
+    MacroMapping("02", WhichGame.Any) { it.printMousePos },
+    MacroMapping("021", WhichGame.Any) { it.parseAndPrintItem },
+    MacroMapping("11", WhichGame.EACH_POE) { it.mapRolling },
+    MacroMapping("14", WhichGame.EACH_POE) { it.sortInStash },
+    MacroMapping("15", WhichGame.EACH_POE) { it.craftRolling },
+)
+
+private fun CoroutineScope.instantiateMacrosAndTriggers(
+    component: AppComponent,
+    outJobs: MutableList<Job>
+) {
+    val mdefss = GameType.entries.associateWith { gameType ->
+        component.gameSubcomponentFactory.create(gameType).macroDefs()
+    }
+
+    for (mmap in macroMapping) {
+        val gameTypes = when (val wg = mmap.whichGame) {
+            // Use a random game type.
+            WhichGame.Any -> listOf(GameType.POE1)
+            is WhichGame.Each -> wg.games
+        }
+
+        val macros = gameTypes.map { gameType ->
+            val mdef = requireNotNull(mdefss[gameType]) {
+                "Didn't find $gameType's macro whose key is ${mmap.triggerKey}"
+            }
+            mmap.whichMacro(mdef)
+        }
+
+        val m = macros.first()
+        println("  ${mmap.whichGame} ${m.javaClass.simpleName}:      Alt+X, ${mmap.triggerKey}")
+
+        outJobs += async {
+            val prepared = macros.map {
+                it.prepare()
+            }
+            component.leaderKeyDetector().isEnabled(mmap.triggerKey).collect { enabled ->
+                if (enabled) {
+                    prepared.forEach {
+                        // Each macro is expected to check their own game's actual running status.
+                        it.run()
+                    }
+                }
+            }
+        }
+    }
+}
+
 fun main() {
     GlobalScreen.registerNativeHook()
     try {
         val component = DaggerAppComponent.create()
-        val mdefs = component.macroDefs()
-        // This makes it clear which macro is triggered by which key.
-        val macroAndKeys = listOf(
-            mdefs.printMousePosMacro to "02",
-            mdefs.mapRollingMacro to "11",
-            mdefs.sortInStashMacro to "14",
-            mdefs.craftRollingMacro to "15",
-        )
         println("Launching macros (Alt+X leader key, F4 to stop)")
         val jobs = mutableListOf<Job>()
         runBlocking {
-            for ((m, keySeq) in macroAndKeys) {
-                println("  ${m.javaClass.simpleName}:      Alt+X, $keySeq")
-                jobs += async {
-                    val prepared = m.prepare()
-                    component.leaderKeyDetector().isEnabled(keySeq).collect { enabled ->
-                        if (enabled) {
-                            prepared.run()
-                        }
-                    }
-                }
-            }
+            instantiateMacrosAndTriggers(component, jobs)
 
-            // Town hotkey macros (not leader-key based)
-            jobs += async {
-                component.macroDefs().townHotkeyMacroFactory.create(
-                    windowTitle = "Path of Exile",
-                    hotkeys = mapOf(
-                        "F5" to "/hideout",
-                        "F6" to "/kingsmarch",
-                        "F7" to "/heist",
-                    ),
-                ).run()
-            }
-            jobs += async {
-                component.macroDefs().townHotkeyMacroFactory.create(
-                    windowTitle = "Path of Exile 2",
-                    hotkeys = mapOf(
-                        "F5" to "/hideout",
-                    ),
-                ).run()
+            // Non-leader key based
+            GameType.entries.forEach { gameType ->
+                val townHotkeyMacro = component.gameSubcomponentFactory
+                    .create(gameType)
+                    .macroDefs()
+                    .townHotkeyMacro
+                jobs += async { townHotkeyMacro.run() }
             }
 
             jobs.joinAll()

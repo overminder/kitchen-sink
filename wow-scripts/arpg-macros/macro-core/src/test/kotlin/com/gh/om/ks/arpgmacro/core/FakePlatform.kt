@@ -172,6 +172,6 @@ class FakePoeInteractor : PoeInteractor {
 
     override suspend fun getCurrencyCountAt(
         point: ScreenPoint,
-        types: List<PoeCurrency.KnownType>,
+        types: List<PoeCurrency.Type>,
     ): Int = currencyCount
 }

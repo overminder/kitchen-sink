@@ -18,7 +18,7 @@ class ChaosRerollProvider(
     private val chaosSlot: ScreenPoint,
     private val scourSlot: ScreenPoint,
     private val alchSlot: ScreenPoint,
-    private val chaosType: PoeCurrency.KnownType = PoeCurrency.KnownType.Chaos,
+    private val chaosType: PoeCurrency.Type = PoeCurrency.ChaosType,
 ) : RerollProvider {
     private var cachedChaosCount: Int? = null
     private var useCount = 0

@@ -17,6 +17,10 @@ data class CurrencySlots(
     val whetstone: ScreenPoint,
 )
 
+interface CurrencySlotsV2 {
+    fun at(type: PoeCurrency.Type): ScreenPoint
+}
+
 /**
  * A [RerollProvider] that uses [CraftMethods] + [CraftDecisionMaker] to
  * reroll items via alt/aug/regal crafting.

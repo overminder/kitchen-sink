@@ -122,7 +122,7 @@ Reforges a rare item with new random modifiers
 
             val count = interactor.getCurrencyCountAt(
                 ScreenPoint(50, 50),
-                listOf(PoeCurrency.KnownType.Chaos),
+                listOf(PoeCurrency.ChaosType),
             )
             assertThat(count).isEqualTo(47)
         }
@@ -141,7 +141,7 @@ Removes all properties from an item
 
             val count = interactor.getCurrencyCountAt(
                 ScreenPoint(50, 50),
-                listOf(PoeCurrency.KnownType.Chaos),
+                listOf(PoeCurrency.ChaosType),
             )
             assertThat(count).isEqualTo(0)
         }
@@ -151,7 +151,7 @@ Removes all properties from an item
             clipboard.content = null
             val count = interactor.getCurrencyCountAt(
                 ScreenPoint(50, 50),
-                listOf(PoeCurrency.KnownType.Chaos),
+                listOf(PoeCurrency.ChaosType),
             )
             assertThat(count).isEqualTo(0)
         }

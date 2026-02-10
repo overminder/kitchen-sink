@@ -244,7 +244,7 @@ Shift click to unstack.
             val item = PoeItemParser.parse(chaosOrb)
             assertThat(item).isInstanceOf(PoeCurrency::class.java)
             val currency = item as PoeCurrency
-            assertThat(currency.type).isEqualTo(PoeCurrency.KnownType.Chaos)
+            assertThat(currency.type).isEqualTo(PoeCurrency.ChaosType)
             assertThat(currency.stackSize).isEqualTo(47)
         }
 
@@ -263,7 +263,7 @@ Upgrades a normal item to a random rarity
             val item = PoeItemParser.parse(unknownCurrency)
             assertThat(item).isInstanceOf(PoeCurrency::class.java)
             val currency = item as PoeCurrency
-            assertThat(currency.type).isEqualTo(PoeCurrency.UnknownType)
+            assertThat(currency.type).isInstanceOf(PoeCurrency.UnknownType::class.java)
             assertThat(currency.stackSize).isEqualTo(123)
         }
     }

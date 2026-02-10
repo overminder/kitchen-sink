@@ -41,12 +41,17 @@ object PoeItemParser {
             }
         }
 
+        // In POE1, all weapons have APS.
         if ("Attacks per Second:" in ad && "Weapon Range:" in ad) {
             return PoeItem.Weapon(rawKlass)
         }
 
-        PoeItem.ArmorKind.fromRepr(rawKlass)?.let {
-            return PoeItem.Armor(it)
+        if (rawKlass in POE2_WEAPON_TYPES) {
+            return PoeItem.Weapon(rawKlass)
+        }
+
+        PoeItem.NonWeapon.fromRepr(rawKlass)?.let {
+            return it
         }
 
         return null
@@ -79,12 +84,34 @@ object PoeItemParser {
         val stackSize =
             matchGroup(ad, stackSizePat)?.replace(",", "")?.toIntOrNull()
                 ?: return null
-        val type = ad.lines().asSequence().mapNotNull { line ->
-            PoeCurrency.KnownType.entries.firstOrNull { cty ->
-                cty.repr == line
-            }
-        }.firstOrNull() ?: PoeCurrency.UnknownType
+        val lines = ad.lines()
+        // The 3rd line usually has the currency name
+        val name = lines.getOrNull(2)
+        val type = if (name == null) {
+            PoeCurrency.UnknownType("")
+        } else {
+            // 1. Is that a tiered currency?
+            parseTieredCurrency(name)
+                ?: parseKnownCurrency(name)
+                ?: PoeCurrency.UnknownType(name)
+        }
         return PoeCurrency(type, stackSize)
+    }
+
+    private fun parseTieredCurrency(currencyName: String): PoeCurrency.Type? {
+        val type = PoeCurrency.CanHaveTier.entries.firstOrNull { cht ->
+            currencyName.endsWith(cht.repr)
+        } ?: return null
+        val tier = PoeCurrency.Tier.entries.firstOrNull { tier ->
+            currencyName.startsWith(tier.name)
+        }
+        return PoeCurrency.TieredType(type, tier)
+    }
+
+    private fun parseKnownCurrency(currencyName: String): PoeCurrency.Type? {
+        return PoeCurrency.KnownType.entries.firstOrNull { cty ->
+            cty.repr == currencyName
+        }
     }
 
     private fun matchGroup(
@@ -179,3 +206,8 @@ object PoeItemParser {
 
 private const val ZANA_INFLUENCED = "Area is Influenced by the Originator's Memories"
 private const val T17 = "Map Tier: 17"
+
+private val POE2_WEAPON_TYPES = listOf(
+    "Staves",
+    "Wands",
+)
