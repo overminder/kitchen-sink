@@ -1,6 +1,7 @@
 package com.gh.om.ks.arpgmacro.core
 
 import com.gh.om.ks.arpgmacro.core.item.PoeCurrency
+import com.gh.om.ks.arpgmacro.di.GameType
 import kotlinx.coroutines.test.runTest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -10,17 +11,21 @@ import org.junit.jupiter.api.Test
 class PoeInteractorImplTest {
     private lateinit var keyboard: FakeKeyboardOutput
     private lateinit var mouse: FakeMouseOutput
+    private lateinit var mouseIn: FakeMouseInput
     private lateinit var clipboard: FakeClipboard
     private lateinit var clock: FakeClock
+    private lateinit var screen: FakeScreen
     private lateinit var interactor: PoeInteractorImpl
 
     @BeforeEach
     fun setup() {
         keyboard = FakeKeyboardOutput()
         mouse = FakeMouseOutput()
+        mouseIn = FakeMouseInput()
         clipboard = FakeClipboard()
         clock = FakeClock()
-        interactor = PoeInteractorImpl(keyboard, mouse, clipboard, clock)
+        screen = FakeScreen()
+        interactor = PoeInteractorImpl(keyboard, mouse, mouseIn, clipboard, clock, screen, GameType.POE2)
     }
 
     @Nested

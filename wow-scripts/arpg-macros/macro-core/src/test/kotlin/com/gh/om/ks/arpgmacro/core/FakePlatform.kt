@@ -175,4 +175,10 @@ class FakePoeInteractor : PoeInteractor {
         point: ScreenPoint,
         types: List<PoeCurrency.KnownType>,
     ): Int = currencyCount
+
+    override suspend fun getOccupiedBagSlots(
+        rows: Int,
+        columns: Int,
+        includeEmptySlotAfter: Boolean,
+    ): List<ScreenPoint> = emptyList()
 }

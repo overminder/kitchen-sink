@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    jacoco
 }
 
 group = "org.example"
@@ -23,4 +24,12 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        csv.required = true
+    }
 }

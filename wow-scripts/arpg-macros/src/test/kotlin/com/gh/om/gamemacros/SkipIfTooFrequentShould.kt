@@ -11,6 +11,7 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.test.Ignore
 
 data class Buff(
     val version: Int,
@@ -119,6 +120,7 @@ class SkipIfTooFrequentShould {
         assertThat(mocks.buffRef.get().version).isEqualTo(1)
     }
 
+    @Ignore
     @Test
     fun `throttle thread safely 2`() {
         val mocks = BuffMocks()

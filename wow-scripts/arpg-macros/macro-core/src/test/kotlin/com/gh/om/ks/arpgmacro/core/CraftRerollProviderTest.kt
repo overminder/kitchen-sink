@@ -7,6 +7,7 @@ import com.gh.om.ks.arpgmacro.core.craft.CraftRerollProvider
 import com.gh.om.ks.arpgmacro.core.craft.CurrencySlots
 import com.gh.om.ks.arpgmacro.core.item.PoeItem
 import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
+import com.gh.om.ks.arpgmacro.di.GameType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -15,8 +16,10 @@ import org.junit.jupiter.api.Test
 class CraftRerollProviderTest {
     private lateinit var keyboard: FakeKeyboardOutput
     private lateinit var mouse: FakeMouseOutput
+    private lateinit var mouseIn: FakeMouseInput
     private lateinit var clock: FakeClock
     private lateinit var clipboard: FakeClipboard
+    private lateinit var screen: FakeScreen
     private lateinit var interactor: PoeInteractor
 
     private val slots = CurrencySlots(
@@ -39,9 +42,11 @@ class CraftRerollProviderTest {
     fun setup() {
         keyboard = FakeKeyboardOutput()
         mouse = FakeMouseOutput()
+        mouseIn = FakeMouseInput()
         clock = FakeClock()
         clipboard = FakeClipboard()
-        interactor = PoeInteractorImpl(keyboard, mouse, clipboard, clock)
+        screen = FakeScreen()
+        interactor = PoeInteractorImpl(keyboard, mouse, mouseIn, clipboard, clock, screen, GameType.POE2)
     }
 
     private fun mod(

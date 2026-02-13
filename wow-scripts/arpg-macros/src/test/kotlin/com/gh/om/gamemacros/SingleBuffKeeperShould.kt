@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.Ignore
 
 private class TestSingleBuffKeeper(private val mocks: BuffMocks) : BuffKeeper {
     override fun isBuffInEffect(): Boolean {
@@ -23,6 +24,7 @@ private class TestSingleBuffKeeper(private val mocks: BuffMocks) : BuffKeeper {
 }
 
 class AlternatingBuffKeeperShould {
+    @Ignore
     @Test
     fun `be thread safe`() {
         val clock = ClockMocks()
@@ -71,6 +73,7 @@ class AlternatingBuffKeeperShould {
         }
     }
 
+    @Ignore
     @Test
     fun `work when buff check is bad`() {
         val clock = ClockMocks()

@@ -4,6 +4,7 @@ import com.gh.om.ks.arpgmacro.core.craft.ChaosRerollProvider
 import com.gh.om.ks.arpgmacro.core.craft.ScourAlchRerollProvider
 import com.gh.om.ks.arpgmacro.core.item.PoeItem
 import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
+import com.gh.om.ks.arpgmacro.di.GameType
 import kotlinx.coroutines.test.runTest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -74,7 +75,7 @@ desc
     }
 
     private fun makeInteractor(clipboard: Clipboard): PoeInteractor {
-        return PoeInteractorImpl(keyboard, mouse, clipboard, clock)
+        return PoeInteractorImpl(keyboard, mouse, FakeMouseInput(), clipboard, clock, FakeScreen(), GameType.POE2)
     }
 
     private fun rareMap() = PoeRollableItem(
