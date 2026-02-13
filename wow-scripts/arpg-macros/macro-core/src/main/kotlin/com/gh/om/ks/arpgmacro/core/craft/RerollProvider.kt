@@ -1,8 +1,17 @@
-package com.gh.om.ks.arpgmacro.core
+package com.gh.om.ks.arpgmacro.core.craft
+
+import com.gh.om.ks.arpgmacro.core.item.PoeCurrency
+import com.gh.om.ks.arpgmacro.core.PoeInteractor
+import com.gh.om.ks.arpgmacro.core.item.PoeItem
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
+import com.gh.om.ks.arpgmacro.core.ScreenPoint
+import com.gh.om.ks.arpgmacro.core.item.isMapLike
 
 /**
  * Provides currency reroll capability. Tracks remaining currency and
  * applies appropriate rerolling strategy based on item rarity.
+ *
+ * This can be stateful -- each reroll session will instantiate a fresh instance.
  */
 interface RerollProvider {
     suspend fun hasMore(): Boolean
@@ -18,7 +27,7 @@ class ChaosRerollProvider(
     private val chaosSlot: ScreenPoint,
     private val scourSlot: ScreenPoint,
     private val alchSlot: ScreenPoint,
-    private val chaosType: PoeCurrency.Type = PoeCurrency.ChaosType,
+    private val chaosType: PoeCurrency.KnownType = PoeCurrency.Companion.Chaos,
 ) : RerollProvider {
     private var cachedChaosCount: Int? = null
     private var useCount = 0
@@ -70,10 +79,10 @@ class ScourAlchRerollProvider(
     private suspend fun getMinCount(): Int {
         cachedMinCount?.let { return it }
         val scourCount = interactor.getCurrencyCountAt(
-            scourSlot, listOf(PoeCurrency.KnownType.Scour)
+            scourSlot, listOf(PoeCurrency.Simple.Scour)
         )
         val alcCount = interactor.getCurrencyCountAt(
-            alchSlot, listOf(PoeCurrency.KnownType.Alch, PoeCurrency.KnownType.Binding)
+            alchSlot, listOf(PoeCurrency.Simple.Alch, PoeCurrency.Simple.Binding)
         )
         val res = minOf(scourCount, alcCount)
         cachedMinCount = res

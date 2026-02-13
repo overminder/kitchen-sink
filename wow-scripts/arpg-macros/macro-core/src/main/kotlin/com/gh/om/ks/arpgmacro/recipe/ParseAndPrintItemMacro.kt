@@ -4,7 +4,7 @@ import com.gh.om.ks.arpgmacro.core.ConsoleOutput
 import com.gh.om.ks.arpgmacro.core.MacroDef
 import com.gh.om.ks.arpgmacro.core.MouseInput
 import com.gh.om.ks.arpgmacro.core.PoeInteractor
-import com.gh.om.ks.arpgmacro.core.PoeItemParser
+import com.gh.om.ks.arpgmacro.core.item.PoeItemParser
 import com.gh.om.ks.arpgmacro.core.println
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext

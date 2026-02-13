@@ -1,13 +1,13 @@
 package com.gh.om.ks.arpgmacro.app
 
-import com.gh.om.ks.arpgmacro.core.CurrencySlots
+import com.gh.om.ks.arpgmacro.core.craft.CurrencySlots
 import com.gh.om.ks.arpgmacro.core.GlobalMacroConfig
 import com.gh.om.ks.arpgmacro.core.ScreenPoint
 import javax.inject.Inject
 
 // -- Currency tab slot positions (2560x1440) --
 
-val CURRENCY_TAB_SLOTS = CurrencySlots(
+val POE1_CURRENCY_TAB_SLOTS = CurrencySlots(
     transmute = ScreenPoint(62, 355),
     alt = ScreenPoint(146, 361),
     aug = ScreenPoint(302, 432),

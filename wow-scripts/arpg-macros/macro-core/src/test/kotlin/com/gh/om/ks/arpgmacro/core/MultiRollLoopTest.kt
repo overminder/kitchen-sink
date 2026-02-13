@@ -1,5 +1,7 @@
 package com.gh.om.ks.arpgmacro.core
 
+import com.gh.om.ks.arpgmacro.core.craft.RerollProvider
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
 import kotlinx.coroutines.test.runTest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach

@@ -1,4 +1,4 @@
-package com.gh.om.ks.arpgmacro.core
+package com.gh.om.ks.arpgmacro.core.item
 
 import java.util.regex.Pattern
 
@@ -7,7 +7,7 @@ object PoeItemParser {
     val rarityPat: Pattern =
         Pattern.compile("Rarity: (Normal|Magic|Rare|Unique)")
     val explicitModPat: Pattern =
-        Pattern.compile("""(?<pos>Prefix|Suffix) Modifier "(?<name>.+?)"(?: \(Tier: (?<tier>\d+)\))?""")
+        Pattern.compile("""(?<frac>Fractured )?(?<pos>Prefix|Suffix) Modifier "(?<name>.+?)"(?: \(Tier: (?<tier>\d+)\))?""")
     val qualPatV2: Pattern = Pattern.compile(
         "(?<name>" +
                 PoeRollableItem.QualName.nameMap.keys
@@ -109,7 +109,7 @@ object PoeItemParser {
     }
 
     private fun parseKnownCurrency(currencyName: String): PoeCurrency.Type? {
-        return PoeCurrency.KnownType.entries.firstOrNull { cty ->
+        return PoeCurrency.Simple.entries.firstOrNull { cty ->
             cty.repr == currencyName
         }
     }
@@ -171,6 +171,7 @@ object PoeItemParser {
             require(m.find()) {
                 "Failed to parse mod: $modName"
             }
+            val frac = m.group("frac") != null
             val pos = m.group("pos")
             val name = m.group("name")
             val tier = m.group("tier")?.toIntOrNull()
@@ -179,6 +180,7 @@ object PoeItemParser {
                 name = name,
                 tier = tier,
                 description = modContent,
+                fractured = frac,
             )
         }.toList()
     }

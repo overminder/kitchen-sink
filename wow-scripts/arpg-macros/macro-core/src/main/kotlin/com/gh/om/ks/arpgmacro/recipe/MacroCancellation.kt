@@ -71,6 +71,7 @@ class ShouldContinueChecker @Inject constructor(
     private val windowChecker: ActiveWindowChecker,
     private val keyboardInput: KeyboardInput,
     private val config: GlobalMacroConfig,
+    private val gameType: GameType,
 ) {
     suspend fun get(
         anyWindowTitles: Collection<String> = setOf(GameTitles.from(GameType.POE1)),
@@ -81,5 +82,12 @@ class ShouldContinueChecker @Inject constructor(
         return combine(windowFlow, keyFlow) { windowActive, keyEnabled ->
             windowActive && keyEnabled
         }.stateIn(CoroutineScope(currentCoroutineContext()))
+    }
+
+    suspend fun getV2(
+        stopKeys: Set<String> = setOf(config.stopKey)
+    ): StateFlow<Boolean> {
+        val windowTitles = setOf(GameTitles.from(gameType))
+        return get(windowTitles, stopKeys)
     }
 }

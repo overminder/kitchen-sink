@@ -1,5 +1,11 @@
 package com.gh.om.ks.arpgmacro.core
 
+import com.gh.om.ks.arpgmacro.core.item.PoeCurrency
+import com.gh.om.ks.arpgmacro.core.item.PoeItem
+import com.gh.om.ks.arpgmacro.core.item.PoeItemParser
+import com.gh.om.ks.arpgmacro.di.GameType
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.firstOrNull
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -13,23 +19,37 @@ interface PoeInteractor {
      */
     suspend fun getItemDescriptionAt(point: ScreenPoint): String?
     suspend fun applyCurrencyTo(currencySlot: ScreenPoint, itemSlot: ScreenPoint)
-    suspend fun ctrlClick(point: ScreenPoint)
-    suspend fun ctrlShiftClick(point: ScreenPoint)
-    suspend fun getCurrencyCountAt(point: ScreenPoint, types: List<PoeCurrency.Type>): Int
+
+    /**
+     * Basically ctrl-click.
+     * bag -> stash (respecting stash affinity), or stash to bag.
+     */
+    suspend fun sendItemToOtherSide(point: ScreenPoint)
+    suspend fun forceSendItemToCurrentStash(point: ScreenPoint)
+    suspend fun getCurrencyCountAt(point: ScreenPoint, types: List<PoeCurrency.KnownType>): Int
+    suspend fun getOccupiedBagSlots(
+        rows: Int = PoeScreenConstants.bagRows,
+        columns: Int = PoeScreenConstants.bagColumns,
+        includeEmptySlotAfter: Boolean = false,
+    ): List<ScreenPoint>
 }
 
 class PoeInteractorImpl @Inject constructor(
     private val keyboard: KeyboardOutput,
-    private val mouse: MouseOutput,
+    private val mouseOut: MouseOutput,
+    private val mouseIn: MouseInput,
     private val clipboard: Clipboard,
     private val clock: Clock,
+    private val screen: Screen,
+    private val gameType: GameType,
 ) : PoeInteractor {
     /**
      * Move mouse to [point], press Ctrl+Alt+C to copy advanced description,
      * wait, and return clipboard text.
      */
     override suspend fun getItemDescriptionAt(point: ScreenPoint): String? {
-        mouse.moveTo(point)
+        clock.delay(30.milliseconds)
+        mouseOut.moveTo(point)
         clock.delay(30.milliseconds)
 
         withModifier("Ctrl") {
@@ -44,18 +64,46 @@ class PoeInteractorImpl @Inject constructor(
         return clipboard.getText()
     }
 
+    override suspend fun getOccupiedBagSlots(
+        rows: Int,
+        columns: Int,
+        includeEmptySlotAfter: Boolean,
+    ): List<ScreenPoint> {
+        val screenCap = withMouseAwayFromBag {
+            screen.captureScreen()
+        }
+        val allGrids = PoeScreenConstants.allGrids(
+            start = PoeScreenConstants.firstItemInBagFor(gameType),
+            rows = rows,
+            columns = columns,
+            gridSize = PoeScreenConstants.bagGridSize,
+        ).toList()
+        val indexedSlots = PoeScreenConstants.filterOccupiedSlotsV2(
+            allGrids,
+            screenCap
+        )
+        val occupied = indexedSlots.map { it.value }
+        return if (includeEmptySlotAfter) {
+            val oneBeyondLastSlotIndex = indexedSlots.lastOrNull()?.index?.let { it + 1 } ?: 0
+            val emptySlot = allGrids[oneBeyondLastSlotIndex]
+            occupied + emptySlot
+        } else {
+            occupied
+        }
+    }
+
     /**
      * Apply currency at [currencySlot] to item at [itemSlot].
      * Right-clicks currency, then left-clicks item.
      */
     override suspend fun applyCurrencyTo(currencySlot: ScreenPoint, itemSlot: ScreenPoint) {
-        mouse.postClick(
+        mouseOut.postClick(
             point = currencySlot,
             button = MouseButton.Right,
             moveFirst = true,
         )
         clock.delay(30.milliseconds)
-        mouse.postClick(
+        mouseOut.postClick(
             point = itemSlot,
             button = MouseButton.Left,
             moveFirst = true,
@@ -66,9 +114,9 @@ class PoeInteractorImpl @Inject constructor(
     /**
      * Ctrl+click an item (quick-move).
      */
-    override suspend fun ctrlClick(point: ScreenPoint) {
+    override suspend fun sendItemToOtherSide(point: ScreenPoint) {
         withModifier("Ctrl") {
-            mouse.postClick(point, moveFirst = true)
+            mouseOut.postClick(point, moveFirst = true)
             clock.delay(30.milliseconds)
         }
     }
@@ -76,10 +124,10 @@ class PoeInteractorImpl @Inject constructor(
     /**
      * Ctrl+Shift+click an item (quick-move to specific tab).
      */
-    override suspend fun ctrlShiftClick(point: ScreenPoint) {
+    override suspend fun forceSendItemToCurrentStash(point: ScreenPoint) {
         withModifier("Ctrl") {
             withModifier("Shift") {
-                mouse.postClick(point, moveFirst = true)
+                mouseOut.postClick(point, moveFirst = true)
                 clock.delay(30.milliseconds)
             }
         }
@@ -91,9 +139,9 @@ class PoeInteractorImpl @Inject constructor(
      */
     override suspend fun getCurrencyCountAt(
         point: ScreenPoint,
-        types: List<PoeCurrency.Type>,
+        types: List<PoeCurrency.KnownType>,
     ): Int {
-        mouse.moveTo(point)
+        mouseOut.moveTo(point)
         clock.delay(30.milliseconds)
 
         // Use simple Ctrl+C (not advanced description) for currency
@@ -120,4 +168,23 @@ class PoeInteractorImpl @Inject constructor(
             clock.delay(30.milliseconds)
         }
     }
+
+    /**
+     * Useful for screen cap to avoid mouse cursor being captured in the bag area.
+     */
+    private suspend fun <A> withMouseAwayFromBag(action: () -> A): A {
+        // XXX can't simply get mouse's current position from mouseIn flow -- that
+        // flow only emits after mouse moves.
+        clock.delay(100.milliseconds)
+        mouseOut.moveTo(PoeScreenConstants.emptySpaceInRightSideOfBag)
+        clock.delay(100.milliseconds)
+        val result = action()
+        clock.delay(100.milliseconds)
+        return result
+    }
+}
+
+suspend fun PoeInteractor.parseItemAt(point: ScreenPoint): PoeItem? {
+    val ad = getItemDescriptionAt(point).orEmpty()
+    return PoeItemParser.parse(ad)
 }

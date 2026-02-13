@@ -1,5 +1,6 @@
 package com.gh.om.ks.arpgmacro.core
 
+import com.gh.om.ks.arpgmacro.di.GameType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -92,17 +93,6 @@ class ScreenConstantsTest {
             val pixelSource = screen.captureScreen()
             val occupied = PoeScreenConstants.filterOccupiedSlots(slots, pixelSource)
             assertThat(occupied).containsExactly(ScreenPoint(0, 0))
-        }
-    }
-
-    @Nested
-    inner class Constants {
-        @Test
-        fun `secondItemInBag is one grid below first`() {
-            val first = PoeScreenConstants.firstItemInBag
-            val second = PoeScreenConstants.secondItemInBag
-            assertThat(second.x).isEqualTo(first.x)
-            assertThat(second.y).isEqualTo(first.y + PoeScreenConstants.bagGridSize)
         }
     }
 }

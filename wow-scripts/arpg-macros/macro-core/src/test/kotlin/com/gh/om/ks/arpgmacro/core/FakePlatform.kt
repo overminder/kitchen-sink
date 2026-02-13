@@ -1,5 +1,6 @@
 package com.gh.om.ks.arpgmacro.core
 
+import com.gh.om.ks.arpgmacro.core.item.PoeCurrency
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlin.time.Duration
@@ -162,16 +163,16 @@ class FakePoeInteractor : PoeInteractor {
         onApplyCurrency?.invoke(call)
     }
 
-    override suspend fun ctrlClick(point: ScreenPoint) {
+    override suspend fun sendItemToOtherSide(point: ScreenPoint) {
         ctrlClicks += point
     }
 
-    override suspend fun ctrlShiftClick(point: ScreenPoint) {
+    override suspend fun forceSendItemToCurrentStash(point: ScreenPoint) {
         ctrlShiftClicks += point
     }
 
     override suspend fun getCurrencyCountAt(
         point: ScreenPoint,
-        types: List<PoeCurrency.Type>,
+        types: List<PoeCurrency.KnownType>,
     ): Int = currencyCount
 }

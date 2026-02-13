@@ -1,4 +1,4 @@
-package com.gh.om.ks.arpgmacro.core
+package com.gh.om.ks.arpgmacro.core.arrange
 
 import javax.inject.Inject
 

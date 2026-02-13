@@ -1,7 +1,11 @@
 package com.gh.om.ks.arpgmacro.core
 
 import kotlinx.coroutines.test.runTest
-import com.gh.om.ks.arpgmacro.core.CraftDecisionMaker.DecisionType
+import com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.DecisionType
+import com.gh.om.ks.arpgmacro.core.craft.CraftMethods
+import com.gh.om.ks.arpgmacro.core.craft.PoeItemCrafter
+import com.gh.om.ks.arpgmacro.core.item.PoeItem
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -47,9 +51,10 @@ class CraftMethodsTest {
     )
 
     /** Always returns a specific decision type. */
-    private fun fixedDm(type: DecisionType) = CraftDecisionMaker { _ ->
-        CraftDecisionMaker.Decision(type, "test")
-    }
+    private fun fixedDm(type: DecisionType) =
+        _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker { _ ->
+            _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.Decision(type, "test")
+        }
 
     @Nested
     inner class AltAugRegalExaltOnce {

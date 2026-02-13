@@ -7,6 +7,8 @@ import com.gh.om.ks.arpgmacro.core.PixelSource
 import com.gh.om.ks.arpgmacro.core.Screen
 import com.gh.om.ks.arpgmacro.core.ScreenColor
 import com.gh.om.ks.arpgmacro.core.ScreenPoint
+import java.awt.GraphicsEnvironment
+import java.awt.Image
 import java.awt.Rectangle
 import java.awt.Robot
 import java.awt.image.BufferedImage
@@ -24,6 +26,8 @@ private object Gdi32 {
 }
 
 class Win32Screen : Screen {
+    private val threadLocalRobot = ThreadLocal.withInitial(::Robot)
+
     override fun getPixelColor(point: ScreenPoint): ScreenColor {
         val dc = User32.INSTANCE.GetDC(null)
         try {
@@ -38,9 +42,8 @@ class Win32Screen : Screen {
     }
 
     override fun captureScreen(): PixelSource {
-        val robot = Robot()
-        val rect = Rectangle(2560, 1440)
-        val image: BufferedImage = robot.createScreenCapture(rect)
+        val physicalRect = Rectangle(2560, 1440)
+        val image = capturePhysical(physicalRect)
         return object : PixelSource {
             override fun getPixelColor(point: ScreenPoint): ScreenColor {
                 val rgb = image.getRGB(point.x, point.y)
@@ -50,5 +53,37 @@ class Win32Screen : Screen {
                 return ScreenColor(r, g, b)
             }
         }
+    }
+
+    /**
+     * Capture at physical pixel resolution, handling HiDPI scaling.
+     * AWT works in logical coordinates, so we scale down the physical rect,
+     * then use createMultiResolutionScreenCapture to get the full-resolution variant.
+     */
+    private fun capturePhysical(physicalRect: Rectangle): BufferedImage {
+        val scaleFactor = GraphicsEnvironment.getLocalGraphicsEnvironment()
+            .defaultScreenDevice
+            .defaultConfiguration
+            .defaultTransform
+            .scaleX
+        val awtRect = Rectangle(
+            (physicalRect.x / scaleFactor).toInt(),
+            (physicalRect.y / scaleFactor).toInt(),
+            (physicalRect.width / scaleFactor).toInt(),
+            (physicalRect.height / scaleFactor).toInt(),
+        )
+        val variants = threadLocalRobot.get()
+            .createMultiResolutionScreenCapture(awtRect)
+            .resolutionVariants
+        return variants.last().toBufferedImage()
+    }
+
+    private fun Image.toBufferedImage(): BufferedImage {
+        if (this is BufferedImage) return this
+        val bi = BufferedImage(getWidth(null), getHeight(null), BufferedImage.TYPE_INT_ARGB)
+        val g = bi.createGraphics()
+        g.drawImage(this, 0, 0, null)
+        g.dispose()
+        return bi
     }
 }

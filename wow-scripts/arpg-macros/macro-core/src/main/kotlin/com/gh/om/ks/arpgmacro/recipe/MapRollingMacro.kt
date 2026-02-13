@@ -1,21 +1,15 @@
 package com.gh.om.ks.arpgmacro.recipe
 
-import com.gh.om.ks.arpgmacro.core.ChaosOrAlchMapRerollProvider
-import com.gh.om.ks.arpgmacro.core.ChaosRerollProvider
-import com.gh.om.ks.arpgmacro.core.ConsoleOutput
-import com.gh.om.ks.arpgmacro.core.CurrencySlots
-import com.gh.om.ks.arpgmacro.core.MacroDef
-import com.gh.om.ks.arpgmacro.core.MapScorerImpl
-import com.gh.om.ks.arpgmacro.core.MultiRollLoop
-import com.gh.om.ks.arpgmacro.core.PoeInteractor
-import com.gh.om.ks.arpgmacro.core.PoeScreenConstants
-import com.gh.om.ks.arpgmacro.core.ScourAlchRerollProvider
-import com.gh.om.ks.arpgmacro.core.Screen
-import com.gh.om.ks.arpgmacro.core.println
+import com.gh.om.ks.arpgmacro.core.*
+import com.gh.om.ks.arpgmacro.core.craft.ChaosOrAlchMapRerollProvider
+import com.gh.om.ks.arpgmacro.core.craft.ChaosRerollProvider
+import com.gh.om.ks.arpgmacro.core.craft.CurrencySlots
+import com.gh.om.ks.arpgmacro.core.craft.ScourAlchRerollProvider
+import com.gh.om.ks.arpgmacro.core.map.MapScorerImpl
+import com.gh.om.ks.arpgmacro.di.GameType
 import javax.inject.Inject
 
 class MapRollingMacro @Inject constructor(
-    private val screen: Screen,
     private val poeInteractor: PoeInteractor,
     private val multiRollLoop: MultiRollLoop,
     private val shouldContinueChecker: ShouldContinueChecker,
@@ -29,15 +23,7 @@ class MapRollingMacro @Inject constructor(
 
         return MacroDef.Prepared {
             if (!shouldContinue.value) return@Prepared
-            val slots = PoeScreenConstants.filterOccupiedSlots(
-                PoeScreenConstants.allGrids(
-                    start = PoeScreenConstants.firstItemInBag,
-                    rows = PoeScreenConstants.bagRows,
-                    columns = PoeScreenConstants.bagColumns,
-                    gridSize = PoeScreenConstants.bagGridSize,
-                ),
-                screen.captureScreen(),
-            )
+            val slots = poeInteractor.getOccupiedBagSlots()
             if (slots.isEmpty()) {
                 consoleOutput.println("No items found in bag")
                 return@Prepared

@@ -2,14 +2,15 @@ package com.gh.om.ks.arpgmacro.recipe
 
 import com.gh.om.ks.arpgmacro.core.ConsoleOutput
 import com.gh.om.ks.arpgmacro.core.MacroDef
-import com.gh.om.ks.arpgmacro.core.MapScorerImpl
+import com.gh.om.ks.arpgmacro.core.map.MapScorerImpl
 import com.gh.om.ks.arpgmacro.core.PoeInteractor
-import com.gh.om.ks.arpgmacro.core.PoeItemParser
+import com.gh.om.ks.arpgmacro.core.item.PoeItemParser
 import com.gh.om.ks.arpgmacro.core.PoeScreenConstants
 import com.gh.om.ks.arpgmacro.core.Screen
 import com.gh.om.ks.arpgmacro.core.ScreenPoint
-import com.gh.om.ks.arpgmacro.core.fmt
+import com.gh.om.ks.arpgmacro.core.map.fmt
 import com.gh.om.ks.arpgmacro.core.println
+import com.gh.om.ks.arpgmacro.di.GameType
 import javax.inject.Inject
 
 class SortInStashMacro @Inject constructor(
@@ -17,6 +18,7 @@ class SortInStashMacro @Inject constructor(
     private val poeInteractor: PoeInteractor,
     private val shouldContinueChecker: ShouldContinueChecker,
     private val consoleOutput: ConsoleOutput,
+    private val gameType: GameType,
 ) : MacroDef {
     override suspend fun prepare(): MacroDef.Prepared {
         val shouldContinue = shouldContinueChecker.get(
@@ -68,19 +70,19 @@ class SortInStashMacro @Inject constructor(
         // Phase 3: Move all items to bag (Ctrl+click)
         for ((slot, _) in scoredItems) {
             if (!shouldContinue()) return
-            poeInteractor.ctrlClick(slot)
+            poeInteractor.sendItemToOtherSide(slot)
         }
 
         // Phase 4: Move back from bag to stash in sorted order (Ctrl+Shift+click)
         val bagSlots = PoeScreenConstants.allGrids(
-            start = PoeScreenConstants.firstItemInBag,
+            start = PoeScreenConstants.firstItemInBagFor(gameType),
             rows = PoeScreenConstants.bagRows,
             columns = 10,
             gridSize = PoeScreenConstants.bagGridSize,
         ).take(inputs.size).toList()
         for (slot in bagSlots) {
             if (!shouldContinue()) return
-            poeInteractor.ctrlShiftClick(slot)
+            poeInteractor.forceSendItemToCurrentStash(slot)
         }
     }
 }

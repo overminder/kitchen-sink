@@ -1,12 +1,16 @@
 package com.gh.om.ks.arpgmacro.core
 
+import com.gh.om.ks.arpgmacro.di.GameType
+import java.awt.Color
+import java.awt.Point
+
 /**
  * Screen coordinate constants for POE UI elements at 2560x1440 resolution.
  */
 object PoeScreenConstants {
     val firstItemInBag = ScreenPoint(1727, 813)
-    val secondItemInBag: ScreenPoint
-        get() = ScreenPoint(firstItemInBag.x, firstItemInBag.y + bagGridSize)
+    // y = 824, not too off
+    private val firstItemInBagPoe2 = firstItemInBag.offset(dy = 11)
 
     val firstItemInMapStash = ScreenPoint(88, 642)
     val firstItemInHeistLocker = ScreenPoint(550, 554)
@@ -14,14 +18,27 @@ object PoeScreenConstants {
 
     val emptySpaceInRightSideOfBag = ScreenPoint(2429, 688)
 
+    // This is also the same for POE2
     val bagGridSize = 70
     val mapGridSize = 64
     val heistLockerGridSize = 57
+    val halfSmallestGridSize = listOf(
+        bagGridSize, mapGridSize, heistLockerGridSize
+    ).min() / 2
 
     val emptyGridColor = ScreenColor(7, 8, 9)
 
     val bagRows = 5
     val bagColumns = 10
+
+    fun firstItemInBagFor(gameType: GameType): ScreenPoint {
+        return when (gameType) {
+            GameType.POE1 -> firstItemInBag
+            GameType.POE2 -> firstItemInBagPoe2
+            GameType.Diablo3,
+            GameType.Diablo4 -> TODO("Do we need a bag macro for $gameType?")
+        }
+    }
 
     /**
      * Generate all grid slot positions given a starting point and grid dimensions.
@@ -66,4 +83,47 @@ object PoeScreenConstants {
             gridColorHasItem(pixelSource.getPixelColor(slot), maxDistance)
         }.toList()
     }
+
+    /**
+     * Uses [getAverageColor] for better reliability.
+     */
+    fun filterOccupiedSlotsV2(
+        slots: List<ScreenPoint>,
+        pixelSource: PixelSource,
+        maxDistance: Int = 7,
+    ): List<IndexedValue<ScreenPoint>> {
+        return slots.mapIndexedNotNull { index, slot ->
+            val color = getAverageColor(
+                slot.offset(-halfSmallestGridSize, -halfSmallestGridSize),
+                slot.offset(halfSmallestGridSize, halfSmallestGridSize),
+                pixelSource,
+            )
+            if (gridColorHasItem(color, maxDistance)) {
+                IndexedValue(index, slot)
+            } else {
+                null
+            }
+        }.toList()
+    }
+}
+
+private fun getAverageColor(
+    leftTop: ScreenPoint,
+    bottomRight: ScreenPoint,
+    pixelSource: PixelSource,
+): ScreenColor {
+    val colors = mutableListOf<ScreenColor>()
+    for (y in leftTop.y .. bottomRight.y) {
+        for (x in leftTop.x .. bottomRight.x) {
+            colors += pixelSource.getPixelColor(ScreenPoint(x, y))
+        }
+    }
+
+    fun averageOf(part: (ScreenColor) -> Int) =
+        colors.sumOf(part).toDouble() / colors.size
+    return ScreenColor(
+        averageOf(ScreenColor::r).toInt(),
+        averageOf(ScreenColor::g).toInt(),
+        averageOf(ScreenColor::b).toInt(),
+    )
 }

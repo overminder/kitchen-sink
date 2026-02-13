@@ -1,7 +1,12 @@
 package com.gh.om.ks.arpgmacro.core
 
 import kotlinx.coroutines.test.runTest
-import com.gh.om.ks.arpgmacro.core.CraftDecisionMaker.DecisionType
+import com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.DecisionType
+import com.gh.om.ks.arpgmacro.core.craft.CraftMethods
+import com.gh.om.ks.arpgmacro.core.craft.CraftRerollProvider
+import com.gh.om.ks.arpgmacro.core.craft.CurrencySlots
+import com.gh.om.ks.arpgmacro.core.item.PoeItem
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -61,13 +66,13 @@ class CraftRerollProviderTest {
     )
 
     /** Decision maker that always returns Reset (to trigger a currency application). */
-    private val alwaysReset = CraftDecisionMaker { _ ->
-        CraftDecisionMaker.Decision(DecisionType.Reset, "test")
+    private val alwaysReset = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker { _ ->
+        _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.Decision(DecisionType.Reset, "test")
     }
 
     /** Decision maker that always returns Done. */
-    private val alwaysDone = CraftDecisionMaker { _ ->
-        CraftDecisionMaker.Decision(DecisionType.Done, "test")
+    private val alwaysDone = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker { _ ->
+        _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.Decision(DecisionType.Done, "test")
     }
 
     @Nested

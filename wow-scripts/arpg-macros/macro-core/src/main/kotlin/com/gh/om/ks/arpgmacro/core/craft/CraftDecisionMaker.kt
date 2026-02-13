@@ -1,4 +1,6 @@
-package com.gh.om.ks.arpgmacro.core
+package com.gh.om.ks.arpgmacro.core.craft
+
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
 
 /**
  * Decides the next crafting action based on an item's current mods.
@@ -9,7 +11,7 @@ fun interface CraftDecisionMaker {
     data class Decision(
         val type: DecisionType,
         val why: String,
-    ) : CheckResult {
+    ) : com.gh.om.ks.arpgmacro.core.CheckResult {
         val done: Boolean
             get() = type == DecisionType.Done
 
@@ -87,14 +89,17 @@ fun interface CraftDecisionMaker {
                     type = DecisionType.Done
                     why = "Matches $matches mods is more than desired $desiredModCount"
                 }
+
                 matches == nMods -> {
                     type = DecisionType.Proceed
                     why = "All $nMods mods match"
                 }
+
                 matches == nMods - 1 && nMods == 4 -> {
                     type = DecisionType.GoBack
                     why = "All $nMods but 1 mod match"
                 }
+
                 else -> {
                     type = DecisionType.Reset
                     why = "Only $matches matches within $nMods"
@@ -130,13 +135,14 @@ fun interface CraftDecisionMaker {
             return descriptions.any { it in mod.description }
         }
     }
+
 }
 
 /**
- * Adapts a [CraftDecisionMaker] to an [ItemChecker] for use with [MultiRollLoop].
+ * Adapts a [CraftDecisionMaker] to an [com.gh.om.ks.arpgmacro.core.ItemChecker] for use with [com.gh.om.ks.arpgmacro.core.MultiRollLoop].
  */
-fun CraftDecisionMaker.asItemChecker(): ItemChecker<CraftDecisionMaker.Decision> {
-    return object : ItemChecker<CraftDecisionMaker.Decision> {
+fun CraftDecisionMaker.asItemChecker(): com.gh.om.ks.arpgmacro.core.ItemChecker<CraftDecisionMaker.Decision> {
+    return object : com.gh.om.ks.arpgmacro.core.ItemChecker<CraftDecisionMaker.Decision> {
         override fun evaluate(item: PoeRollableItem): CraftDecisionMaker.Decision {
             return getDecision(item)
         }
@@ -146,3 +152,16 @@ fun CraftDecisionMaker.asItemChecker(): ItemChecker<CraftDecisionMaker.Decision>
         }
     }
 }
+
+fun CraftDecisionMakerV2.asItemChecker(): com.gh.om.ks.arpgmacro.core.ItemChecker<CraftDecisionMakerV2.Decision> {
+    return object : com.gh.om.ks.arpgmacro.core.ItemChecker<CraftDecisionMakerV2.Decision> {
+        override fun evaluate(item: PoeRollableItem): CraftDecisionMakerV2.Decision {
+            return getDecision(item)
+        }
+
+        override fun generateReport(results: List<CraftDecisionMakerV2.Decision>): String {
+            return "Ok"
+        }
+    }
+}
+

@@ -1,4 +1,7 @@
-package com.gh.om.ks.arpgmacro.core
+package com.gh.om.ks.arpgmacro.core.item
+
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem.ExplicitMod.Matcher
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem.ExplicitModLocation
 
 sealed interface PoeItem {
     sealed interface Klass {
@@ -13,9 +16,10 @@ sealed interface PoeItem {
         Currency("Stackable Currency"),
         Map("Maps"),
         MiscMap("Misc Map Items"),
+        Jewels("Jewels"),
         // POE2
         Waystone("Waystones"),
-        Jewels("Jewels"),
+        Tablet("Tablet"),
     }
 
     enum class MapTier {
@@ -62,9 +66,11 @@ data class PoeCurrency(
     val type: Type,
     val stackSize: Int,
 ) : PoeItem {
-    interface Type
+    sealed interface Type
 
-    enum class KnownType(val repr: String) : Type {
+    sealed interface KnownType : Type
+
+    enum class Simple(val repr: String) : KnownType {
         Scour("Orb of Scouring"),
         Alch("Orb of Alchemy"),
         Binding("Orb of Binding"),
@@ -87,12 +93,21 @@ data class PoeCurrency(
         Chaos("Chaos Orb"),
     }
 
-    data class TieredType(val kind: CanHaveTier, val tier: Tier? = null) : Type
+    data class TieredType(val kind: CanHaveTier, val tier: Tier? = null) : KnownType {
+        fun asNormal() = TieredType(kind)
+        fun asGreater() = TieredType(kind, Tier.Greater)
+        fun asPerfect() = TieredType(kind, Tier.Perfect)
+    }
 
     data class UnknownType(val repr: String) : Type
 
     companion object {
-        val ChaosType = TieredType(CanHaveTier.Chaos)
+        val Chaos = TieredType(CanHaveTier.Chaos)
+        val Trans = TieredType(CanHaveTier.Trans)
+        val Aug = TieredType(CanHaveTier.Aug)
+        val Regal = TieredType(CanHaveTier.Regal)
+        val Exalt = TieredType(CanHaveTier.Exalt)
+        val Annul = Simple.Annul
     }
 }
 
@@ -108,7 +123,11 @@ data class PoeRollableItem(
         Normal,
         Magic,
         Rare,
-        Unique,
+        Unique;
+
+        fun isAtMost(rarity: Rarity): Boolean {
+            return this <= rarity
+        }
     }
 
     enum class ExplicitModLocation {
@@ -121,7 +140,49 @@ data class PoeRollableItem(
         val name: String,
         val tier: Int?,
         val description: String,
-    )
+        val fractured: Boolean = false,
+    ) {
+        interface Matcher {
+            fun matches(mod: ExplicitMod): Boolean
+
+            /**
+             * The location of the affix matched by this matcher.
+             * Null if the location is unknown.
+             */
+            val loc: ExplicitModLocation?
+                get() = null
+
+            companion object {
+                fun byPredicate(predicate: (ExplicitMod) -> Boolean): Matcher {
+                    return object: Matcher {
+                        override fun matches(mod: ExplicitMod) = predicate(mod)
+                    }
+                }
+
+                fun byName(name: String): Matcher {
+                    // TODO consider a better toString or just use data classes.
+                    val m = byPredicate {
+                        it.name == name
+                    }
+
+                    // Guess the location (should usually work?)
+                    return if (name.startsWith("of ")) {
+                        m.asSuffix()
+                    } else {
+                        m.asPrefix()
+                    }
+                }
+
+                fun byAnyNames(names: List<String>) = byPredicate {
+                    it.name in names
+                }
+
+                fun containsDescription(descr: String) = byPredicate {
+                    descr in it.description
+                }
+            }
+        }
+    }
 
     data class Quality(
         val name: QualName,
@@ -168,8 +229,26 @@ fun PoeRollableItem.hasAffix(name: String): Boolean {
     return getAffix(name) != null
 }
 
+fun PoeRollableItem.affixThat(
+    predicate: (PoeRollableItem.ExplicitMod) -> Boolean,
+): List<PoeRollableItem.ExplicitMod> = explicitMods.filter(predicate)
+
 fun PoeRollableItem.hasAffixThat(
     predicate: (PoeRollableItem.ExplicitMod) -> Boolean,
 ): Boolean {
     return explicitMods.any(predicate)
 }
+
+fun Matcher.withLoc(newLoc: ExplicitModLocation) = object: Matcher by this {
+    override val loc = newLoc
+}
+
+fun Matcher.asPrefix() = withLoc(ExplicitModLocation.Prefix)
+fun Matcher.asSuffix() = withLoc(ExplicitModLocation.Suffix)
+
+val PoeRollableItem.ExplicitMod.isPrefix
+    get() = loc == ExplicitModLocation.Prefix
+
+val PoeRollableItem.ExplicitMod.isSuffix
+    get() = loc == ExplicitModLocation.Suffix
+

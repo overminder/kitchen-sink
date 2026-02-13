@@ -1,4 +1,6 @@
-package com.gh.om.ks.arpgmacro.core
+package com.gh.om.ks.arpgmacro.core.craft
+
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
 
 /**
  * Interface for applying currency to an item. Shared between real game

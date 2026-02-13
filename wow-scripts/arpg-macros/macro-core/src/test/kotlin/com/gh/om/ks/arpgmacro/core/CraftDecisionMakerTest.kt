@@ -1,6 +1,9 @@
 package com.gh.om.ks.arpgmacro.core
 
-import com.gh.om.ks.arpgmacro.core.CraftDecisionMaker.DecisionType
+import com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.DecisionType
+import com.gh.om.ks.arpgmacro.core.craft.asItemChecker
+import com.gh.om.ks.arpgmacro.core.item.PoeItem
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -29,52 +32,52 @@ class CraftDecisionMakerTest {
     inner class ByMatches {
         @Test
         fun `done when matches meets desired count`() {
-            val d = CraftDecisionMaker.byMatches(matches = 3, desiredModCount = 3, nMods = 4)
+            val d = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byMatches(matches = 3, desiredModCount = 3, nMods = 4)
             assertThat(d.type).isEqualTo(DecisionType.Done)
             assertThat(d.isGood).isTrue()
         }
 
         @Test
         fun `done when matches exceeds desired count`() {
-            val d = CraftDecisionMaker.byMatches(matches = 4, desiredModCount = 3, nMods = 4)
+            val d = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byMatches(matches = 4, desiredModCount = 3, nMods = 4)
             assertThat(d.type).isEqualTo(DecisionType.Done)
         }
 
         @Test
         fun `proceed when all mods match but not enough yet`() {
-            val d = CraftDecisionMaker.byMatches(matches = 2, desiredModCount = 3, nMods = 2)
+            val d = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byMatches(matches = 2, desiredModCount = 3, nMods = 2)
             assertThat(d.type).isEqualTo(DecisionType.Proceed)
         }
 
         @Test
         fun `go back when 3 of 4 match`() {
-            val d = CraftDecisionMaker.byMatches(matches = 3, desiredModCount = 4, nMods = 4)
+            val d = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byMatches(matches = 3, desiredModCount = 4, nMods = 4)
             assertThat(d.type).isEqualTo(DecisionType.GoBack)
         }
 
         @Test
         fun `reset when too few matches`() {
-            val d = CraftDecisionMaker.byMatches(matches = 1, desiredModCount = 3, nMods = 3)
+            val d = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byMatches(matches = 1, desiredModCount = 3, nMods = 3)
             assertThat(d.type).isEqualTo(DecisionType.Reset)
         }
 
         @Test
         fun `reset when 0 matches`() {
-            val d = CraftDecisionMaker.byMatches(matches = 0, desiredModCount = 2, nMods = 2)
+            val d = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byMatches(matches = 0, desiredModCount = 2, nMods = 2)
             assertThat(d.type).isEqualTo(DecisionType.Reset)
         }
 
         @Test
         fun `go back only triggers at exactly 4 mods`() {
             // 2 of 3 match, nMods = 3 -> not GoBack (nMods != 4)
-            val d = CraftDecisionMaker.byMatches(matches = 2, desiredModCount = 3, nMods = 3)
+            val d = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byMatches(matches = 2, desiredModCount = 3, nMods = 3)
             assertThat(d.type).isEqualTo(DecisionType.Reset)
         }
     }
 
     @Nested
     inner class ByDesiredModsEx {
-        private val dm = CraftDecisionMaker.byDesiredMods(
+        private val dm = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byDesiredMods(
             desiredModNames = listOf("Alpha", "Beta", "Gamma"),
             desiredModCount = 2,
         )
@@ -100,7 +103,7 @@ class CraftDecisionMakerTest {
 
     @Nested
     inner class ByDesiredOneSideModsEx {
-        private val dm = CraftDecisionMaker.byDesiredOneSideMods(
+        private val dm = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byDesiredOneSideMods(
             desiredModNames = listOf("Alpha", "Beta"),
             side = PoeRollableItem.ExplicitModLocation.Prefix,
             desiredModCount = 2,
@@ -147,7 +150,7 @@ class CraftDecisionMakerTest {
 
     @Nested
     inner class ByDesiredOneSideModsWithExtraCheck {
-        private val dm = CraftDecisionMaker.byDesiredOneSideMods(
+        private val dm = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byDesiredOneSideMods(
             desiredModNames = listOf("Alpha"),
             side = PoeRollableItem.ExplicitModLocation.Suffix,
             desiredModCount = 1,
@@ -175,7 +178,7 @@ class CraftDecisionMakerTest {
     inner class AsItemChecker {
         @Test
         fun `bridges to ItemChecker interface`() {
-            val dm = CraftDecisionMaker.byDesiredMods(listOf("Alpha"), 1)
+            val dm = _root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.byDesiredMods(listOf("Alpha"), 1)
             val checker = dm.asItemChecker()
 
             val good = item(mod("Alpha"))
@@ -192,13 +195,13 @@ class CraftDecisionMakerTest {
         @Test
         fun `matches when description contains keyword`() {
             val m = mod("Test", description = "1 Added Passive Skill is Grand Design")
-            assertThat(CraftDecisionMaker.matchesDescription(m, listOf("Grand Design"))).isTrue()
+            assertThat(_root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.matchesDescription(m, listOf("Grand Design"))).isTrue()
         }
 
         @Test
         fun `no match when description lacks keyword`() {
             val m = mod("Test", description = "Some other description")
-            assertThat(CraftDecisionMaker.matchesDescription(m, listOf("Grand Design"))).isFalse()
+            assertThat(_root_ide_package_.com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker.matchesDescription(m, listOf("Grand Design"))).isFalse()
         }
     }
 }

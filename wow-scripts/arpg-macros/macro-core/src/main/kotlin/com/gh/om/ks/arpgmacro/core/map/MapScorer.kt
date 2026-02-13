@@ -1,4 +1,8 @@
-package com.gh.om.ks.arpgmacro.core
+package com.gh.om.ks.arpgmacro.core.map
+
+import com.gh.om.ks.arpgmacro.core.item.PoeItem
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
+import com.gh.om.ks.arpgmacro.core.item.isMapLike
 
 /**
  * Evaluates whether a rolled map meets acceptance criteria.

@@ -8,7 +8,7 @@ import dagger.Provides
 import dagger.Subcomponent
 
 @GameScope
-@Subcomponent
+@Subcomponent(modules = [GameSubcomponentModule::class])
 interface GameSubcomponent {
     val gameType: GameType
 

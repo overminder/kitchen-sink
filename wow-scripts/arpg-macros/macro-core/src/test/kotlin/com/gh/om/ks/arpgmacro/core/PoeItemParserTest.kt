@@ -1,5 +1,11 @@
 package com.gh.om.ks.arpgmacro.core
 
+import com.gh.om.ks.arpgmacro.core.item.PoeCurrency
+import com.gh.om.ks.arpgmacro.core.item.PoeItem
+import com.gh.om.ks.arpgmacro.core.item.PoeItemParser
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
+import com.gh.om.ks.arpgmacro.core.item.hasAffix
+import com.gh.om.ks.arpgmacro.core.item.isMapLike
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -244,7 +250,7 @@ Shift click to unstack.
             val item = PoeItemParser.parse(chaosOrb)
             assertThat(item).isInstanceOf(PoeCurrency::class.java)
             val currency = item as PoeCurrency
-            assertThat(currency.type).isEqualTo(PoeCurrency.ChaosType)
+            assertThat(currency.type).isEqualTo(PoeCurrency.Chaos)
             assertThat(currency.stackSize).isEqualTo(47)
         }
 
@@ -340,6 +346,42 @@ Travel to this Map by using it in a personal Map Device. Maps can only be used o
             // The multi-line description should be joined with "; "
             assertThat(retributive.description).contains("Players are Marked for Death")
             assertThat(retributive.description).contains("after killing a Rare or Unique monster")
+        }
+
+        private val multiLineModWithFrac = """
+Item Class: Maps
+Rarity: Rare
+Test Map
+Strand Map
+--------
+Map Tier: 17
+Item Quantity: +80% (augmented)
+Monster Pack Size: +25% (augmented)
+--------
+Item Level: 84
+--------
+{ Fractured Prefix Modifier "Retributive" (Tier: 1) }
+Players are Marked for Death for 10 seconds
+after killing a Rare or Unique monster
+(Players that are Marked for Death take 50% increased Damage)
+
+{ Suffix Modifier "of Power" }
+Monsters gain a Power Charge on Hit
+
+--------
+Travel to this Map by using it in a personal Map Device. Maps can only be used once.
+        """.trimIndent()
+
+        @Test
+        fun `handles multi-line mod descriptions with fracture`() {
+            val item = PoeItemParser.parseAsRollable(multiLineModWithFrac)
+            assertThat(item.explicitMods).hasSize(2)
+            val retributive = item.explicitMods[0]
+            assertThat(retributive.name).isEqualTo("Retributive")
+            // The multi-line description should be joined with "; "
+            assertThat(retributive.description).contains("Players are Marked for Death")
+            assertThat(retributive.description).contains("after killing a Rare or Unique monster")
+            assertThat(retributive.fractured).isTrue()
         }
     }
 }

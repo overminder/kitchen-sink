@@ -1,6 +1,7 @@
 package com.gh.om.ks.arpgmacro.core
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.sqrt
 import kotlin.time.Duration
 
@@ -13,6 +14,10 @@ enum class MouseButton { Left, Right }
  * A point on the screen.
  */
 data class ScreenPoint(val x: Int, val y: Int)
+
+fun ScreenPoint.offset(dx: Int = 0, dy: Int = 0): ScreenPoint {
+    return ScreenPoint(x + dx, y + dy)
+}
 
 /**
  * An RGB color.

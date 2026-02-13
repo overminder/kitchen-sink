@@ -1,5 +1,6 @@
 package com.gh.om.ks.arpgmacro.core
 
+import com.gh.om.ks.arpgmacro.core.item.PoeCurrency
 import kotlinx.coroutines.test.runTest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -76,7 +77,7 @@ class PoeInteractorImplTest {
         @Test
         fun `presses ctrl before click and releases after`() = runTest {
             val point = ScreenPoint(100, 100)
-            interactor.ctrlClick(point)
+            interactor.sendItemToOtherSide(point)
 
             // Ctrl should be pressed and released
             val ctrlPress = keyboard.events.indexOfFirst { it.keyCode == "Ctrl" && it.pressed }
@@ -96,7 +97,7 @@ class PoeInteractorImplTest {
         @Test
         fun `presses ctrl and shift before click`() = runTest {
             val point = ScreenPoint(100, 100)
-            interactor.ctrlShiftClick(point)
+            interactor.forceSendItemToCurrentStash(point)
 
             val pressKeys = keyboard.events.filter { it.pressed }.map { it.keyCode }
             assertThat(pressKeys).contains("Ctrl", "Shift")
@@ -122,7 +123,7 @@ Reforges a rare item with new random modifiers
 
             val count = interactor.getCurrencyCountAt(
                 ScreenPoint(50, 50),
-                listOf(PoeCurrency.ChaosType),
+                listOf(PoeCurrency.Chaos),
             )
             assertThat(count).isEqualTo(47)
         }
@@ -141,7 +142,7 @@ Removes all properties from an item
 
             val count = interactor.getCurrencyCountAt(
                 ScreenPoint(50, 50),
-                listOf(PoeCurrency.ChaosType),
+                listOf(PoeCurrency.Chaos),
             )
             assertThat(count).isEqualTo(0)
         }
@@ -151,7 +152,7 @@ Removes all properties from an item
             clipboard.content = null
             val count = interactor.getCurrencyCountAt(
                 ScreenPoint(50, 50),
-                listOf(PoeCurrency.ChaosType),
+                listOf(PoeCurrency.Chaos),
             )
             assertThat(count).isEqualTo(0)
         }

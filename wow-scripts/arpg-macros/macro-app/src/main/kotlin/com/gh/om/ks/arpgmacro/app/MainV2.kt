@@ -35,6 +35,8 @@ private val macroMapping = listOf(
     MacroMapping("02", WhichGame.Any) { it.printMousePos },
     MacroMapping("021", WhichGame.Any) { it.parseAndPrintItem },
     MacroMapping("11", WhichGame.EACH_POE) { it.mapRolling },
+    MacroMapping("12", WhichGame.POE2) { it.craftRollingV2 },
+    MacroMapping("13", WhichGame.POE2) { it.tabletRollingMacro },
     MacroMapping("14", WhichGame.EACH_POE) { it.sortInStash },
     MacroMapping("15", WhichGame.EACH_POE) { it.craftRolling },
 )
@@ -81,7 +83,11 @@ private fun CoroutineScope.instantiateMacrosAndTriggers(
 }
 
 fun main() {
-    GlobalScreen.registerNativeHook()
+    if (!isDebugging()) {
+        GlobalScreen.registerNativeHook()
+    } else {
+        println("WARNING: debugging with JNativeHook makes mouse unusable")
+    }
     try {
         val component = DaggerAppComponent.create()
         println("Launching macros (Alt+X leader key, F4 to stop)")

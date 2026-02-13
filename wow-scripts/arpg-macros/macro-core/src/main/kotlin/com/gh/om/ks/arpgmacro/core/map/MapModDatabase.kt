@@ -1,4 +1,7 @@
-package com.gh.om.ks.arpgmacro.core
+package com.gh.om.ks.arpgmacro.core.map
+
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
+import com.gh.om.ks.arpgmacro.core.item.isMapLike
 
 data class PoeMapDifficulty(
     val playerDamageTaken: Double,
@@ -22,7 +25,11 @@ data class PoeMapDifficulty(
     }
 }
 
-fun Number.fmt(): String = String.format("%.2f", this)
+fun Number?.fmt(): String = if (this == null) {
+    "null"
+} else {
+    String.format("%.2f", this)
+}
 
 data class MapModDescriptor(
     val keywords: List<String>,

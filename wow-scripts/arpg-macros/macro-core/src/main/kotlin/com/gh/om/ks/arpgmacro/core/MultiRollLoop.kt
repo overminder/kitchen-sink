@@ -1,5 +1,10 @@
 package com.gh.om.ks.arpgmacro.core
 
+import com.gh.om.ks.arpgmacro.core.craft.RerollProvider
+import com.gh.om.ks.arpgmacro.core.item.PoeItemParser
+import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
+import com.gh.om.ks.arpgmacro.core.map.fmt
+import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -27,7 +32,7 @@ data class RollReport(
  * Core loop that processes a batch of items, evaluating each and rerolling
  * until it meets criteria or resources are exhausted.
  */
-class MultiRollLoop(
+class MultiRollLoop @Inject constructor(
     private val interactor: PoeInteractor,
     private val mouse: MouseOutput,
     private val clock: Clock,
@@ -69,6 +74,7 @@ class MultiRollLoop(
             }
         }
 
+        // TODO: rerollProvider knows the currency usage. Also consult them.
         val results = rolledItems.map(checker::evaluate)
         val avgCost = if (results.isNotEmpty()) {
             (rerollCount.toDouble() / results.size).fmt()
