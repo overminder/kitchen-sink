@@ -15,7 +15,7 @@ import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
  *   See [com.gh.om.ks.arpgmacro.recipe.TabletMods.abyssGroup1] and 2 for example groups.
  */
 class Poe2ChaoOnTablet(
-    val args: Args,
+    private val args: Args,
 ) : CraftDecisionMakerV2 {
     override fun getDecision(item: PoeRollableItem): CraftDecisionMakerV2.Decision {
         require(item.klass == PoeItem.ConstKlass.Tablet) {
@@ -46,6 +46,10 @@ class Poe2ChaoOnTablet(
 
         // No group has a clean path, chaos to reroll
         return CraftDecisionMakerV2.Decision(PoeCurrency.Companion.Chaos, "No clean group, chaos")
+    }
+
+    operator fun plus(other: Poe2ChaoOnTablet): Poe2ChaoOnTablet {
+        return Poe2ChaoOnTablet(args + other.args)
     }
 
     companion object {
@@ -83,6 +87,11 @@ class Poe2ChaoOnTablet(
         init {
             require(groups.isNotEmpty())
             require(exaltType.kind == PoeCurrency.CanHaveTier.Exalt)
+        }
+
+        operator fun plus(other: Args): Args {
+            require(exaltType == other.exaltType)
+            return Args(groups + other.groups, exaltType)
         }
     }
 }

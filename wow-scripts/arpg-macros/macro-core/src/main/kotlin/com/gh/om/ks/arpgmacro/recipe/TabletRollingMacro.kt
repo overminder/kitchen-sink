@@ -9,9 +9,9 @@ import com.gh.om.ks.arpgmacro.core.craft.CraftRerollProviderV2
 import com.gh.om.ks.arpgmacro.core.craft.asItemChecker
 import com.gh.om.ks.arpgmacro.core.craft.dm.Poe2ChaoOnTablet
 import com.gh.om.ks.arpgmacro.core.craft.dm.Poe2TabletFirstPass
-import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem
 import com.gh.om.ks.arpgmacro.core.item.PoeRollableItem.ExplicitMod.Matcher
 import com.gh.om.ks.arpgmacro.core.println
+import com.gh.om.ks.arpgmacro.recipe.TabletMods.Abyss
 import javax.inject.Inject
 
 object TabletMods {
@@ -19,57 +19,110 @@ object TabletMods {
     val rarePack = "Brimming"
 
     object Abyss {
-        val additionalRares = "of Champions"
-        val abyssalMods = "of Dark Power"
+        private val additionalRares = "of Champions"
+        private val abyssalMods = "of Dark Power"
 
         // Double chance for abyss pits to have rewards
-        val pitRewards = "of Treasures"
-        // Desecrated currencies
-        val bones = "of Ossification"
+        private val pitRewards = "of Treasures"
 
-        val moreDifficult = "of Escalation"
+        // Desecrated currencies
+        private val bones = "of Ossification"
+
+        private val moreDifficult = "of Escalation"
+
+        val omenFarm = listOf(
+            eff, rarePack, Abyss.additionalRares, Abyss.abyssalMods
+        ).map(Matcher::byName)
+        val omenFarmMustHave = listOf(
+            Abyss.abyssalMods
+        ).map(Matcher::byName)
+
+        val desecrateCurrencyFarm = listOf(
+            Abyss.pitRewards, Abyss.bones,
+        ).map(Matcher::byName)
+
+        val negatives = listOf(Abyss.moreDifficult).map(Matcher::byName)
     }
 
-    // For omen farming (more rares + abyssal mods + IIQ)
-    // 3 is good enough.
-    val abyssGroup1 = listOf(
-        eff, rarePack, Abyss.additionalRares, Abyss.abyssalMods
-    ).map(Matcher::byName)
-    val abyssGroup1MustHave = listOf(
-        Abyss.abyssalMods
-    ).map(Matcher::byName)
+    object Ritual {
+        private val pack = "Breeding"
+        private val magicPack = "Teeming"
 
-    // For desecrated currency farming
-    val abyssGroup2 = listOf(
-        Abyss.pitRewards, Abyss.bones,
-    ).map(Matcher::byName)
+        private val moreReroll = "of Prayers"
 
-    val abyssNegative = listOf(Abyss.moreDifficult).map(Matcher::byName)
+        private val incTribute = "of Sacrifice"
+        private val rerollCost = "of the Dogma"
+        private val deferCost = "of Devotion"
+        private val reviveMagic = "of the Foundling"
+        private val omen = "of Omens"
+
+        val moreRerollOnly = listOf(Matcher.byName(moreReroll))
+        val everything = listOf(
+            pack,
+            magicPack,
+            moreReroll,
+            incTribute,
+            rerollCost,
+            deferCost,
+            reviveMagic,
+            omen,
+        ).map(Matcher::byName)
+        val oneOfCost = listOf(
+            rerollCost,
+            deferCost,
+        ).map(Matcher::byName)
+    }
+
 }
 
 object TabletPresets {
     val abyssCheap = Poe2TabletFirstPass(
         Poe2TabletFirstPass.Args(
-            TabletMods.abyssGroup1 + TabletMods.abyssGroup2
+            Abyss.omenFarm + Abyss.desecrateCurrencyFarm
         )
     )
     val abyssViaChaos = Poe2ChaoOnTablet(
         Poe2ChaoOnTablet.Args(
             listOf(
                 Poe2ChaoOnTablet.Group(
-                    goodMods = TabletMods.abyssGroup1,
+                    goodMods = Abyss.omenFarm,
                     goodModCount = 3,
-                    mustHaveMods = TabletMods.abyssGroup1MustHave,
-                    badMods = TabletMods.abyssNegative,
+                    mustHaveMods = Abyss.omenFarmMustHave,
+                    badMods = Abyss.negatives,
                 ),
                 Poe2ChaoOnTablet.Group(
-                    goodMods = TabletMods.abyssGroup2,
-                    2,
-                    TabletMods.abyssNegative,
+                    goodMods = Abyss.desecrateCurrencyFarm,
+                    goodModCount = 2,
+                    badMods = Abyss.negatives,
                 ),
             )
         )
     )
+
+    val ritual = Poe2ChaoOnTablet(
+        Poe2ChaoOnTablet.Args(
+            listOf(
+                Poe2ChaoOnTablet.Group(
+                    goodMods = TabletMods.Ritual.moreRerollOnly,
+                    goodModCount = 1,
+                ),
+                Poe2ChaoOnTablet.Group(
+                    goodMods = TabletMods.Ritual.oneOfCost,
+                    goodModCount = 2,
+                ),
+                Poe2ChaoOnTablet.Group(
+                    goodMods = TabletMods.Ritual.everything,
+                    // Could be too strict. Intention: The above 2 (reroll, cost) cover all usages.
+                    // This 3rd group is just fishing for extra.
+                    goodModCount = 4,
+                    mustHaveMods = TabletMods.Ritual.oneOfCost,
+                    mustHaveCount = 1,
+                ),
+            )
+        )
+    )
+
+    val ALL = abyssViaChaos + ritual
 }
 
 class TabletRollingMacro @Inject constructor(
@@ -81,7 +134,7 @@ class TabletRollingMacro @Inject constructor(
     private val consoleOutput: ConsoleOutput,
 ) : MacroDef {
     override suspend fun prepare(): MacroDef.Prepared {
-        val dm = TabletPresets.abyssViaChaos
+        val dm = TabletPresets.ALL
         val shouldContinue = shouldContinueChecker.getV2()
 
         suspend fun run() {
