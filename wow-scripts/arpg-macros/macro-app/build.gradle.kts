@@ -9,10 +9,13 @@ version = "1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
+    maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
+    google()
 }
 
 dependencies {
     implementation(project(":macro-core"))
+    implementation(project(":macro-overlay"))
 
     // Platform
     implementation("com.github.kwhat:jnativehook:2.2.2")

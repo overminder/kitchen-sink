@@ -1,6 +1,8 @@
 plugins {
     kotlin("jvm") version "2.0.10"
     id("com.google.devtools.ksp") version "2.0.10-1.0.24" apply false
+    id("org.jetbrains.compose") version "1.6.11" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.10" apply false
 }
 
 group = "org.example"

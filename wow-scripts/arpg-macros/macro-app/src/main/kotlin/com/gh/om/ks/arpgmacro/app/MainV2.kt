@@ -3,6 +3,7 @@ package com.gh.om.ks.arpgmacro.app
 import com.gh.om.ks.arpgmacro.app.di.AppComponent
 import com.gh.om.ks.arpgmacro.app.di.DaggerAppComponent
 import com.gh.om.ks.arpgmacro.core.MacroDef
+import com.gh.om.ks.arpgmacro.core.overlay.OverlayEntry
 import com.gh.om.ks.arpgmacro.di.GameType
 import com.gh.om.ks.arpgmacro.recipe.MacroDefsComponent
 import com.github.kwhat.jnativehook.GlobalScreen
@@ -14,6 +15,8 @@ import kotlinx.coroutines.runBlocking
 
 private data class MacroMapping(
     val triggerKey: String,
+    val displayName: String,
+    val category: String,
     val whichGame: WhichGame,
     val whichMacro: (MacroDefsComponent) -> MacroDef,
 )
@@ -32,13 +35,13 @@ private sealed class WhichGame {
 // This makes it clear which macro is triggered by which key, on which game.
 // XXX macros usually know which game they support. Why not ask them?
 private val macroMapping = listOf(
-    MacroMapping("02", WhichGame.Any) { it.printMousePos },
-    MacroMapping("021", WhichGame.Any) { it.parseAndPrintItem },
-    MacroMapping("11", WhichGame.EACH_POE) { it.mapRolling },
-    MacroMapping("12", WhichGame.POE2) { it.craftRollingV2 },
-    MacroMapping("13", WhichGame.POE2) { it.tabletRollingMacro },
-    MacroMapping("14", WhichGame.EACH_POE) { it.sortInStash },
-    MacroMapping("15", WhichGame.EACH_POE) { it.craftRolling },
+    MacroMapping("02", "Print mouse pos", "Utility", WhichGame.Any) { it.printMousePos },
+    MacroMapping("021", "Parse & print item", "Utility", WhichGame.Any) { it.parseAndPrintItem },
+    MacroMapping("11", "Map rolling", "Crafting", WhichGame.EACH_POE) { it.mapRolling },
+    MacroMapping("12", "Craft rolling (v2)", "Crafting", WhichGame.POE2) { it.craftRollingV2 },
+    MacroMapping("13", "Tablet rolling", "Crafting", WhichGame.POE2) { it.tabletRollingMacro },
+    MacroMapping("14", "Sort in stash", "Utility", WhichGame.EACH_POE) { it.sortInStash },
+    MacroMapping("15", "Craft rolling", "Crafting", WhichGame.EACH_POE) { it.craftRolling },
 )
 
 private fun CoroutineScope.instantiateMacrosAndTriggers(
@@ -82,6 +85,14 @@ private fun CoroutineScope.instantiateMacrosAndTriggers(
     }
 }
 
+internal val overlayEntries = macroMapping.map { mmap ->
+    OverlayEntry(
+        key = mmap.triggerKey,
+        label = mmap.displayName,
+        category = mmap.category,
+    )
+}
+
 fun main() {
     if (!isDebugging()) {
         GlobalScreen.registerNativeHook()
@@ -90,6 +101,11 @@ fun main() {
     }
     try {
         val component = DaggerAppComponent.create()
+
+        // Start the overlay window (hidden initially)
+        component.overlayOutputImpl().start()
+        println("compose.start ${component.overlayOutputImpl()}")
+
         println("Launching macros (Alt+X leader key, F4 to stop)")
         val jobs = mutableListOf<Job>()
         runBlocking {

@@ -2,6 +2,7 @@ package com.gh.om.ks.arpgmacro.app.di
 
 import com.gh.om.ks.arpgmacro.app.CraftPresets
 import com.gh.om.ks.arpgmacro.app.POE1_CURRENCY_TAB_SLOTS
+import com.gh.om.ks.arpgmacro.app.overlayEntries
 import com.gh.om.ks.arpgmacro.core.Clock
 import com.gh.om.ks.arpgmacro.core.KeyboardInput
 import com.gh.om.ks.arpgmacro.core.LeaderKeyDetector
@@ -10,6 +11,7 @@ import com.gh.om.ks.arpgmacro.core.arrange.PickDropSortImpl
 import com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMaker
 import com.gh.om.ks.arpgmacro.core.craft.CraftDecisionMakerV2
 import com.gh.om.ks.arpgmacro.core.craft.CurrencySlots
+import com.gh.om.ks.arpgmacro.core.overlay.OverlayOutput
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -31,10 +33,17 @@ abstract class MacroModule {
         fun leaderKeyDetector(
             keyboardInput: KeyboardInput,
             clock: Clock,
+            overlayOutput: OverlayOutput,
         ): LeaderKeyDetector = LeaderKeyDetector(
             leaderKey = setOf("Alt", "X"),
             keyboardInput = keyboardInput,
             clock = clock,
+            onLeaderActivated = {
+                overlayOutput.show(overlayEntries)
+            },
+            onLeaderDeactivated = {
+                overlayOutput.hide()
+            },
         )
 
         @Provides

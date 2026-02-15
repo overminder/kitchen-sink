@@ -2,6 +2,7 @@ package com.gh.om.ks.arpgmacro.core
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -20,8 +21,13 @@ class LeaderKeyDetector(
     private val keyboardInput: KeyboardInput,
     private val clock: Clock,
     private val timeout: Duration = 2.seconds,
+    private val onLeaderActivated: () -> Unit = {},
+    private val onLeaderDeactivated: () -> Unit = {},
 ) {
     private val commands = mutableSetOf<String>()
+
+    // Deduplicate callbacks across parallel isEnabled flows
+    private val leaderActive = AtomicBoolean(false)
 
     init {
         require(leaderKey.isNotEmpty())
@@ -53,6 +59,9 @@ class LeaderKeyDetector(
                             state = DetectorState.WaitingForCommand(collected = mutableListOf())
                             leaderMatchedAt = clock.currentTimeMillis()
                             keyBuffer = mutableListOf()
+                            if (leaderActive.compareAndSet(false, true)) {
+                                onLeaderActivated()
+                            }
                         }
                     }
 
@@ -64,6 +73,9 @@ class LeaderKeyDetector(
                             state = DetectorState.WaitingForLeader
                             keyBuffer = mutableListOf(key)
                             leaderMatchedAt = null
+                            if (leaderActive.compareAndSet(true, false)) {
+                                onLeaderDeactivated()
+                            }
                             emit(false)
                             return@collect
                         }
@@ -80,6 +92,9 @@ class LeaderKeyDetector(
                             state = DetectorState.WaitingForLeader
                             keyBuffer = mutableListOf()
                             leaderMatchedAt = null
+                            if (leaderActive.compareAndSet(true, false)) {
+                                onLeaderDeactivated()
+                            }
                         }
                     }
                 }
