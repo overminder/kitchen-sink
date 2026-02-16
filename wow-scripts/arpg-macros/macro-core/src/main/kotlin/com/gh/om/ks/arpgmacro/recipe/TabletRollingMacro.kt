@@ -57,6 +57,12 @@ object TabletMods {
         private val omen = "of Omens"
 
         val moreRerollOnly = listOf(Matcher.byName(moreReroll))
+        val moreRerollLuxury = listOf(
+            moreReroll,
+            rerollCost,
+            deferCost,
+            omen,
+        ).map(Matcher::byName)
         val everything = listOf(
             pack,
             magicPack,
@@ -115,7 +121,7 @@ object TabletPresets {
                     // Could be too strict. Intention: The above 2 (reroll, cost) cover all usages.
                     // This 3rd group is just fishing for extra.
                     goodModCount = 4,
-                    mustHaveMods = TabletMods.Ritual.oneOfCost,
+                    mustHaveMods = TabletMods.Ritual.moreRerollLuxury,
                     mustHaveCount = 1,
                 ),
             )
@@ -141,7 +147,7 @@ class TabletRollingMacro @Inject constructor(
             if (!shouldContinue.value) {
                 return
             }
-            val reroll = rerollFactory.create(200, dm)
+            val reroll = rerollFactory.create(500, dm)
             val slots = interactor.getOccupiedBagSlots()
             val report = multiRollLoop.rollItems(
                 dm.asItemChecker(),
