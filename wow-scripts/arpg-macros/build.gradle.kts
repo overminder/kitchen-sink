@@ -36,3 +36,10 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+tasks.register<JavaExec>("runFocusPoc") {
+    group = "application"
+    description = "Run the focus interception PoC (Phase 0)"
+    mainClass.set("com.gh.om.gamemacros.scratch.Focus_pocKt")
+    classpath = sourceSets["main"].runtimeClasspath
+}
