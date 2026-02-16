@@ -95,9 +95,9 @@ Do NOT use Claude's built-in plan mode. Instead, write plans directly to `task/`
 
 Primary: Windows (Win32 API via JNA). Secondary: macOS. Linux not implemented.
 
-## IntelliJ MCP
+## IntelliJ (jetbrain) MCP
 
-IntelliJ provides MCP tools that are useful for code analysis. Prefer these over CLI equivalents when IntelliJ is running:
+IntelliJ (jetbrains) provides MCP tools that are useful for code navigation and analysis. Prefer these over CLI equivalents.
 
 - **`find_files_by_name_keyword`** - Index-based file search by name substring. Faster than glob for finding files when you know part of the name. Does not support glob patterns or path matching.
 - **`search_in_files_by_text/regex`** - Project-wide text search using IntelliJ's index. Good for usage tracking (e.g. confirming dead code).
