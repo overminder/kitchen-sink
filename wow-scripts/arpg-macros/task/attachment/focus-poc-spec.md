@@ -80,12 +80,21 @@ fun SendInput(nInputs: Int, pInputs: Pointer, cbSize: Int): Int
 
 ## Success criteria
 
-- [ ] Focus steal succeeds at least 9/10 times when triggered from a JNativeHook callback
-- [ ] Focus return succeeds at least 9/10 times
-- [ ] Steal latency (call to confirmed) is under 100ms
-- [ ] Return latency is under 100ms
-- [ ] Identify which approach (a, b, or c) is needed and document it
-- [ ] Verify behavior with a game-like fullscreen window as the "previous" window (e.g., a maximized borderless Swing frame, or test with an actual game if convenient)
+- [x] Focus steal succeeds at least 9/10 times when triggered from a JNativeHook callback
+- [x] Focus return succeeds at least 9/10 times
+- [x] Steal latency (call to confirmed) is under 100ms
+- [x] Return latency is under 100ms
+- [x] Identify which approach (a, b, or c) is needed and document it
+- [x] Verify behavior with a game-like fullscreen window as the "previous" window (e.g., a maximized borderless Swing frame, or test with an actual game if convenient)
+
+## Results (2026-02-16, tested against POE2 borderless)
+
+- **Approach (a)** (direct `SetForegroundWindow`): Always fails (returns `false`). Windows blocks it.
+- **Approach (b)** (`SendInput` Alt down/up + `SetForegroundWindow`): 12/12 successes.
+- **Approach (c)** (`AttachThreadInput`): Not needed — (b) is reliable enough.
+- **Steal latency**: ~15ms
+- **Return latency**: ~16ms
+- **Conclusion**: Always use approach (b). JNA caveat: `INPUT` array must use `toArray(n)` for contiguous memory, not `arrayOf(INPUT(), INPUT())`.
 
 ## Non-goals
 

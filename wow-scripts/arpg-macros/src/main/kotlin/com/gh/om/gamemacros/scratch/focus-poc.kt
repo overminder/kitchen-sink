@@ -21,6 +21,7 @@ import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 
 /**
+ * Context: task/attachment/focus-poc-spec.md
  * Phase 0: Focus interception PoC
  *
  * Standalone experiment to verify that a JVM process can reliably steal and return
@@ -60,8 +61,9 @@ private fun tryDirectSetForeground(hwnd: HWND): Boolean {
  * The Alt press/release tricks Windows into thinking our process owns the input queue.
  */
 private fun tryAltWorkaround(hwnd: HWND): Boolean {
-    // Send Alt key down then up
-    val inputs = arrayOf(INPUT(), INPUT())
+    // Send Alt key down then up — must use toArray() for contiguous memory
+    @Suppress("UNCHECKED_CAST")
+    val inputs = INPUT().toArray(2) as Array<INPUT>
 
     // Alt down
     inputs[0].type = DWORD(INPUT.INPUT_KEYBOARD.toLong())
@@ -282,22 +284,15 @@ fun main() {
     var trialCount = 0
 
     val keyListener = object : NativeKeyListener {
-        // Track modifier state
-        private var altPressed = false
 
         override fun nativeKeyPressed(e: NativeKeyEvent) {
-            if (e.keyCode == NativeKeyEvent.VC_ALT) {
-                altPressed = true
-            }
         }
 
         override fun nativeKeyReleased(e: NativeKeyEvent) {
-            if (e.keyCode == NativeKeyEvent.VC_ALT) {
-                altPressed = false
+            if (e.modifiers.and(NativeKeyEvent.ALT_MASK) == 0) {
+                // No alt pressed
                 return
             }
-
-            if (!altPressed) return
 
             when (e.keyCode) {
                 NativeKeyEvent.VC_X -> {

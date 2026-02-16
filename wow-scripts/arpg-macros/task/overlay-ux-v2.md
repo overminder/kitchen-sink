@@ -262,9 +262,11 @@ So the practical ordering is: G8 requires click-through overlay (`WS_EX_TRANSPAR
 
 ## Implementation phases
 
-### Phase 0: Focus interception PoC (de-risks G7)
+### Phase 0: Focus interception PoC (de-risks G7) — DONE
 
 Standalone `main()` — no Dagger, no macros, no existing infrastructure. A minimal Swing window + JNativeHook + JNA. Answers the questions from Q5: Can we steal/return focus reliably? Which workaround is needed? What's the latency? See `task/attachment/focus-poc-spec.md`.
+
+**Result**: Approach (b) (`SendInput` Alt + `SetForegroundWindow`) works 12/12 against POE2 borderless. ~15ms latency both ways. Approach (a) always fails. PoC code: `src/.../scratch/focus-poc.kt`.
 
 ### Phase 1: StateFlow-driven picker + timeout fix (G1, G3, G4, G5, G6)
 
