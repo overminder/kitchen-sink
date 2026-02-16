@@ -286,9 +286,6 @@ fun main() {
     val keyListener = object : NativeKeyListener {
 
         override fun nativeKeyPressed(e: NativeKeyEvent) {
-        }
-
-        override fun nativeKeyReleased(e: NativeKeyEvent) {
             if (e.modifiers.and(NativeKeyEvent.ALT_MASK) == 0) {
                 // No alt pressed
                 return
@@ -304,6 +301,9 @@ fun main() {
                     running = false
                 }
             }
+        }
+
+        override fun nativeKeyReleased(e: NativeKeyEvent) {
         }
     }
 
