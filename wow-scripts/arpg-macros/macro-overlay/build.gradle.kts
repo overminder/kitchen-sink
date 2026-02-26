@@ -17,4 +17,5 @@ dependencies {
     implementation(project(":macro-core"))
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC.2")
 }

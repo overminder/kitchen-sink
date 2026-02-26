@@ -1,6 +1,6 @@
 # Overlay UX v3 — GUI-first interaction paradigm
 
-Status: todo
+Status: in-progress
 Dependencies: none
 Supersedes: overlay-ux-v2.md (kept for history and component-level design notes)
 

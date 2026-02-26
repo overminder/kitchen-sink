@@ -1,6 +1,8 @@
 package com.gh.om.ks.arpgmacro.app.di
 
-import com.gh.om.ks.arpgmacro.core.overlay.OverlayOutput
+import com.gh.om.ks.arpgmacro.app.impl.Win32FocusManager
+import com.gh.om.ks.arpgmacro.core.overlay.FocusManager
+import com.gh.om.ks.arpgmacro.core.overlay.OverlayController
 import com.gh.om.ks.arpgmacro.overlay.ComposeOverlayWindow
 import dagger.Module
 import dagger.Provides
@@ -10,9 +12,9 @@ import javax.inject.Singleton
 class OverlayModule {
     @Provides
     @Singleton
-    fun overlayOutput(impl: ComposeOverlayWindow): OverlayOutput = impl
+    fun overlayController(): OverlayController = ComposeOverlayWindow()
 
     @Provides
     @Singleton
-    fun overlayOutputImpl(): ComposeOverlayWindow = ComposeOverlayWindow()
+    fun focusManager(): FocusManager = Win32FocusManager()
 }
