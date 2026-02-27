@@ -4,9 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,19 +41,34 @@ import com.gh.om.ks.arpgmacro.core.overlay.MacroRegistration
 import com.gh.om.ks.arpgmacro.core.overlay.OverlayController
 import com.gh.om.ks.arpgmacro.core.overlay.OverlaySelection
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
 
 private const val OVERLAY_TITLE = "OMKSM Overlay"
 private const val INACTIVITY_TIMEOUT_MS = 8_000L
+private const val CONFIRM_COUNTDOWN_SECS = 3
 
 class ComposeOverlayWindow : OverlayController {
 
     // -- State shared between coordinator coroutine and Compose UI thread --
 
-    private var visible by mutableStateOf(false)
+    /** True while the picker / confirmation view is showing (window is focusable). */
+    private var pickerVisible by mutableStateOf(false)
     private var macros by mutableStateOf(emptyList<MacroRegistration>())
+
+    /**
+     * Non-null when the confirmation view is showing.
+     * Null means the picker view is active.
+     */
+    private var confirmingMacro by mutableStateOf<MacroRegistration?>(null)
+
+    /**
+     * Non-null while a macro is running — shows a click-through status badge.
+     * The window becomes non-focusable in this state.
+     */
+    private var runningMacroName by mutableStateOf<String?>(null)
 
     /**
      * Completes when the user selects a macro or cancels.
@@ -70,13 +87,14 @@ class ComposeOverlayWindow : OverlayController {
     override fun start() {
         thread(isDaemon = true, name = "overlay-ui") {
             application(exitProcessOnExit = false) {
+                val isVisible = pickerVisible || runningMacroName != null
                 Window(
                     onCloseRequest = { cancel() },
-                    visible = visible,
+                    visible = isVisible,
                     transparent = true,
                     undecorated = true,
                     alwaysOnTop = true,
-                    focusable = true,
+                    focusable = pickerVisible,
                     resizable = false,
                     title = OVERLAY_TITLE,
                     state = rememberWindowState(
@@ -91,12 +109,26 @@ class ComposeOverlayWindow : OverlayController {
                         }
                     },
                 ) {
-                    if (visible) {
-                        OverlayContent(
-                            macros = macros,
-                            onSelect = { reg -> complete(OverlaySelection.Selected(reg)) },
-                            onCancel = { cancel() },
-                        )
+                    if (pickerVisible) {
+                        val confirming = confirmingMacro
+                        if (confirming != null) {
+                            ConfirmationContent(
+                                registration = confirming,
+                                onConfirm = { complete(OverlaySelection.Selected(confirming)) },
+                                onCancel = { cancel() },
+                            )
+                        } else {
+                            OverlayContent(
+                                macros = macros,
+                                onSelect = { reg -> confirmingMacro = reg },
+                                onCancel = { cancel() },
+                            )
+                        }
+                    } else {
+                        val running = runningMacroName
+                        if (running != null) {
+                            ExecutionStatusContent(running)
+                        }
                     }
 
                     // Signal that the window is realized
@@ -122,16 +154,25 @@ class ComposeOverlayWindow : OverlayController {
 
         // Update compose state to show the overlay
         this.macros = macros
-        this.visible = true
+        this.pickerVisible = true
 
         return try {
             withTimeoutOrNull(INACTIVITY_TIMEOUT_MS) {
                 deferred.await()
             } ?: OverlaySelection.Cancelled
         } finally {
-            this.visible = false
+            this.pickerVisible = false
+            this.confirmingMacro = null
             pendingSelection = null
         }
+    }
+
+    override fun showExecutionStatus(macroName: String) {
+        runningMacroName = macroName
+    }
+
+    override fun hideExecutionStatus() {
+        runningMacroName = null
     }
 
     // -- Internal helpers --
@@ -145,28 +186,28 @@ class ComposeOverlayWindow : OverlayController {
     }
 
     private fun handleKeyEvent(key: Key): Boolean {
-        when (key) {
-            Key.Escape -> {
-                cancel()
-                return true
-            }
-            // Number keys 1-9 for positional selection
-            Key.One, Key.Two, Key.Three, Key.Four, Key.Five,
-            Key.Six, Key.Seven, Key.Eight, Key.Nine -> {
-                val index = when (key) {
-                    Key.One -> 0; Key.Two -> 1; Key.Three -> 2
-                    Key.Four -> 3; Key.Five -> 4; Key.Six -> 5
-                    Key.Seven -> 6; Key.Eight -> 7; Key.Nine -> 8
-                    else -> return false
-                }
-                val currentMacros = macros
-                if (index < currentMacros.size) {
-                    complete(OverlaySelection.Selected(currentMacros[index]))
-                    return true
-                }
+        val confirming = confirmingMacro
+        if (confirming != null) {
+            return when (key) {
+                Key.Escape -> { cancel(); true }
+                Key.Enter -> { complete(OverlaySelection.Selected(confirming)); true }
+                else -> false
             }
         }
-        return false
+
+        // Picker mode
+        when (key) {
+            Key.Escape -> { cancel(); return true }
+        }
+        val index = when (key) {
+            Key.One -> 0; Key.Two -> 1; Key.Three -> 2
+            Key.Four -> 3; Key.Five -> 4; Key.Six -> 5
+            Key.Seven -> 6; Key.Eight -> 7; Key.Nine -> 8
+            else -> return false
+        }
+        val reg = macros.getOrNull(index) ?: return false
+        confirmingMacro = reg
+        return true
     }
 }
 
@@ -178,6 +219,7 @@ private val categoryColor = Color(0xA0, 0xA0, 0xA0)
 private val shortcutColor = Color(0x4F, 0xC3, 0xF7)
 private val labelColor = Color(0xFA, 0xFA, 0xFA)
 private val escHintColor = Color(0x80, 0x80, 0x80)
+private val confirmButtonColor = Color(0x4F, 0xC3, 0xF7)
 
 // -- Composables --
 
@@ -243,6 +285,111 @@ private fun OverlayContent(
     // Request focus so keyboard events work immediately
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
+    }
+}
+
+@Composable
+private fun ConfirmationContent(
+    registration: MacroRegistration,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    var countdown by remember(registration.id) { mutableStateOf(CONFIRM_COUNTDOWN_SECS) }
+
+    // Auto-confirm countdown
+    LaunchedEffect(registration.id) {
+        repeat(CONFIRM_COUNTDOWN_SECS) {
+            delay(1_000L)
+            countdown--
+        }
+        onConfirm()
+    }
+
+    Column(
+        modifier = Modifier
+            .background(bgColor, RoundedCornerShape(8.dp))
+            .padding(12.dp)
+            .focusRequester(focusRequester)
+            .focusable()
+    ) {
+        // Header: macro name
+        Text(
+            text = registration.name,
+            color = headerColor,
+            fontSize = 15.sp,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+
+        // Divider
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(0.5.dp)
+                .background(categoryColor.copy(alpha = 0.4f)),
+        )
+
+        // Description
+        if (registration.description.isNotEmpty()) {
+            Text(
+                text = registration.description,
+                color = labelColor,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+            )
+        }
+
+        // Countdown
+        Text(
+            text = "Starting in ${countdown}s…",
+            color = shortcutColor,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(top = 12.dp, bottom = 16.dp),
+        )
+
+        // Action buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Go now",
+                color = confirmButtonColor,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .clickable { onConfirm() }
+                    .background(confirmButtonColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            Text(
+                text = "Cancel",
+                color = escHintColor,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .clickable { onCancel() }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+}
+
+@Composable
+private fun ExecutionStatusContent(macroName: String) {
+    Row(
+        modifier = Modifier
+            .background(bgColor.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("▶", color = shortcutColor, fontSize = 12.sp)
+        Text(macroName, color = labelColor, fontSize = 13.sp)
     }
 }
 

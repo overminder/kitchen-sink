@@ -21,4 +21,11 @@ interface FocusManager {
      * Return focus to the game window captured in the activation context.
      */
     fun returnFocusToGame(context: ActivationContext)
+
+    /**
+     * Exclude the named window from screen captures so macros don't see it in pixel reads.
+     * On Win32: calls SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE).
+     * No-op if the window is not found or the platform doesn't support this.
+     */
+    fun excludeWindowFromCapture(windowTitle: String)
 }

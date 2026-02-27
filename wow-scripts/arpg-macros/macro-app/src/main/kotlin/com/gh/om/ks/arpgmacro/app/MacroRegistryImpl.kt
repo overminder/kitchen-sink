@@ -67,12 +67,11 @@ class MacroRegistryImpl : MacroRegistry {
     override fun allMacros(): List<MacroRegistration> = registrations
 
     override fun macrosFor(context: ActivationContext): List<MacroRegistration> {
+        // Only show macros when in a recognized game — avoids interrupting other workflows
+        val detectedGame = GameType.entries.find { GameTitles.from(it) == context.gameTitle }
+            ?: return emptyList()
         return registrations.filter { reg ->
-            if (reg.gameFilter.isEmpty()) return@filter true
-
-            // Match game title to GameType
-            val detectedGame = GameType.entries.find { GameTitles.from(it) == context.gameTitle }
-            detectedGame != null && detectedGame.name in reg.gameFilter
+            reg.gameFilter.isEmpty() || detectedGame.name in reg.gameFilter
         }
     }
 }

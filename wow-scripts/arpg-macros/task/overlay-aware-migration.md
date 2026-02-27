@@ -20,12 +20,103 @@ Dependencies: none
 
 # List of macros not yet ported
 
-TODO
+Source: `GameSpecific.ALL` in `src/main/kotlin/.../GameSpecific.kt`.
 
-# Concise component design doc
+- [x] means don't migrate
+- [h] means on hold (don't migrate for now, may change later)
+- [ ] means will migrate
+- [o] means migrated
 
-TODO
+## Leader-key triggered (overlay selection)
+
+- [x] `PoeDivCard::turnInFromBag` — LEADER "03". Turn in div cards from inventory to NPC. POE1.
+- [x] `PoeRerollKirac::main` — LEADER "05". Reroll Kirac missions using OCR. POE1.
+- [ ] `PoeDumpBag::bagToStash` — LEADER "06". Ctrl+click all bag items to stash. POE1.
+- [ ] `PoeDumpBag::bagToStashForced` — LEADER "08". Force-move all bag items to stash. POE1.
+- [h] `PoeDumpBag::moveMapFromStashToBag` — LEADER "09". Move maps from map stash to bag. POE1.
+- [h] `PoeHarvestReforge::main` — LEADER "10". Harvest bench reforge until target mod. POE1.
+- [h] `PoeDumpBag::moveFromHeistLocker` — LEADER "12". Move heist contracts to inventory. POE1.
+- [h] `PoeDumpBag::moveFromRegularStash` — LEADER "13". Move items from regular stash to bag. POE1.
+- [h] `PoeAltAugRegal::multiRoll` — LEADER "15". Alt/aug/regal rolling on items in bag. POE1.
+- [h] `PoeRollMap::kiracInvitation` — LEADER "17". Reroll Kirac invitations. POE1.
+- [h] `PoeQualityApplier::main` — (LEADER, key TBD). Apply quality currency to items. POE1.
+
+## Non-leader-key triggered (background hotkey / toggle)
+
+- [ ] `ctrlClickManyTimesInPoe` — LEADER "01" toggle then runs continuously. Multi ctrl+click at mouse position. POE1. Note that even though this is not leader key triggered, it still needs an initial mouse position, so it makes sense to migrate it into a leader key triggered new macro.
+- [ ] `triggerSkillInPoe` — Hardcoded key hold. Auto-insert skill presses while attacking. POE1.
+- [ ] `toggleAutoAttackInPoe` — Hardcoded key toggle (D). Toggle auto-attack in simulacrum. POE1.
+- [ ] `triggerSkillsInD4` — Hardcoded key hold (W/R). Trigger D4 skills on round-robin. D4.
+
+## Out of scope (confirm by unchecking if wanted)
+
+- [x] `PoeAutoAlt::play` — Hardcoded, no leader key. Superseded by CraftRollingMacro/V2.
+- [x] `PoeAltAugRegal::craftInCurrencyTab` — LEADER "07". Superseded by CraftRollingMacro.
+- [x] `PoeRollMap::main` — LEADER "11". Already ported as MapRollingMacro.
+- [x] `PoeRollMap::sortInStash` — LEADER "14". Already ported as SortInStashMacro.
+- [x] `MouseCap::printMousePos` — LEADER "02". Already ported as PrintMousePosMacro.
+- [x] `townHotkeyInPoe` / `townHotkeyInPoe2` — Already ported as TownHotkeyMacro/V2.
+- [x] Commented-out macros: `lodWolInD3`, `triggerSkillsInD3`, `autoFlaskInPoe`, `tripleClickInPoe`, `novaOfFrostboltsInPoe`, `detonateMineInPoe`.
+
+# Concise component responsibilities
+
+## Existing (no changes needed)
+
+| Component | Responsibility |
+|-----------|---------------|
+| **LeaderKeyListener** | Detects Alt+X chord, emits `Flow<Unit>`. No state machine. |
+| **Coordinator** | Sequences: leader key → capture context → steal focus → show overlay → await selection → return focus → run macro. State guard prevents re-entrancy. |
+| **FocusManager** | Steal/return OS window focus between game and overlay. Capture `ActivationContext`. Exclude overlay from screen capture. Platform-specific (Win32). |
+| **OverlayController** | Interactive Compose window. `awaitSelection()` shows macro list, returns selection or cancel. `showExecutionStatus()`/`hideExecutionStatus()` for non-interactive status during macro run. |
+| **MacroRegistry** | Source of truth for macro descriptors. `macrosFor(context)` filters by detected game. |
+| **MacroRunner** | Resolves `MacroRegistration` → `MacroDef`, calls `prepare().run()`. |
+| **ActivationContext** | Snapshot: game HWND, window title, cursor position. Captured before focus steal. |
+
+## New or extended
+
+| Component | Responsibility |
+|-----------|---------------|
+| **MacroRegistryImpl** | Extend `macroSpecs` list with newly ported macros. No structural changes. |
+| **MacroDefsComponent** | Add DI provider methods for each new `MacroDef`. |
+| **BackgroundMacroRunner** | New. Manages non-leader-key macros that run continuously (triggerSkill, autoAttack, ctrlClickMany). Provides a single enable/disable toggle exposed to the overlay. Replaces the ad-hoc `GameSpecific.ALL` wiring. |
+| **MainV2** | Wire new background macros alongside existing town hotkey wiring. |
+
+## Communication for background macros
+
+```
+Overlay ──toggle──▶ BackgroundMacroRunner ──enable/disable──▶ [triggerSkill, autoAttack, ...]
+                         │
+                    observes game window focus (isPoe, isD4)
+                    observes key states (KeyHooks)
+```
+
+The overlay exposes a single toggle (visible when no leader-key macro is running) to enable/disable all background macros. Individual background macros still check their own game-specific conditions internally.
 
 # Milestones
 
-TODO
+## M1: Port leader-key macros (bulk of work)
+
+Port leader-key macros to `MacroDef` pattern and register in `MacroRegistryImpl`.
+
+Each macro port involves:
+1. Create `XyzMacro : MacroDef` in `macro-core/.../recipe/`
+2. Wire in Dagger (`MacroDefsComponent`, `MacroModule`)
+3. Add `MacroSpec` entry in `MacroRegistryImpl`
+4. Delete old code from `src/` once verified
+
+## M2: Port non-leader-key macros
+
+These don't use the overlay for selection but need:
+1. A `BackgroundMacroRunner` (or similar) to manage their lifecycle
+2. A toggle in the overlay to enable/disable them as a group
+3. Game-specific filtering (only run when the right game is focused)
+
+## M3: Overlay toggle for background macros
+
+Add a persistent UI element in the overlay (visible in Idle state or as an always-visible badge) that shows background macro status and allows toggling on/off.
+
+## M4: Cleanup
+
+- Remove `GameSpecific.ALL`, `GameSpecific.kt`, and the old `src/main.kt` entry point
+- Remove dead imports and old `LEADER_KEY` detector from `src/`
+- Verify `./gradlew build` and `./gradlew test` pass with only `:macro-*` modules

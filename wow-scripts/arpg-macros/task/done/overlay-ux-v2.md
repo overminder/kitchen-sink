@@ -1,6 +1,6 @@
 # Overlay UX — high-level design (v2)
 
-Status: todo
+Status: won't do (see v3)
 Dependencies: none
 Supersedes: overlay-ux.md (kept for history / implementation notes)
 

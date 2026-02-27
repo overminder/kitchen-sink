@@ -3,6 +3,8 @@ package com.gh.om.ks.arpgmacro.app.impl
 import com.gh.om.ks.arpgmacro.core.ScreenPoint
 import com.gh.om.ks.arpgmacro.core.overlay.ActivationContext
 import com.gh.om.ks.arpgmacro.core.overlay.FocusManager
+import com.sun.jna.Library
+import com.sun.jna.Native
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef.DWORD
 import com.sun.jna.platform.win32.WinDef.HWND
@@ -10,6 +12,19 @@ import com.sun.jna.platform.win32.WinDef.POINT
 import com.sun.jna.platform.win32.WinDef.WORD
 import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.platform.win32.WinUser.INPUT
+
+/**
+ * JNA binding for SetWindowDisplayAffinity (not in jna-platform's User32).
+ * WDA_EXCLUDEFROMCAPTURE hides the window from GDI/Robot-based screen captures (Win10 2004+).
+ */
+private interface User32Ext : Library {
+    fun SetWindowDisplayAffinity(hwnd: HWND, dwAffinity: Int): Boolean
+
+    companion object {
+        const val WDA_EXCLUDEFROMCAPTURE = 0x00000011
+        val INSTANCE: User32Ext = Native.load("user32", User32Ext::class.java)
+    }
+}
 
 /**
  * Win32 implementation of [FocusManager].
@@ -47,6 +62,11 @@ class Win32FocusManager : FocusManager {
     override fun returnFocusToGame(context: ActivationContext) {
         val hwnd = context.gameWindowHandle as? HWND ?: return
         user32.SetForegroundWindow(hwnd)
+    }
+
+    override fun excludeWindowFromCapture(windowTitle: String) {
+        val hwnd = user32.FindWindow(null, windowTitle) ?: return
+        User32Ext.INSTANCE.SetWindowDisplayAffinity(hwnd, User32Ext.WDA_EXCLUDEFROMCAPTURE)
     }
 
     private fun sendAltKeyPress() {

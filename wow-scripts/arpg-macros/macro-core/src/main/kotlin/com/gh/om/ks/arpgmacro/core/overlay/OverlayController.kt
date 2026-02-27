@@ -33,4 +33,13 @@ interface OverlayController {
         macros: List<MacroRegistration>,
         context: ActivationContext,
     ): OverlaySelection
+
+    /**
+     * Show a non-interactive (click-through) status indicator while [macroName] runs.
+     * Call before [MacroRunner.run]; the overlay window remains visible but non-focusable.
+     */
+    fun showExecutionStatus(macroName: String)
+
+    /** Hide the execution status indicator. Call when the macro completes or is cancelled. */
+    fun hideExecutionStatus()
 }

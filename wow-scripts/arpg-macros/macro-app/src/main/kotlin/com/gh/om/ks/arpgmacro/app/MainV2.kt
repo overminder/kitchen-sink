@@ -30,6 +30,8 @@ fun main() {
 
         // Start the overlay window (hidden initially)
         overlayController.start()
+        // Exclude the overlay from GDI screen captures so macros don't see it in pixel reads
+        focusManager.excludeWindowFromCapture(overlayController.overlayWindowTitle())
 
         // Wire the coordinator
         val coordinator = Coordinator(

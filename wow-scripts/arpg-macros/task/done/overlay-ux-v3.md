@@ -1,6 +1,6 @@
 # Overlay UX v3 — GUI-first interaction paradigm
 
-Status: in-progress
+Status: done
 Dependencies: none
 Supersedes: overlay-ux-v2.md (kept for history and component-level design notes)
 
@@ -270,7 +270,7 @@ This is strictly better than v2's trigger key sequences because:
 
 ## Implementation phases
 
-### Phase 1: Interactive overlay MVP
+### Phase 1: Interactive overlay MVP ✓
 
 - Leader key listener (simplified from v2's detector)
 - Focus Manager (reuse phase 0 PoC logic: `SendInput` Alt + `SetForegroundWindow`)
@@ -278,23 +278,29 @@ This is strictly better than v2's trigger key sequences because:
 - Compose Desktop overlay window: macro list with clickable buttons, keyboard shortcuts, grouped by category, filtered by detected game
 - Coordinator wiring: Alt+X → capture context → steal focus → await selection → return focus → run macro
 - Cancel via Escape, timeout on inactivity
+- Game gate: overlay only opens when a recognized POE game is the foreground window
 
-This is one phase where v2 had three (phases 1-3) because focus interception is no longer a separate concern — it's baked in from the start.
-
-### Phase 2: Confirmation step
+### Phase 2: Confirmation step ✓
 
 - After selection, show macro description + countdown before executing
-- Enter / click to confirm immediately, Escape to cancel
-- Auto-confirm after countdown
+- Enter / "Go now" click to confirm immediately, Escape / "Cancel" to cancel entirely
+- Auto-confirm after 3s countdown
 
-### Phase 3: Live execution status (G8)
+### Phase 3: Live execution status (G8) ✓
 
 - Overlay shows progress during macro execution (click-through mode)
-- Macro engine reports status as `StateFlow`
+- `OverlayController` exposes `showExecutionStatus(name)` / `hideExecutionStatus()`;
+  coordinator calls them around `macroRunner.run()`
+- Window becomes non-focusable (`focusable = pickerVisible`) while status badge is shown
 
-### Phase 4: Screen capture exclusion (G9)
+### Phase 4: Screen capture exclusion (G9) ✓
 
-- Per-window capture so macros don't see the overlay in pixel reads
+- `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` applied to the overlay HWND at startup
+- `FocusManager.excludeWindowFromCapture(windowTitle)` added to the interface; implemented in
+  `Win32FocusManager` with a private JNA binding to `user32!SetWindowDisplayAffinity`
+- Called in `MainV2` after `overlayController.start()`, before wiring the coordinator
+- Effect: GDI/Robot screen captures (`captureScreen`, `getPixelColor`) see through the overlay
+  to the game content behind it (Win10 2004+ behaviour of `WDA_EXCLUDEFROMCAPTURE`)
 
 ## Resolved decisions
 

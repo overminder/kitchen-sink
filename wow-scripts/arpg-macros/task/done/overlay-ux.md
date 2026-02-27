@@ -1,6 +1,6 @@
 # Overlay UX improvements
 
-Status: todo
+Status: won't do (see v3)
 Dependencies: none
 
 ## Design goals and invariants

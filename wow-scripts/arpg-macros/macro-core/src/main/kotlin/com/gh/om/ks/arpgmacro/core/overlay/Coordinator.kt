@@ -48,6 +48,9 @@ class Coordinator(
             if (state != CoordinatorState.Idle) return
 
             val context = focusManager.captureActivationContext() ?: return
+            val macros = macroRegistry.macrosFor(context)
+            if (macros.isEmpty()) return   // not in a recognized game, skip silently
+
             state = CoordinatorState.Open
 
             try {
@@ -55,7 +58,6 @@ class Coordinator(
                     overlayController.overlayWindowTitle()
                 )
 
-                val macros = macroRegistry.macrosFor(context)
                 val selection = overlayController.awaitSelection(macros, context)
 
                 // Always return focus before running macro or on cancel
@@ -65,7 +67,12 @@ class Coordinator(
                     is OverlaySelection.Cancelled -> {}
                     is OverlaySelection.Selected -> {
                         state = CoordinatorState.MacroRunning
-                        macroRunner.run(selection.registration, context)
+                        overlayController.showExecutionStatus(selection.registration.name)
+                        try {
+                            macroRunner.run(selection.registration, context)
+                        } finally {
+                            overlayController.hideExecutionStatus()
+                        }
                     }
                 }
             } finally {
