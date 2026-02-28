@@ -1,6 +1,6 @@
 # Migrate src/ to :macro-* and adapt overlay patterns
 
-Status: todo
+Status: in-progress
 Dependencies: none
 
 # Terminology
@@ -31,8 +31,8 @@ Source: `GameSpecific.ALL` in `src/main/kotlin/.../GameSpecific.kt`.
 
 - [x] `PoeDivCard::turnInFromBag` — LEADER "03". Turn in div cards from inventory to NPC. POE1.
 - [x] `PoeRerollKirac::main` — LEADER "05". Reroll Kirac missions using OCR. POE1.
-- [ ] `PoeDumpBag::bagToStash` — LEADER "06". Ctrl+click all bag items to stash. POE1.
-- [ ] `PoeDumpBag::bagToStashForced` — LEADER "08". Force-move all bag items to stash. POE1.
+- [o] `PoeDumpBag::bagToStash` — LEADER "06". Ctrl+click all bag items to stash. POE1.
+- [o] `PoeDumpBag::bagToStashForced` — LEADER "08". Force-move all bag items to stash. POE1.
 - [h] `PoeDumpBag::moveMapFromStashToBag` — LEADER "09". Move maps from map stash to bag. POE1.
 - [h] `PoeHarvestReforge::main` — LEADER "10". Harvest bench reforge until target mod. POE1.
 - [h] `PoeDumpBag::moveFromHeistLocker` — LEADER "12". Move heist contracts to inventory. POE1.
@@ -40,10 +40,10 @@ Source: `GameSpecific.ALL` in `src/main/kotlin/.../GameSpecific.kt`.
 - [h] `PoeAltAugRegal::multiRoll` — LEADER "15". Alt/aug/regal rolling on items in bag. POE1.
 - [h] `PoeRollMap::kiracInvitation` — LEADER "17". Reroll Kirac invitations. POE1.
 - [h] `PoeQualityApplier::main` — (LEADER, key TBD). Apply quality currency to items. POE1.
+- [o] `ctrlClickManyTimesInPoe` — LEADER "01" toggle then runs continuously. Multi ctrl+click at mouse position. POE1. Note that even though in the old macro, this is not leader key triggered, it still needs an initial mouse position, so it makes sense to migrate it into a leader key triggered new macro.
 
 ## Non-leader-key triggered (background hotkey / toggle)
 
-- [ ] `ctrlClickManyTimesInPoe` — LEADER "01" toggle then runs continuously. Multi ctrl+click at mouse position. POE1. Note that even though this is not leader key triggered, it still needs an initial mouse position, so it makes sense to migrate it into a leader key triggered new macro.
 - [ ] `triggerSkillInPoe` — Hardcoded key hold. Auto-insert skill presses while attacking. POE1.
 - [ ] `toggleAutoAttackInPoe` — Hardcoded key toggle (D). Toggle auto-attack in simulacrum. POE1.
 - [ ] `triggerSkillsInD4` — Hardcoded key hold (W/R). Trigger D4 skills on round-robin. D4.

@@ -25,7 +25,7 @@ class SortInStashMacro @Inject constructor(
             anyWindowTitles = GameTitles.ALL_POE,
         )
 
-        return MacroDef.Prepared {
+        return MacroDef.Prepared { _ ->
             if (!shouldContinue.value) return@Prepared
             val stashSlots = PoeScreenConstants.allGrids(
                 start = PoeScreenConstants.firstItemInRegularStash,

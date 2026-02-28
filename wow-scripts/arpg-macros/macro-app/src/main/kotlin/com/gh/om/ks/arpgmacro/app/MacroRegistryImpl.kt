@@ -48,6 +48,15 @@ val macroSpecs = listOf(
     MacroSpec("sort-stash", "Sort in stash", "Utility", whichGame = WhichGame.EACH_POE) { it.sortInStash },
     MacroSpec("print-mouse-pos", "Print mouse pos", "Utility", whichGame = WhichGame.Any) { it.printMousePos },
     MacroSpec("parse-print-item", "Parse & print item", "Utility", whichGame = WhichGame.Any) { it.parseAndPrintItem },
+    MacroSpec("dump-bag", "Dump bag to stash", "Utility",
+        description = "Ctrl+click all occupied bag slots to stash.",
+        whichGame = WhichGame.POE1) { it.dumpBagToStash },
+    MacroSpec("dump-bag-forced", "Force dump bag to stash", "Utility",
+        description = "Ctrl+Shift+click all occupied bag slots to current stash tab.",
+        whichGame = WhichGame.POE1) { it.dumpBagToStashForced },
+    MacroSpec("ctrl-click-cursor", "Ctrl-click at cursor (×300)", "Utility",
+        description = "Ctrl+click 300 times at the cursor position captured on activation.",
+        whichGame = WhichGame.POE1) { it.ctrlClickAtCursor },
 )
 
 /**
@@ -107,7 +116,7 @@ class MacroRunnerImpl(
             val defs = macroDefs[gameType] ?: continue
             val macroDef = spec.whichMacro(defs)
             val prepared = macroDef.prepare()
-            prepared.run()
+            prepared.run(context)
         }
     }
 }

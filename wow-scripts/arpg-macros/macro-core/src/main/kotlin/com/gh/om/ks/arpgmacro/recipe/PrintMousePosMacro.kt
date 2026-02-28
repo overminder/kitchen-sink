@@ -27,7 +27,7 @@ class PrintMousePosMacro @Inject constructor(
             anyWindowTitles = GameTitles.ALL_POE,
         )
 
-        return MacroDef.Prepared {
+        return MacroDef.Prepared { _ ->
             if (!shouldContinue.value) return@Prepared
             val pos = mousePosition.value
             val color = screen.getPixelColor(pos)

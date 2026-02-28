@@ -21,7 +21,7 @@ class ParseAndPrintItemMacro @Inject constructor(
         val mousePosition = mouseInput.motionEvents()
             .stateIn(CoroutineScope(currentCoroutineContext()))
         val shouldContinue = shouldContinueChecker.get(GameTitles.ALL_POE)
-        return MacroDef.Prepared {
+        return MacroDef.Prepared { _ ->
             if (!shouldContinue.value) {
                 return@Prepared
             }

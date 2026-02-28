@@ -31,7 +31,7 @@ class CraftRollingMacro @Inject constructor(
             anyWindowTitles = GameTitles.ALL_POE,
         )
 
-        return MacroDef.Prepared {
+        return MacroDef.Prepared { _ ->
             if (!shouldContinue.value) return@Prepared
             val slots = poeInteractor.getOccupiedBagSlots()
             if (slots.isEmpty()) {
@@ -69,7 +69,7 @@ class CraftRollingMacroV2 @Inject constructor(
             anyWindowTitles = GameTitles.ALL_POE,
         )
 
-        return MacroDef.Prepared {
+        return MacroDef.Prepared { _ ->
             if (!shouldContinue.value) return@Prepared
             val slots = interactor.getOccupiedBagSlots()
             if (slots.isEmpty()) {
