@@ -158,6 +158,6 @@ class TabletRollingMacro @Inject constructor(
             consoleOutput.println(report.details)
         }
 
-        return MacroDef.Prepared(::run)
+        return MacroDef.Prepared { run() }
     }
 }

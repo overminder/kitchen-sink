@@ -7,11 +7,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.isActive
 import com.gh.om.ks.arpgmacro.core.ActiveWindowChecker
 import com.gh.om.ks.arpgmacro.core.GlobalMacroConfig
@@ -33,6 +37,18 @@ object GameTitles {
             GameType.Diablo4 -> "Diablo IV"
         }
     }
+}
+
+/**
+ * Derives a hot set of currently-pressed keys from press/release events.
+ * Thread-safe: uses a ConcurrentHashMap-backed set.
+ */
+fun KeyboardInput.keyStates(): Flow<Set<String>> {
+    val pressed = ConcurrentHashMap.newKeySet<String>()
+    return merge(
+        keyPresses().map { key -> pressed.apply { add(key) }.toSet() },
+        keyReleases().map { key -> pressed.apply { remove(key) }.toSet() },
+    ).onStart { emit(emptySet()) }.distinctUntilChanged()
 }
 
 /**

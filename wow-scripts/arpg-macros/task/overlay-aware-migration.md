@@ -44,9 +44,9 @@ Source: `GameSpecific.ALL` in `src/main/kotlin/.../GameSpecific.kt`.
 
 ## Non-leader-key triggered (background hotkey / toggle)
 
-- [ ] `triggerSkillInPoe` — Hardcoded key hold. Auto-insert skill presses while attacking. POE1.
-- [ ] `toggleAutoAttackInPoe` — Hardcoded key toggle (D). Toggle auto-attack in simulacrum. POE1.
-- [ ] `triggerSkillsInD4` — Hardcoded key hold (W/R). Trigger D4 skills on round-robin. D4.
+- [o] `triggerSkillInPoe` — Hardcoded key hold. Auto-insert skill presses while attacking. POE1.
+- [o] `toggleAutoAttackInPoe` — Hardcoded key toggle (D). Toggle auto-attack in simulacrum. POE1.
+- [o] `triggerSkillsInD4` — Hardcoded key hold (W/R). Trigger D4 skills on round-robin. D4.
 
 ## Out of scope (confirm by unchecking if wanted)
 

@@ -34,6 +34,8 @@ fun main() {
         focusManager.excludeWindowFromCapture(overlayController.overlayWindowTitle())
 
         // Wire the coordinator
+        val backgroundMacroRunner = component.backgroundMacroRunner()
+
         val coordinator = Coordinator(
             focusManager = focusManager,
             overlayController = overlayController,
@@ -62,6 +64,9 @@ fun main() {
                     coordinator.onLeaderKey()
                 }
             }
+
+            // Background macros (triggerSkill, toggleAutoAttack, D4 skills)
+            jobs += async { backgroundMacroRunner.run() }
 
             // Non-leader key based macros (town hotkey)
             GameType.entries.forEach { gameType ->
