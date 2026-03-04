@@ -28,7 +28,7 @@ object GameSpecific {
         ::triggerSkillsInD4,
         ::townHotkeyInPoe,
         ::townHotkeyInPoe2,
-        // ::autoFlaskInPoe,
+        ::autoFlaskInPoe,
         // ::tripleClickInPoe,
         // ::novaOfFrostboltsInPoe,
         // ::detonateMineInPoe,

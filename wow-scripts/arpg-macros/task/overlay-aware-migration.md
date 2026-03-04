@@ -47,6 +47,7 @@ Source: `GameSpecific.ALL` in `src/main/kotlin/.../GameSpecific.kt`.
 - [o] `triggerSkillInPoe` — Hardcoded key hold. Auto-insert skill presses while attacking. POE1.
 - [o] `toggleAutoAttackInPoe` — Hardcoded key toggle (D). Toggle auto-attack in simulacrum. POE1.
 - [o] `triggerSkillsInD4` — Hardcoded key hold (W/R). Trigger D4 skills on round-robin. D4.
+- [ ] `autoFlaskInPoe`
 
 ## Out of scope (confirm by unchecking if wanted)
 
@@ -56,7 +57,7 @@ Source: `GameSpecific.ALL` in `src/main/kotlin/.../GameSpecific.kt`.
 - [x] `PoeRollMap::sortInStash` — LEADER "14". Already ported as SortInStashMacro.
 - [x] `MouseCap::printMousePos` — LEADER "02". Already ported as PrintMousePosMacro.
 - [x] `townHotkeyInPoe` / `townHotkeyInPoe2` — Already ported as TownHotkeyMacro/V2.
-- [x] Commented-out macros: `lodWolInD3`, `triggerSkillsInD3`, `autoFlaskInPoe`, `tripleClickInPoe`, `novaOfFrostboltsInPoe`, `detonateMineInPoe`.
+- [x] Commented-out macros: `lodWolInD3`, `triggerSkillsInD3`, `tripleClickInPoe`, `novaOfFrostboltsInPoe`, `detonateMineInPoe`.
 
 # Concise component responsibilities
 
@@ -114,6 +115,12 @@ These don't use the overlay for selection but need:
 ## M3: Overlay toggle for background macros
 
 Add a persistent UI element in the overlay (visible in Idle state or as an always-visible badge) that shows background macro status and allows toggling on/off.
+
+## M3.1: refine
+
+- Port autoFlaskInPoe, including the different configs in PoeFlasks (maybe as a dropdown in overlay, and ideally have the flask patterns better visualized than just a name. For example show 5 O-shapes (w:h=1:3 tall ellipsis) for 5 flask slots, outline-only for non-automated slot, filled for automated slot; same colors in an alt group, different colors in a par group)
+- Change the "BG macros" toggle to only display when leader key is pressed.
+- Pause any background macros when the main overlay is launched (excluding the small overlay that shows macro run confirmations)
 
 ## M4: Cleanup
 
