@@ -1,5 +1,7 @@
 package com.gh.om.ks.arpgmacro.core.overlay
 
+import kotlinx.coroutines.flow.StateFlow
+
 /**
  * Result of the user interacting with the overlay.
  */
@@ -42,4 +44,11 @@ interface OverlayController {
 
     /** Hide the execution status indicator. Call when the macro completes or is cancelled. */
     fun hideExecutionStatus()
+
+    /**
+     * Connect background macro state to the overlay so it can show a persistent toggle badge.
+     * The badge is visible whenever the overlay is not showing the macro picker.
+     * Default no-op for implementations that don't support the badge.
+     */
+    fun connectBackgroundMacros(isEnabled: StateFlow<Boolean>, onToggle: () -> Unit) = Unit
 }

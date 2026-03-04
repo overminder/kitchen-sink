@@ -33,8 +33,12 @@ fun main() {
         // Exclude the overlay from GDI screen captures so macros don't see it in pixel reads
         focusManager.excludeWindowFromCapture(overlayController.overlayWindowTitle())
 
-        // Wire the coordinator
+        // Wire background macros into the overlay toggle badge (M3)
         val backgroundMacroRunner = component.backgroundMacroRunner()
+        overlayController.connectBackgroundMacros(
+            isEnabled = backgroundMacroRunner.isEnabled,
+            onToggle = backgroundMacroRunner::toggle,
+        )
 
         val coordinator = Coordinator(
             focusManager = focusManager,

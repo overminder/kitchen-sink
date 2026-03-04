@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +44,7 @@ import com.gh.om.ks.arpgmacro.core.overlay.OverlayController
 import com.gh.om.ks.arpgmacro.core.overlay.OverlaySelection
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
@@ -70,6 +73,18 @@ class ComposeOverlayWindow : OverlayController {
      */
     private var runningMacroName by mutableStateOf<String?>(null)
 
+    /** True once [connectBackgroundMacros] has been called. Triggers badge visibility. */
+    private var bgMacrosConnected by mutableStateOf(false)
+
+    /** Mirrors the latest value from the background macro runner's isEnabled flow. */
+    private var bgMacrosEnabled by mutableStateOf(true)
+
+    /** The source of truth for background macro enabled state; collected inside the composable. */
+    @Volatile private var bgEnabledFlow: StateFlow<Boolean>? = null
+
+    /** Callback to toggle background macros; invoked from the badge click. */
+    @Volatile private var bgToggleCallback: (() -> Unit)? = null
+
     /**
      * Completes when the user selects a macro or cancels.
      * Null when the overlay is not showing.
@@ -87,7 +102,12 @@ class ComposeOverlayWindow : OverlayController {
     override fun start() {
         thread(isDaemon = true, name = "overlay-ui") {
             application(exitProcessOnExit = false) {
-                val isVisible = pickerVisible || runningMacroName != null
+                val isVisible = pickerVisible || runningMacroName != null || bgMacrosConnected
+                val windowState = rememberWindowState(
+                    position = WindowPosition(32.dp, 32.dp),
+                    size = PICKER_SIZE,
+                )
+
                 Window(
                     onCloseRequest = { cancel() },
                     visible = isVisible,
@@ -97,10 +117,7 @@ class ComposeOverlayWindow : OverlayController {
                     focusable = pickerVisible,
                     resizable = false,
                     title = OVERLAY_TITLE,
-                    state = rememberWindowState(
-                        position = WindowPosition(32.dp, 32.dp),
-                        size = DpSize(320.dp, 420.dp),
-                    ),
+                    state = windowState,
                     onPreviewKeyEvent = { keyEvent ->
                         if (keyEvent.type == KeyEventType.KeyDown) {
                             handleKeyEvent(keyEvent.key)
@@ -109,6 +126,20 @@ class ComposeOverlayWindow : OverlayController {
                         }
                     },
                 ) {
+                    // Sync window size to current display mode
+                    LaunchedEffect(pickerVisible, runningMacroName, bgMacrosConnected) {
+                        windowState.size = computeWindowSize(
+                            pickerVisible,
+                            runningMacroName != null,
+                            bgMacrosConnected,
+                        )
+                    }
+
+                    // Collect background macro enabled state from the runner's flow
+                    LaunchedEffect(bgMacrosConnected) {
+                        bgEnabledFlow?.collect { bgMacrosEnabled = it }
+                    }
+
                     if (pickerVisible) {
                         val confirming = confirmingMacro
                         if (confirming != null) {
@@ -125,9 +156,17 @@ class ComposeOverlayWindow : OverlayController {
                             )
                         }
                     } else {
-                        val running = runningMacroName
-                        if (running != null) {
-                            ExecutionStatusContent(running)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            val running = runningMacroName
+                            if (running != null) {
+                                ExecutionStatusContent(running)
+                            }
+                            if (bgMacrosConnected) {
+                                BackgroundMacrosBadge(
+                                    enabled = bgMacrosEnabled,
+                                    onToggle = { bgToggleCallback?.invoke() },
+                                )
+                            }
                         }
                     }
 
@@ -175,6 +214,13 @@ class ComposeOverlayWindow : OverlayController {
         runningMacroName = null
     }
 
+    override fun connectBackgroundMacros(isEnabled: StateFlow<Boolean>, onToggle: () -> Unit) {
+        bgEnabledFlow = isEnabled
+        bgToggleCallback = onToggle
+        bgMacrosEnabled = isEnabled.value
+        bgMacrosConnected = true
+    }
+
     // -- Internal helpers --
 
     private fun complete(selection: OverlaySelection) {
@@ -211,6 +257,24 @@ class ComposeOverlayWindow : OverlayController {
     }
 }
 
+// -- Window sizing --
+
+private val PICKER_SIZE = DpSize(320.dp, 420.dp)
+private val BADGE_SIZE = DpSize(200.dp, 36.dp)
+private val STATUS_SIZE = DpSize(240.dp, 36.dp)
+private val STATUS_AND_BADGE_SIZE = DpSize(240.dp, 76.dp)
+
+private fun computeWindowSize(
+    pickerVisible: Boolean,
+    hasRunning: Boolean,
+    hasBadge: Boolean,
+): DpSize = when {
+    pickerVisible -> PICKER_SIZE
+    hasRunning && hasBadge -> STATUS_AND_BADGE_SIZE
+    hasRunning -> STATUS_SIZE
+    else -> BADGE_SIZE
+}
+
 // -- Colors --
 
 private val bgColor = Color(0x1a, 0x1a, 0x2e).copy(alpha = 0.93f)
@@ -220,6 +284,8 @@ private val shortcutColor = Color(0x4F, 0xC3, 0xF7)
 private val labelColor = Color(0xFA, 0xFA, 0xFA)
 private val escHintColor = Color(0x80, 0x80, 0x80)
 private val confirmButtonColor = Color(0x4F, 0xC3, 0xF7)
+private val bgOnColor = Color(0x4C, 0xAF, 0x50)
+private val bgOffColor = Color(0x75, 0x75, 0x75)
 
 // -- Composables --
 
@@ -390,6 +456,27 @@ private fun ExecutionStatusContent(macroName: String) {
     ) {
         Text("▶", color = shortcutColor, fontSize = 12.sp)
         Text(macroName, color = labelColor, fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun BackgroundMacrosBadge(enabled: Boolean, onToggle: () -> Unit) {
+    val dotColor = if (enabled) bgOnColor else bgOffColor
+    val label = if (enabled) "BG macros: ON" else "BG macros: OFF"
+    Row(
+        modifier = Modifier
+            .background(bgColor.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+            .clickable { onToggle() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(dotColor, CircleShape),
+        )
+        Text(label, color = labelColor, fontSize = 12.sp)
     }
 }
 
