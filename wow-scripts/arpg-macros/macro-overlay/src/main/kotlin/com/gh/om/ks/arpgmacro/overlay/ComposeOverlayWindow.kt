@@ -1,6 +1,7 @@
 package com.gh.om.ks.arpgmacro.overlay
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,9 +42,11 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.gh.om.ks.arpgmacro.core.overlay.ActivationContext
+import com.gh.om.ks.arpgmacro.core.overlay.BackgroundMacroState
 import com.gh.om.ks.arpgmacro.core.overlay.MacroRegistration
 import com.gh.om.ks.arpgmacro.core.overlay.OverlayController
 import com.gh.om.ks.arpgmacro.core.overlay.OverlaySelection
+import com.gh.om.ks.arpgmacro.recipe.poe.PoeFlasks
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
@@ -73,17 +78,14 @@ class ComposeOverlayWindow : OverlayController {
      */
     private var runningMacroName by mutableStateOf<String?>(null)
 
-    /** True once [connectBackgroundMacros] has been called. Triggers badge visibility. */
-    private var bgMacrosConnected by mutableStateOf(false)
+    /** Background macro state; set via [connectBackgroundMacros]. */
+    @Volatile private var bgMacroState: BackgroundMacroState? = null
 
     /** Mirrors the latest value from the background macro runner's isEnabled flow. */
     private var bgMacrosEnabled by mutableStateOf(true)
 
-    /** The source of truth for background macro enabled state; collected inside the composable. */
-    @Volatile private var bgEnabledFlow: StateFlow<Boolean>? = null
-
-    /** Callback to toggle background macros; invoked from the badge click. */
-    @Volatile private var bgToggleCallback: (() -> Unit)? = null
+    /** Mirrors the latest selected flask config from the runner's flow. */
+    private var bgSelectedFlaskConfig by mutableStateOf<PoeFlasks.Config>(PoeFlasks.mbTincture)
 
     /**
      * Completes when the user selects a macro or cancels.
@@ -102,7 +104,7 @@ class ComposeOverlayWindow : OverlayController {
     override fun start() {
         thread(isDaemon = true, name = "overlay-ui") {
             application(exitProcessOnExit = false) {
-                val isVisible = pickerVisible || runningMacroName != null || bgMacrosConnected
+                val isVisible = pickerVisible || runningMacroName != null
                 val windowState = rememberWindowState(
                     position = WindowPosition(32.dp, 32.dp),
                     size = PICKER_SIZE,
@@ -127,17 +129,22 @@ class ComposeOverlayWindow : OverlayController {
                     },
                 ) {
                     // Sync window size to current display mode
-                    LaunchedEffect(pickerVisible, runningMacroName, bgMacrosConnected) {
+                    LaunchedEffect(pickerVisible, runningMacroName) {
                         windowState.size = computeWindowSize(
                             pickerVisible,
                             runningMacroName != null,
-                            bgMacrosConnected,
                         )
                     }
 
                     // Collect background macro enabled state from the runner's flow
-                    LaunchedEffect(bgMacrosConnected) {
-                        bgEnabledFlow?.collect { bgMacrosEnabled = it }
+                    val bgState = bgMacroState
+                    if (bgState != null) {
+                        LaunchedEffect(bgState) {
+                            bgState.isEnabled.collect { bgMacrosEnabled = it }
+                        }
+                        LaunchedEffect(bgState) {
+                            bgState.selectedFlaskConfig.collect { bgSelectedFlaskConfig = it }
+                        }
                     }
 
                     if (pickerVisible) {
@@ -153,20 +160,15 @@ class ComposeOverlayWindow : OverlayController {
                                 macros = macros,
                                 onSelect = { reg -> confirmingMacro = reg },
                                 onCancel = { cancel() },
+                                bgState = bgState,
+                                bgEnabled = bgMacrosEnabled,
+                                bgSelectedFlaskConfig = bgSelectedFlaskConfig,
                             )
                         }
                     } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            val running = runningMacroName
-                            if (running != null) {
-                                ExecutionStatusContent(running)
-                            }
-                            if (bgMacrosConnected) {
-                                BackgroundMacrosBadge(
-                                    enabled = bgMacrosEnabled,
-                                    onToggle = { bgToggleCallback?.invoke() },
-                                )
-                            }
+                        val running = runningMacroName
+                        if (running != null) {
+                            ExecutionStatusContent(running)
                         }
                     }
 
@@ -214,11 +216,10 @@ class ComposeOverlayWindow : OverlayController {
         runningMacroName = null
     }
 
-    override fun connectBackgroundMacros(isEnabled: StateFlow<Boolean>, onToggle: () -> Unit) {
-        bgEnabledFlow = isEnabled
-        bgToggleCallback = onToggle
-        bgMacrosEnabled = isEnabled.value
-        bgMacrosConnected = true
+    override fun connectBackgroundMacros(state: BackgroundMacroState) {
+        bgMacroState = state
+        bgMacrosEnabled = state.isEnabled.value
+        bgSelectedFlaskConfig = state.selectedFlaskConfig.value
     }
 
     // -- Internal helpers --
@@ -259,20 +260,16 @@ class ComposeOverlayWindow : OverlayController {
 
 // -- Window sizing --
 
-private val PICKER_SIZE = DpSize(320.dp, 420.dp)
-private val BADGE_SIZE = DpSize(200.dp, 36.dp)
+private val PICKER_SIZE = DpSize(320.dp, 460.dp)
 private val STATUS_SIZE = DpSize(240.dp, 36.dp)
-private val STATUS_AND_BADGE_SIZE = DpSize(240.dp, 76.dp)
 
 private fun computeWindowSize(
     pickerVisible: Boolean,
     hasRunning: Boolean,
-    hasBadge: Boolean,
 ): DpSize = when {
     pickerVisible -> PICKER_SIZE
-    hasRunning && hasBadge -> STATUS_AND_BADGE_SIZE
     hasRunning -> STATUS_SIZE
-    else -> BADGE_SIZE
+    else -> STATUS_SIZE
 }
 
 // -- Colors --
@@ -287,6 +284,15 @@ private val confirmButtonColor = Color(0x4F, 0xC3, 0xF7)
 private val bgOnColor = Color(0x4C, 0xAF, 0x50)
 private val bgOffColor = Color(0x75, 0x75, 0x75)
 
+// Pill colors for flask pattern visualization (one per Par group)
+private val pillColors = listOf(
+    Color(0x4F, 0xC3, 0xF7), // blue
+    Color(0xFF, 0xB7, 0x4D), // orange
+    Color(0x81, 0xC7, 0x84), // green
+    Color(0xF0, 0x62, 0x92), // pink
+    Color(0xCE, 0x93, 0xD8), // purple
+)
+
 // -- Composables --
 
 @Composable
@@ -294,6 +300,9 @@ private fun OverlayContent(
     macros: List<MacroRegistration>,
     onSelect: (MacroRegistration) -> Unit,
     onCancel: () -> Unit,
+    bgState: BackgroundMacroState?,
+    bgEnabled: Boolean,
+    bgSelectedFlaskConfig: PoeFlasks.Config,
 ) {
     val focusRequester = remember { FocusRequester() }
     val grouped = macros.groupBy { it.category }
@@ -346,11 +355,184 @@ private fun OverlayContent(
             }
             isFirst = false
         }
+
+        // BG macro controls at the bottom of picker
+        if (bgState != null) {
+            // Divider
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp, bottom = 8.dp)
+                    .height(0.5.dp)
+                    .background(categoryColor.copy(alpha = 0.4f)),
+            )
+            BackgroundMacrosSection(
+                bgEnabled = bgEnabled,
+                onToggle = bgState.onToggle,
+                availableConfigs = bgState.availableFlaskConfigs,
+                selectedConfig = bgSelectedFlaskConfig,
+                onSelectConfig = bgState.onSelectFlaskConfig,
+            )
+        }
     }
 
     // Request focus so keyboard events work immediately
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
+    }
+}
+
+@Composable
+private fun BackgroundMacrosSection(
+    bgEnabled: Boolean,
+    onToggle: () -> Unit,
+    availableConfigs: List<Pair<String, PoeFlasks.Config>>,
+    selectedConfig: PoeFlasks.Config,
+    onSelectConfig: (PoeFlasks.Config) -> Unit,
+) {
+    val dotColor = if (bgEnabled) bgOnColor else bgOffColor
+    val label = if (bgEnabled) "BG: ON" else "BG: OFF"
+    var dropdownExpanded by remember { mutableStateOf(false) }
+    val selectedName = availableConfigs.find { it.second == selectedConfig }?.first ?: "custom"
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Toggle row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onToggle() }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(dotColor, CircleShape),
+            )
+            Text(label, color = labelColor, fontSize = 12.sp)
+        }
+
+        // Flask config selector
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FlaskPatternVisual(config = selectedConfig)
+
+            Box {
+                Text(
+                    text = selectedName,
+                    color = shortcutColor,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clickable { dropdownExpanded = true }
+                        .background(shortcutColor.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+                DropdownMenu(
+                    expanded = dropdownExpanded,
+                    onDismissRequest = { dropdownExpanded = false },
+                ) {
+                    for ((name, config) in availableConfigs) {
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    FlaskPatternVisual(config = config)
+                                    Text(name, color = labelColor, fontSize = 13.sp)
+                                }
+                            },
+                            onClick = {
+                                onSelectConfig(config)
+                                dropdownExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 5 vertical pill shapes representing flask slots 1-5.
+ * - Filled pill = automated slot
+ * - Outline-only pill = non-automated slot
+ * - Color indicates group: same color = Alt (round-robin), different color = Par (independent)
+ */
+@Composable
+private fun FlaskPatternVisual(config: PoeFlasks.Config) {
+    val slotColors = computeSlotColors(config)
+
+    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        for (slot in 1..5) {
+            val color = slotColors[slot]
+            FlaskPill(color = color)
+        }
+    }
+}
+
+@Composable
+private fun FlaskPill(color: Color?) {
+    val pillShape = RoundedCornerShape(4.dp)
+    if (color != null) {
+        Box(
+            modifier = Modifier
+                .width(8.dp)
+                .height(24.dp)
+                .background(color.copy(alpha = 0.7f), pillShape),
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .width(8.dp)
+                .height(24.dp)
+                .border(1.dp, categoryColor.copy(alpha = 0.5f), pillShape),
+        )
+    }
+}
+
+/**
+ * Walks the Config tree and assigns a color to each flask slot (1-5).
+ * Returns null for non-automated slots.
+ * Color assignment: each top-level Par child gets a different color;
+ * within an Alt group all children share the same color.
+ */
+private fun computeSlotColors(config: PoeFlasks.Config): Map<Int, Color?> {
+    val result = mutableMapOf<Int, Color?>()
+    assignColors(config, colorIndex = 0, result = result)
+    return result
+}
+
+/** Returns the next color index after assigning colors for this config subtree. */
+private fun assignColors(
+    config: PoeFlasks.Config,
+    colorIndex: Int,
+    result: MutableMap<Int, Color?>,
+): Int {
+    return when (config) {
+        is PoeFlasks.Config.One -> {
+            result[config.key] = pillColors[colorIndex % pillColors.size]
+            colorIndex + 1
+        }
+        is PoeFlasks.Config.Alt -> {
+            // All children in an Alt group share the same color
+            for (child in config.configs) {
+                assignColors(child, colorIndex, result)
+            }
+            colorIndex + 1
+        }
+        is PoeFlasks.Config.Par -> {
+            // Each child in a Par group gets a different color
+            var nextIndex = colorIndex
+            for (child in config.configs) {
+                nextIndex = assignColors(child, nextIndex, result)
+            }
+            nextIndex
+        }
     }
 }
 
@@ -456,27 +638,6 @@ private fun ExecutionStatusContent(macroName: String) {
     ) {
         Text("▶", color = shortcutColor, fontSize = 12.sp)
         Text(macroName, color = labelColor, fontSize = 13.sp)
-    }
-}
-
-@Composable
-private fun BackgroundMacrosBadge(enabled: Boolean, onToggle: () -> Unit) {
-    val dotColor = if (enabled) bgOnColor else bgOffColor
-    val label = if (enabled) "BG macros: ON" else "BG macros: OFF"
-    Row(
-        modifier = Modifier
-            .background(bgColor.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
-            .clickable { onToggle() }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .background(dotColor, CircleShape),
-        )
-        Text(label, color = labelColor, fontSize = 12.sp)
     }
 }
 

@@ -1,5 +1,6 @@
 package com.gh.om.ks.arpgmacro.core.overlay
 
+import com.gh.om.ks.arpgmacro.recipe.poe.PoeFlasks
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -11,6 +12,17 @@ sealed class OverlaySelection {
     /** User cancelled (Escape, click outside, or timeout). */
     data object Cancelled : OverlaySelection()
 }
+
+/**
+ * Background macro state exposed to the overlay for display and control.
+ */
+data class BackgroundMacroState(
+    val isEnabled: StateFlow<Boolean>,
+    val onToggle: () -> Unit,
+    val availableFlaskConfigs: List<Pair<String, PoeFlasks.Config>>,
+    val selectedFlaskConfig: StateFlow<PoeFlasks.Config>,
+    val onSelectFlaskConfig: (PoeFlasks.Config) -> Unit,
+)
 
 /**
  * Interactive overlay that the user can select macros from.
@@ -46,9 +58,8 @@ interface OverlayController {
     fun hideExecutionStatus()
 
     /**
-     * Connect background macro state to the overlay so it can show a persistent toggle badge.
-     * The badge is visible whenever the overlay is not showing the macro picker.
-     * Default no-op for implementations that don't support the badge.
+     * Connect background macro state to the overlay so controls appear inside the picker.
+     * Default no-op for implementations that don't support background macro controls.
      */
-    fun connectBackgroundMacros(isEnabled: StateFlow<Boolean>, onToggle: () -> Unit) = Unit
+    fun connectBackgroundMacros(state: BackgroundMacroState) = Unit
 }

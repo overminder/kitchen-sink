@@ -1,6 +1,7 @@
 package com.gh.om.ks.arpgmacro.app
 
 import com.gh.om.ks.arpgmacro.app.di.DaggerAppComponent
+import com.gh.om.ks.arpgmacro.core.overlay.BackgroundMacroState
 import com.gh.om.ks.arpgmacro.core.overlay.Coordinator
 import com.gh.om.ks.arpgmacro.core.overlay.LeaderKeyListener
 import com.gh.om.ks.arpgmacro.di.GameType
@@ -33,11 +34,16 @@ fun main() {
         // Exclude the overlay from GDI screen captures so macros don't see it in pixel reads
         focusManager.excludeWindowFromCapture(overlayController.overlayWindowTitle())
 
-        // Wire background macros into the overlay toggle badge (M3)
+        // Wire background macros into the overlay picker (M3.1)
         val backgroundMacroRunner = component.backgroundMacroRunner()
         overlayController.connectBackgroundMacros(
-            isEnabled = backgroundMacroRunner.isEnabled,
-            onToggle = backgroundMacroRunner::toggle,
+            BackgroundMacroState(
+                isEnabled = backgroundMacroRunner.isEnabled,
+                onToggle = backgroundMacroRunner::toggle,
+                availableFlaskConfigs = backgroundMacroRunner.flaskAvailableConfigs,
+                selectedFlaskConfig = backgroundMacroRunner.flaskSelectedConfig,
+                onSelectFlaskConfig = backgroundMacroRunner::selectFlaskConfig,
+            )
         )
 
         val coordinator = Coordinator(
