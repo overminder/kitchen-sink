@@ -279,6 +279,7 @@ private val headerColor = Color(0xE0, 0xE0, 0xE0)
 private val categoryColor = Color(0xA0, 0xA0, 0xA0)
 private val shortcutColor = Color(0x4F, 0xC3, 0xF7)
 private val labelColor = Color(0xFA, 0xFA, 0xFA)
+private val labelColorOnLight = bgColor
 private val escHintColor = Color(0x80, 0x80, 0x80)
 private val confirmButtonColor = Color(0x4F, 0xC3, 0xF7)
 private val bgOnColor = Color(0x4C, 0xAF, 0x50)
@@ -442,7 +443,7 @@ private fun BackgroundMacrosSection(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     FlaskPatternVisual(config = config)
-                                    Text(name, color = labelColor, fontSize = 13.sp)
+                                    Text(name, color = labelColorOnLight, fontSize = 13.sp)
                                 }
                             },
                             onClick = {

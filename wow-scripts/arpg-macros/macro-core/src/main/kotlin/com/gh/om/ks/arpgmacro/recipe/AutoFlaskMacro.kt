@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.joinAll
 import java.time.Instant
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds
@@ -58,37 +57,40 @@ class AutoFlaskMacro @Inject constructor(
                 val keeper = config.toKeeper(screen, keyboardOutput, clock)
                 val fm = BuffManager(clock, keeper)
 
-                val flaskInputs = combine(
-                    isPoe, keyboardInput.keyStates()
-                ) { poeActive, keyState ->
-                    PoeFlasks.InputEvent(
-                        timestamp = Instant.ofEpochMilli(clock.currentTimeMillis()),
-                        shouldUse = poeActive && skillKeys.any(keyState::contains),
-                    )
-                }
+                // Inner coroutineScope so all async children are cancelled when
+                // collectLatest moves to a new config value.
+                coroutineScope {
+                    val flaskInputs = combine(
+                        isPoe, keyboardInput.keyStates()
+                    ) { poeActive, keyState ->
+                        PoeFlasks.InputEvent(
+                            timestamp = Instant.ofEpochMilli(clock.currentTimeMillis()),
+                            shouldUse = poeActive && skillKeys.any(keyState::contains),
+                        )
+                    }
 
-                val flaskInputState = flaskInputs.stateIn(this)
+                    val flaskInputState = flaskInputs.stateIn(this)
 
-                val gapFixer = async { PoeFlasks.runGapFixer(fm, flaskInputs, isPoe) }
+                    async { PoeFlasks.runGapFixer(fm, flaskInputs, isPoe) }
 
-                val useWhenKeyDown = async {
-                    keyboardInput.keyPresses().collect { key ->
-                        if (key in skillKeys && active()) {
-                            fm.useAll()
+                    async {
+                        keyboardInput.keyPresses().collect { key ->
+                            if (key in skillKeys) {
+                                val a = active()
+                                if (a) fm.useAll()
+                            }
+                        }
+                    }
+
+                    async {
+                        while (true) {
+                            if (flaskInputState.value.shouldUse && active()) {
+                                fm.useAll()
+                            }
+                            clock.delay(100.milliseconds)
                         }
                     }
                 }
-
-                val useWhenLongPressed = async {
-                    while (true) {
-                        if (flaskInputState.value.shouldUse && active()) {
-                            fm.useAll()
-                        }
-                        clock.delay(100.milliseconds)
-                    }
-                }
-
-                joinAll(gapFixer, useWhenKeyDown, useWhenLongPressed)
             }
         }
     }

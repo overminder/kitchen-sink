@@ -48,6 +48,9 @@ object PoeFlasks {
         "nonPf3" to nonPf3,
         "nonPf2" to nonPf2,
         "leveling2Qs1U" to leveling2Qs1U,
+        "leveling2Qs2U" to leveling2Qs2U,
+        "leveling1Qs" to leveling1Qs,
+        "leveling2Qs" to leveling2Qs,
         "leveling3Qs" to leveling3Qs,
         "boss3Qs" to boss3Qs,
     )
@@ -69,7 +72,10 @@ object PoeFlasks {
     fun flaskKeeper(flaskIx: Int, screen: Screen, keyboardOutput: KeyboardOutput, clock: Clock): BuffKeeper {
         return SingleBuffKeeper(
             clock = clock,
-            applyBuff = { keyboardOutput.postAsciiString("${flaskIx + 1}") },
+            applyBuff = {
+                println("[PoeFlasks] pressing flask key ${flaskIx + 1}")
+                keyboardOutput.postAsciiString("${flaskIx + 1}")
+            },
             isBuffInEffect = { isDurationBarActive(flaskIx, screen) },
         )
     }
@@ -80,7 +86,10 @@ object PoeFlasks {
 
         return SingleBuffKeeper(
             clock = clock,
-            applyBuff = { keyboardOutput.postAsciiString("${ix + 1}") },
+            applyBuff = {
+                println("[PoeFlasks] pressing tincture key ${ix + 1}")
+                keyboardOutput.postAsciiString("${ix + 1}")
+            },
             isBuffInEffect = {
                 val pixel = screen.getPixelColor(ScreenPoint(activeX, activeY))
                 val isActive = TINCTURE_ACTIVE_COLOR.distanceTo(pixel) < 15

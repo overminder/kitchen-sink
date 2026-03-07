@@ -37,9 +37,10 @@ class BackgroundMacroRunner @Inject constructor(
 
     suspend fun run() {
         coroutineScope {
-            launch { triggerSkillMacro.run(isEnabled) }
-            launch { toggleAutoAttackMacro.run(isEnabled) }
-            launch { triggerSkillsD4Macro.run(isEnabled) }
+            // Don't toggle for now.
+            // launch { triggerSkillMacro.run(isEnabled) }
+            // launch { toggleAutoAttackMacro.run(isEnabled) }
+            // launch { triggerSkillsD4Macro.run(isEnabled) }
             autoFlaskMacro.run(isEnabled)
         }
     }
