@@ -13,60 +13,225 @@ Direct fixes for the 5 bugs reported in `bug.md`. Each fix targets the specific 
 
 **Root cause:** `ComposeOverlayWindow.start()` hardcodes `WindowPosition(32.dp, 32.dp)` (line 124). This positions all overlay modes (picker, execution status, bg status) at the top-left.
 
-**Fix:** When the window is showing bg status (not picker, not execution status), reposition it so its bottom-left is at (315, 1212). Use a `LaunchedEffect` that updates `windowState.position` based on the current display mode, similar to how `windowState.size` is already updated.
+**Fix:** Extend the existing `LaunchedEffect` that updates `windowState.size` (keyed on `pickerVisible, runningMacroName, bgStatusLines.isNotEmpty()`) to also update `windowState.position`. Bg status size is fixed at `BG_STATUS_SIZE = DpSize(480.dp, 36.dp)`, so the top-left position for bottom-left anchoring at (315, 1212) is:
 
-**Key detail:** The position (315, 1212) is in screen pixels. Compose uses `dp`. On a 2560×1440 screen at 100% scaling, 1dp ≈ 1px. If the user has display scaling, we may need to account for that — confirm with user.
-
-### Bug 2: PrintMousePosMacro doesn't print until mouse moves
-
-**Root cause:** `MacroRunnerImpl.run()` (line 118) calls `macroDef.prepare()` immediately before `prepared.run()`. `PrintMousePosMacro.prepare()` calls `stateIn()` on the mouse motion flow, which needs at least one emission. Since prepare happens at trigger time (not startup), there's no buffered value yet.
-
-**Fix:** `ActivationContext` already captures `cursorPosition: ScreenPoint` at leader key press time. `PrintMousePosMacro`'s `Prepared` lambda receives the context but ignores it (parameter named `_`). Simply use `context.cursorPosition` instead of `mousePosition.value`. The `stateIn()` call in `prepare()` can be removed entirely since the macro only prints once per invocation anyway.
-
-### Bug 3: AutoFlaskMacro blocks leader key macro "6"
-
-**Root cause:** Needs investigation. The overlay receives key events via Compose `onPreviewKeyEvent`, while AutoFlaskMacro listens via global keyboard hooks (`KeyboardInput`). These should be independent channels.
-
-**Investigation steps:**
-1. Add logging to `handleKeyEvent()` in `ComposeOverlayWindow` to confirm whether the Compose window receives the "6" key event at all.
-2. Check if `focusManager.stealFocusToOverlay()` actually succeeds when AutoFlaskMacro's background coroutines are active. AutoFlaskMacro polls `activeWindowFlow` every 100ms — if it detects the overlay as "not POE", its `active()` returns false, which is correct. But check if there are any side effects (e.g. the overlay window losing focus).
-3. Check if `keyboardInput.keyPresses()` in AutoFlaskMacro's inner loop (line 77) is consuming global key events in a way that prevents delivery to the Compose window.
-
-**Likely fix:** If the global hook is consuming key events, the fix is to ensure the hook uses non-consuming event interception (e.g. `WH_KEYBOARD_LL` on Windows returns `CallNextHookEx` to not swallow events). If focus is the issue, ensure `stealFocusToOverlay` is robust against background polling.
-
-### Bug 4: Overlay stays visible on alt-tab
-
-**Root cause:** `ComposeOverlayWindow` line 122:
 ```kotlin
-val isVisible = pickerVisible || runningMacroName != null || (bgStatusLines.isNotEmpty() && gameInForeground)
+windowState.position = WindowPosition(
+    x = 315.dp,
+    y = (1212 - 36).dp,  // 1176.dp — bottom-left (315, 1212) minus height
+)
 ```
-When `pickerVisible = true`, the overlay is visible regardless of `gameInForeground`. Only the bg status mode checks foreground state.
 
-**Fix:** Monitor foreground window changes while the picker is active. When the foreground switches to a non-game, non-overlay window, auto-cancel the picker:
-
-1. In the `LaunchedEffect` that already polls `activeWindowChecker.activeWindowFlow`, also track overlay's own window.
-2. Add a new `LaunchedEffect(pickerVisible)` that, while `pickerVisible`, polls the active window. If it's neither the game nor the overlay → call `cancel()`.
-
-Alternatively, the Coordinator could monitor this and cancel the `awaitSelection` deferred.
-
-### Bug 5: Leader key doesn't toggle overlay
-
-**Root cause:** `Coordinator.onLeaderKey()` line 45: `if (state != CoordinatorState.Idle) return`. When the overlay is open (`state == Open`), a second leader key press is silently ignored.
-
-**Fix:** When `state == Open`, cancel the pending selection instead of returning:
+For picker and execution status modes, keep the existing `(32.dp, 32.dp)` position. Compute position alongside size in the same `LaunchedEffect`:
 
 ```kotlin
-suspend fun onLeaderKey() {
-    if (state == CoordinatorState.Open) {
-        overlayController.cancelSelection()  // new method, or reuse existing cancel path
-        return
+LaunchedEffect(pickerVisible, runningMacroName, bgStatusLines.isNotEmpty()) {
+    windowState.size = computeWindowSize(pickerVisible, runningMacroName != null, bgStatusLines.isNotEmpty())
+    windowState.position = when {
+        pickerVisible || runningMacroName != null -> WindowPosition(32.dp, 32.dp)
+        bgStatusLines.isNotEmpty() -> WindowPosition(315.dp, (1212 - 36).dp)
+        else -> windowState.position  // no change
     }
-    if (state == CoordinatorState.MacroRunning) return  // still ignore during execution
-    // ... rest of existing logic
 }
 ```
 
-This requires adding a way to cancel from outside — e.g. completing the `pendingSelection` deferred with `Cancelled` from the Coordinator. `ComposeOverlayWindow` already has a `cancel()` method that does this, but it's private. Expose it via `OverlayController`.
+**Files:** `macro-overlay/.../ComposeOverlayWindow.kt` — one `LaunchedEffect` block, ~3 lines added.
+
+### Bug 2: PrintMousePosMacro doesn't print until mouse moves
+
+**Root cause:** `PrintMousePosMacro.prepare()` calls `mouseInput.motionEvents().stateIn(scope)` which creates a `StateFlow` from a cold `callbackFlow`. The `StateFlow` has no initial value from the mouse motion flow — `stateIn` requires an initial emission or an explicit `initialValue`. Since `prepare()` runs at trigger time, the mouse hasn't moved yet, so `mousePosition.value` blocks or returns a stale/default value.
+
+**Fix:** In `PrintMousePosMacro`:
+
+1. Remove the `stateIn()` call and the `mousePosition` variable from `prepare()`.
+2. Rename the `_` parameter in the `Prepared` lambda to `context`.
+3. Use `context.cursorPosition` instead of `mousePosition.value`.
+
+Before:
+```kotlin
+override suspend fun prepare(): MacroDef.Prepared {
+    val mousePosition = mouseInput.motionEvents()
+        .stateIn(CoroutineScope(currentCoroutineContext()))
+    val shouldContinue = shouldContinueChecker.get(anyWindowTitles = GameTitles.ALL_POE)
+    return MacroDef.Prepared { _ ->
+        if (!shouldContinue.value) return@Prepared
+        val pos = mousePosition.value
+        val color = screen.getPixelColor(pos)
+        consoleOutput.println("Mouse(x = ${pos.x}, y = ${pos.y}), color = $color")
+        clock.delay(1.seconds)
+    }
+}
+```
+
+After:
+```kotlin
+override suspend fun prepare(): MacroDef.Prepared {
+    val shouldContinue = shouldContinueChecker.get(anyWindowTitles = GameTitles.ALL_POE)
+    return MacroDef.Prepared { context ->
+        if (!shouldContinue.value) return@Prepared
+        val pos = context.cursorPosition
+        val color = screen.getPixelColor(pos)
+        consoleOutput.println("Mouse(x = ${pos.x}, y = ${pos.y}), color = $color")
+        clock.delay(1.seconds)
+    }
+}
+```
+
+The `mouseInput` constructor dependency can also be removed since it's no longer used. Check if any other method in the class uses it first.
+
+**Files:** `macro-core/.../recipe/PrintMousePosMacro.kt` — remove 2 lines, rename 1 parameter, change 1 reference.
+
+### Bug 3: AutoFlaskMacro blocks leader key macro "6"
+
+**Root cause:** Investigation complete — speculative causes eliminated:
+
+- **Not event consumption:** `JNativeHookKeyboardInput` uses jnativehook's `GlobalScreen.addNativeKeyListener()`, which is a passive observer. Events are not swallowed; multiple listeners each get their own callback.
+- **Not SharedFlow buffer contention:** `keyPresses()` returns a cold `callbackFlow` — each `collect` call creates a new independent listener. No shared buffer.
+- **Not Coordinator state interference:** `AutoFlaskMacro` has no dependency on `Coordinator` or `CoordinatorState`. It cannot change coordinator state.
+
+**Remaining hypothesis — focus stealing race:** `AutoFlaskMacro` polls `activeWindowFlow` every 100ms via `stateIn()`. When the overlay opens, `Coordinator.onLeaderKey()` calls `focusManager.stealFocusToOverlay()`. The overlay becomes the active window. The Compose window receives key events via `onPreviewKeyEvent`, which requires the window to have OS-level focus. If `AutoFlaskMacro`'s `active()` check triggers a side effect (e.g., re-focusing the game window) while the overlay is showing, the overlay loses focus and stops receiving key events.
+
+**Investigation step (runtime):** Add temporary logging to `ComposeOverlayWindow.handleKeyEvent()` to confirm whether the "6" `KeyEvent` arrives at all when AutoFlaskMacro is active. This determines if the issue is focus-related (event never arrives) or handling-related (event arrives but is misprocessed).
+
+**Planned fix (pending investigation):** If focus loss is confirmed, ensure `AutoFlaskMacro.active()` returns `false` when the overlay is visible (it already should — the overlay window title is not in `GameTitles.POE1`). Check `stealFocusToOverlay` for races with the 100ms polling interval. May need to add a brief delay or a "focus lock" flag that prevents background macros from interfering during overlay display.
+
+**Files:** TBD after investigation. Likely `macro-overlay/.../ComposeOverlayWindow.kt` (logging) and possibly `macro-core/.../recipe/AutoFlaskMacro.kt`.
+
+### Bug 4: Overlay stays visible on alt-tab
+
+**Root cause:** `ComposeOverlayWindow` visibility logic:
+```kotlin
+val isVisible = pickerVisible || runningMacroName != null || (bgStatusLines.isNotEmpty() && gameInForeground)
+```
+`pickerVisible` is not gated on `gameInForeground`, so the picker stays visible when alt-tabbing away from the game.
+
+**Fix:** Add a `LaunchedEffect` in `ComposeOverlayWindow.start()` that auto-cancels the picker when the foreground window is neither the game nor the overlay. This uses the existing `activeWindowChecker` and the overlay's own window title.
+
+Implementation in the composable body, after the existing `LaunchedEffect` block that updates size/position:
+
+```kotlin
+// Auto-cancel picker when user switches away from game
+if (bgMacroState != null) {
+    LaunchedEffect(pickerVisible) {
+        if (!pickerVisible) return@LaunchedEffect
+        activeWindowChecker.activeWindowFlow(
+            bgMacroState!!.gameTitles + TITLE  // game windows + overlay window
+        ).collect { isForeground ->
+            if (!isForeground) cancel()
+        }
+    }
+}
+```
+
+**Edge case — no bgMacroState:** If `bgMacroState` is null (no background macros connected), `activeWindowChecker` is still available as a constructor dependency. Use it directly with game titles from the `ActivationContext` passed to `awaitSelection`. Store the game title when `awaitSelection` is called:
+
+```kotlin
+private var currentGameTitle: String? = null
+
+override suspend fun awaitSelection(...): OverlaySelection {
+    currentGameTitle = context.gameTitle
+    // ... existing code ...
+}
+```
+
+Then the `LaunchedEffect` uses `setOf(currentGameTitle!!, TITLE)` instead of `bgMacroState!!.gameTitles + TITLE`.
+
+**Why not change the `isVisible` formula:** Changing `isVisible` to include `&& gameInForeground` for picker mode would make the window invisible but not cancel the selection — the `awaitSelection` coroutine would still be suspended, and the coordinator would be stuck in `Open` state until the inactivity timeout fires. Auto-canceling is the correct approach.
+
+**Files:** `macro-overlay/.../ComposeOverlayWindow.kt` — add one field, ~10 lines in `LaunchedEffect`.
+
+### Bug 5: Leader key doesn't toggle overlay
+
+**Root cause:** `Coordinator.onLeaderKey()` has two guard checks that both reject non-Idle states:
+
+```kotlin
+// Fast path (line ~41, no lock):
+if (state != CoordinatorState.Idle) return
+
+// Mutex-protected (line ~44, inside withLock):
+if (state != CoordinatorState.Idle) return
+```
+
+When `state == Open`, both guards return early. The second leader key press is silently ignored.
+
+**Fix — three changes:**
+
+**1. Add `cancelSelection()` to `OverlayController` interface** (`macro-core/.../overlay/OverlayController.kt`):
+
+```kotlin
+interface OverlayController {
+    // ... existing methods ...
+
+    /**
+     * Cancel a pending [awaitSelection] from outside the overlay.
+     * No-op if no selection is pending.
+     */
+    fun cancelSelection()
+}
+```
+
+**2. Implement in `ComposeOverlayWindow`** (`macro-overlay/.../ComposeOverlayWindow.kt`):
+
+```kotlin
+override fun cancelSelection() {
+    cancel()  // delegates to existing private cancel() method
+}
+```
+
+**3. Modify `Coordinator.onLeaderKey()`** (`macro-core/.../overlay/Coordinator.kt`):
+
+Change the fast path guard to allow `Open` state through:
+
+```kotlin
+suspend fun onLeaderKey() {
+    // Fast path: skip only if macro is running
+    if (state == CoordinatorState.MacroRunning) return
+
+    mutex.withLock {
+        // Cancel if overlay is already open (toggle behavior)
+        if (state == CoordinatorState.Open) {
+            overlayController.cancelSelection()
+            return
+        }
+        if (state != CoordinatorState.Idle) return
+
+        // ... rest of existing logic unchanged ...
+    }
+}
+```
+
+**How it works:** `cancelSelection()` calls `pendingSelection?.complete(Cancelled)`, which unblocks the `deferred.await()` inside `awaitSelection()`. The `finally` block in `awaitSelection` clears `pickerVisible` and `pendingSelection`. Back in `Coordinator.onLeaderKey`, the `when (selection)` branch hits `Cancelled`, the `finally` block sets `state = Idle`.
+
+**Thread safety:** The `cancelSelection()` call inside `mutex.withLock` is safe because `CompletableDeferred.complete()` is thread-safe and non-blocking. The original `onLeaderKey` call that is suspended on `deferred.await()` already holds a reference to the deferred but is *not* holding the mutex (it released it before `awaitSelection` was called — wait, let me re-check).
+
+**Re-check:** Looking at the actual code, `awaitSelection` is called *inside* `mutex.withLock`. This means the first `onLeaderKey` call holds the mutex while suspended on `deferred.await()`. The second `onLeaderKey` call would block on `mutex.withLock` and never reach the `if (state == Open)` check.
+
+**Revised fix:** Move the `Open` state check to *before* the mutex:
+
+```kotlin
+suspend fun onLeaderKey() {
+    // Fast path: skip if macro is running
+    if (state == CoordinatorState.MacroRunning) return
+
+    // Toggle: cancel overlay if it's open (no lock needed — cancelSelection is thread-safe)
+    if (state == CoordinatorState.Open) {
+        overlayController.cancelSelection()
+        return
+    }
+
+    mutex.withLock {
+        if (state != CoordinatorState.Idle) return
+        // ... rest unchanged ...
+    }
+}
+```
+
+This works because:
+- `state` is read volatilely (it's checked outside the lock in the original code too)
+- `CompletableDeferred.complete()` is thread-safe
+- After `cancelSelection()`, the first `onLeaderKey` call resumes from `deferred.await()`, hits the `Cancelled` branch, and sets `state = Idle` in its `finally` block
+
+**Files:** 3 files, ~5 lines each.
 
 ## Acceptance Criteria
 
@@ -80,33 +245,12 @@ This requires adding a way to cancel from outside — e.g. completing the `pendi
 
 ## Notes
 
-- Bug 3 needs investigation before implementation. May want to tackle it separately if root cause is complex.
-- Bugs 4 and 5 are related (both about overlay dismissal) and can be implemented together.
+- Bug 3 needs runtime investigation before implementation — add logging first, then fix based on findings.
+- Bugs 4 and 5 both require adding `cancelSelection()` to `OverlayController`. Implement Bug 5 first (adds the method), then Bug 4 (uses it).
+- Execution order: Bug 2 → Bug 1 → Bug 5 → Bug 4 → Bug 3 (easiest/most independent first, investigation last).
 
-## Review Comments
+## Test Strategy
 
-### Overall
-
-Good plan — code references are accurate (verified against codebase), root causes are well-identified, and fixes are minimal and targeted. A few issues:
-
-### Bug 1: Position
-
-Fine as described. One minor note: the plan says "bottom-left point at (315, 1212)" but doesn't address how to compute the position given the overlay's dynamic height. You'd need to know the content height to place the bottom-left at a specific point. Consider whether top-left anchoring at a computed offset is simpler, or whether bottom-left anchoring is supported by Compose's `WindowPosition`.
-
-### Bug 3: AutoFlaskMacro blocks key "6"
-
-The plan correctly identifies this needs investigation, but the "likely fix" section is speculative. Verified: `AutoFlaskMacro` uses both `keyPresses()` and `keyStates()`. The plan speculates about `CallNextHookEx` (event consumption at the native hook level), but the more likely culprit is the `keyPresses()` collector in AutoFlaskMacro — if it's a `SharedFlow` with limited replay/buffer and the Flask macro's collector is slow, events could be dropped for other collectors. The investigation steps are good — suggest also checking whether `keyPresses()` returns a `SharedFlow` vs `Flow`, and its replay/buffer config.
-
-Also: the recommendation says "macro systems should work independently" (bug.md line 51). The plan's investigation is necessary, but consider also checking `Coordinator.onLeaderKey()` — the double `if (state != Idle) return` check (lines 41 and 44) means if *any* state change sneaks in (e.g., AutoFlaskMacro briefly changing coordinator state), the leader key press is silently dropped. Is there a path where AutoFlaskMacro could affect coordinator state?
-
-### Bug 4: Overlay stays visible on alt-tab
-
-Solid fix. Aligns well with the recommendation's intention "overlays should only be visible in games." The `LaunchedEffect` approach is fine. One concern: polling `activeWindowFlow` from *both* the visibility derivation and a separate `LaunchedEffect` could lead to race conditions (visibility flickers). Consider having a single reactive source that drives both visibility and auto-cancel.
-
-### Bug 5: Leader key toggle
-
-Good fix, aligns directly with the recommendation. Note: `Coordinator.onLeaderKey()` has TWO guard checks (line 41 without lock, line 44 with lock). The fix needs to handle *both* — the fast path at line 41 currently returns for all non-Idle states, so the `Open → cancel` logic would never reach the mutex-protected block. The fix should change the fast path to only skip `MacroRunning`, not `Open`.
-
-### Missing from the plan
-
-The recommendation says "create a plan for fixing **and testing** these issues." The acceptance criteria mention "no regressions" but no specific test strategy per bug. Bugs 4 and 5 especially would benefit from described test approaches (even if they're manual test scripts), since they involve state transitions that are easy to re-break.
+- **Bug 2:** No new test needed — existing invocation paths exercise `PrintMousePosMacro`. Manual verification: trigger the macro and confirm position prints immediately.
+- **Bug 4:** Add a test to `CoordinatorTest` (or create one): mock `OverlayController.awaitSelection` to suspend indefinitely, then verify that when `activeWindowFlow` emits `false`, the selection is cancelled and state returns to `Idle`.
+- **Bug 5:** Add a test to `CoordinatorTest`: call `onLeaderKey()` to enter `Open` state, then call `onLeaderKey()` again concurrently and verify `cancelSelection()` is called and state returns to `Idle`.
