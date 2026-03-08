@@ -23,6 +23,8 @@ data class BackgroundMacroState(
     val selectedFlaskConfig: StateFlow<PoeFlasks.Config>,
     val onSelectFlaskConfig: (PoeFlasks.Config) -> Unit,
     val statusLines: StateFlow<List<BgMacroStatusLine>>,
+    /** Game window titles that background macros target; used to gate overlay visibility. */
+    val gameTitles: Set<String>,
 )
 
 /**

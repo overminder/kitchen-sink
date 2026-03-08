@@ -41,12 +41,14 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.gh.om.ks.arpgmacro.core.ActiveWindowChecker
 import com.gh.om.ks.arpgmacro.core.overlay.ActivationContext
 import com.gh.om.ks.arpgmacro.core.overlay.BackgroundMacroState
 import com.gh.om.ks.arpgmacro.core.overlay.BgMacroStatusLine
 import com.gh.om.ks.arpgmacro.core.overlay.MacroRegistration
 import com.gh.om.ks.arpgmacro.core.overlay.OverlayController
 import com.gh.om.ks.arpgmacro.core.overlay.OverlaySelection
+import com.gh.om.ks.arpgmacro.recipe.activeWindowFlow
 import com.gh.om.ks.arpgmacro.recipe.poe.PoeFlasks
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -55,11 +57,17 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
 
-private const val OVERLAY_TITLE = "OMKSM Overlay"
 private const val INACTIVITY_TIMEOUT_MS = 120_000L
 private const val CONFIRM_COUNTDOWN_SECS = 3
 
-class ComposeOverlayWindow : OverlayController {
+class ComposeOverlayWindow(
+    private val activeWindowChecker: ActiveWindowChecker,
+    private val setClickThrough: (Boolean) -> Unit,
+) : OverlayController {
+
+    companion object {
+        const val TITLE = "OMKSM Overlay"
+    }
 
     // -- State shared between coordinator coroutine and Compose UI thread --
 
@@ -91,6 +99,9 @@ class ComposeOverlayWindow : OverlayController {
     /** Mirrors the latest background macro status lines from the tracker. */
     private var bgStatusLines by mutableStateOf<List<BgMacroStatusLine>>(emptyList())
 
+    /** True when a game window (from [BackgroundMacroState.gameTitles]) is in the foreground. */
+    private var gameInForeground by mutableStateOf(false)
+
     /**
      * Completes when the user selects a macro or cancels.
      * Null when the overlay is not showing.
@@ -108,7 +119,7 @@ class ComposeOverlayWindow : OverlayController {
     override fun start() {
         thread(isDaemon = true, name = "overlay-ui") {
             application(exitProcessOnExit = false) {
-                val isVisible = pickerVisible || runningMacroName != null || bgStatusLines.isNotEmpty()
+                val isVisible = pickerVisible || runningMacroName != null || (bgStatusLines.isNotEmpty() && gameInForeground)
                 val windowState = rememberWindowState(
                     position = WindowPosition(32.dp, 32.dp),
                     size = PICKER_SIZE,
@@ -122,7 +133,7 @@ class ComposeOverlayWindow : OverlayController {
                     alwaysOnTop = true,
                     focusable = pickerVisible,
                     resizable = false,
-                    title = OVERLAY_TITLE,
+                    title = TITLE,
                     state = windowState,
                     onPreviewKeyEvent = { keyEvent ->
                         if (keyEvent.type == KeyEventType.KeyDown) {
@@ -153,6 +164,16 @@ class ComposeOverlayWindow : OverlayController {
                         LaunchedEffect(bgState) {
                             bgState.statusLines.collect { bgStatusLines = it }
                         }
+                        // Poll foreground window; hide bg status when not in a game window
+                        LaunchedEffect(bgState) {
+                            activeWindowChecker.activeWindowFlow(bgState.gameTitles)
+                                .collect { gameInForeground = it }
+                        }
+                    }
+
+                    // Toggle click-through: disabled only while picker is interactive
+                    LaunchedEffect(pickerVisible) {
+                        setClickThrough(!pickerVisible)
                     }
 
                     if (pickerVisible) {
@@ -194,7 +215,7 @@ class ComposeOverlayWindow : OverlayController {
         startedLatch.await()
     }
 
-    override fun overlayWindowTitle(): String = OVERLAY_TITLE
+    override fun overlayWindowTitle(): String = TITLE
 
     override suspend fun awaitSelection(
         macros: List<MacroRegistration>,

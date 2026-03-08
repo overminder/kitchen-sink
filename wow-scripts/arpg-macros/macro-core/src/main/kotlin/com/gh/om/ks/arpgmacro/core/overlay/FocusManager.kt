@@ -28,4 +28,12 @@ interface FocusManager {
      * No-op if the window is not found or the platform doesn't support this.
      */
     fun excludeWindowFromCapture(windowTitle: String)
+
+    /**
+     * Toggle click-through on the named window.
+     * When enabled, mouse events pass through the window to whatever is beneath.
+     * On Win32: adds/removes WS_EX_TRANSPARENT from the extended window style.
+     * No-op if the window is not found or the platform doesn't support this.
+     */
+    fun setClickThrough(windowTitle: String, enabled: Boolean)
 }

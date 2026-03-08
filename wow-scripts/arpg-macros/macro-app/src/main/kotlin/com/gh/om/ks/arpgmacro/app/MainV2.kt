@@ -5,6 +5,7 @@ import com.gh.om.ks.arpgmacro.core.overlay.BackgroundMacroState
 import com.gh.om.ks.arpgmacro.core.overlay.Coordinator
 import com.gh.om.ks.arpgmacro.core.overlay.LeaderKeyListener
 import com.gh.om.ks.arpgmacro.di.GameType
+import com.gh.om.ks.arpgmacro.recipe.GameTitles
 import com.github.kwhat.jnativehook.GlobalScreen
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -44,6 +45,7 @@ fun main() {
                 selectedFlaskConfig = backgroundMacroRunner.flaskSelectedConfig,
                 onSelectFlaskConfig = backgroundMacroRunner::selectFlaskConfig,
                 statusLines = backgroundMacroRunner.statusLines,
+                gameTitles = GameType.entries.map { GameTitles.from(it) }.toSet(),
             )
         )
 

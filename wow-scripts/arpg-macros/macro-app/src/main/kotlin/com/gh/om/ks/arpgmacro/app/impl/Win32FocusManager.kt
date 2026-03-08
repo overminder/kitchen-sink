@@ -14,14 +14,19 @@ import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.platform.win32.WinUser.INPUT
 
 /**
- * JNA binding for SetWindowDisplayAffinity (not in jna-platform's User32).
- * WDA_EXCLUDEFROMCAPTURE hides the window from GDI/Robot-based screen captures (Win10 2004+).
+ * JNA binding for Win32 functions not in jna-platform's User32.
+ * - SetWindowDisplayAffinity: hides the window from GDI/Robot-based screen captures (Win10 2004+).
+ * - GetWindowLongA / SetWindowLongA: read/write extended window styles (e.g. WS_EX_TRANSPARENT).
  */
 private interface User32Ext : Library {
     fun SetWindowDisplayAffinity(hwnd: HWND, dwAffinity: Int): Boolean
+    fun GetWindowLongA(hwnd: HWND, nIndex: Int): Int
+    fun SetWindowLongA(hwnd: HWND, nIndex: Int, dwNewLong: Int): Int
 
     companion object {
         const val WDA_EXCLUDEFROMCAPTURE = 0x00000011
+        const val GWL_EXSTYLE = -20
+        const val WS_EX_TRANSPARENT = 0x00000020
         val INSTANCE: User32Ext = Native.load("user32", User32Ext::class.java)
     }
 }
@@ -67,6 +72,19 @@ class Win32FocusManager : FocusManager {
     override fun excludeWindowFromCapture(windowTitle: String) {
         val hwnd = user32.FindWindow(null, windowTitle) ?: return
         User32Ext.INSTANCE.SetWindowDisplayAffinity(hwnd, User32Ext.WDA_EXCLUDEFROMCAPTURE)
+    }
+
+    override fun setClickThrough(windowTitle: String, enabled: Boolean) {
+        val hwnd = user32.FindWindow(null, windowTitle) ?: return
+        val exStyle = User32Ext.INSTANCE.GetWindowLongA(hwnd, User32Ext.GWL_EXSTYLE)
+        val newStyle = if (enabled) {
+            exStyle or User32Ext.WS_EX_TRANSPARENT
+        } else {
+            exStyle and User32Ext.WS_EX_TRANSPARENT.inv()
+        }
+        if (newStyle != exStyle) {
+            User32Ext.INSTANCE.SetWindowLongA(hwnd, User32Ext.GWL_EXSTYLE, newStyle)
+        }
     }
 
     private fun sendAltKeyPress() {
