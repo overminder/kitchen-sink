@@ -8,6 +8,7 @@ import com.gh.om.ks.arpgmacro.core.overlay.ActivationContext
 interface MacroDef {
     /**
      * Gather environmental information to prepare for the macro run.
+     * Note(lifecycle): This is expected to be called exactly once (per process lifecycle) during application startup.
      */
     suspend fun prepare(): Prepared
 
