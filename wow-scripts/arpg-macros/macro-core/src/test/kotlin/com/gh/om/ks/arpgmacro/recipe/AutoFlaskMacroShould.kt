@@ -25,41 +25,11 @@ import kotlin.time.Duration
 
 // -- Fakes --
 
-private class FakeKeyboardInput : KeyboardInput {
-    // Buffered so tryEmit never suspends the test coroutine
-    private val pressFlow = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    private val releaseFlow = MutableSharedFlow<String>(extraBufferCapacity = 16)
-
-    override fun keyPresses(): Flow<String> = pressFlow
-    override fun keyReleases(): Flow<String> = releaseFlow
-
-    fun press(key: String) { pressFlow.tryEmit(key) }
-    fun release(key: String) { releaseFlow.tryEmit(key) }
-}
-
-private class FakeKeyboardOutput : KeyboardOutput {
-    val pressed = mutableListOf<String>()
-    override fun postPress(key: String) { pressed += key }
-    override fun postRelease(key: String) {}
-}
-
 private class FakeScreen : Screen {
     // Black pixel is far from BUFF_COLOR(249,215,153), so isDurationBarActive() always returns
     // false, meaning keepers always consider the buff expired and will attempt to trigger.
     override fun getPixelColor(point: ScreenPoint) = ScreenColor(0, 0, 0)
     override fun captureScreen(): PixelSource = throw UnsupportedOperationException()
-}
-
-private class FakeClock(private val scope: TestScope) : Clock {
-    // Ties wall-clock reads to the test scheduler so throttle logic sees virtual time.
-    override fun currentTimeMillis(): Long = scope.testScheduler.currentTime
-    override suspend fun delay(duration: Duration, extraVarianceMs: Long) =
-        kotlinx.coroutines.delay(duration)
-}
-
-private class FakeActiveWindowChecker : ActiveWindowChecker {
-    // Always reports the queried game as active (simulates POE in focus).
-    override fun isActiveWindow(anyTitles: Collection<String>) = true
 }
 
 // -- Tests --
