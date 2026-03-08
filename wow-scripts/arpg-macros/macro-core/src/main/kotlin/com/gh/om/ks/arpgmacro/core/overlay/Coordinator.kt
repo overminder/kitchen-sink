@@ -1,5 +1,6 @@
 package com.gh.om.ks.arpgmacro.core.overlay
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -62,6 +63,11 @@ class Coordinator(
 
                 // Always return focus before running macro or on cancel
                 focusManager.returnFocusToGame(context)
+                // Give the game time to restore input handling after focus switch.
+                // Without this, POE1 may ignore injected mouse/key events.
+                // The old code (PoeDumpBag::bagToStash) never had this problem because it used leader-key
+                // detection via global hooks — the game never lost focus.
+                delay(500)
 
                 when (selection) {
                     is OverlaySelection.Cancelled -> {}

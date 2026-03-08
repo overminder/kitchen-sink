@@ -20,7 +20,9 @@ class DumpBagToStashMacro(
     override suspend fun prepare(): MacroDef.Prepared {
         val shouldContinue = shouldContinueChecker.get(anyWindowTitles = GameTitles.ALL_POE)
         return MacroDef.Prepared { _ ->
+            consoleOutput.println("DumpBag: shouldContinue=${shouldContinue.value}")
             if (!shouldContinue.value) return@Prepared
+            consoleOutput.println("DumpBag: scanning bag slots...")
             val slots = poeInteractor.getOccupiedBagSlots()
             if (slots.isEmpty()) {
                 consoleOutput.println("No items found in bag")

@@ -113,21 +113,27 @@ class PoeInteractorImpl @Inject constructor(
 
     /**
      * Ctrl+click an item (quick-move).
+     * Move mouse first, then press Ctrl and click — matches the old working order.
      */
     override suspend fun sendItemToOtherSide(point: ScreenPoint) {
+        mouseOut.moveTo(point)
+        clock.delay(30.milliseconds)
         withModifier("Ctrl") {
-            mouseOut.postClick(point, moveFirst = true)
+            mouseOut.postClick(point, moveFirst = false)
             clock.delay(30.milliseconds)
         }
     }
 
     /**
      * Ctrl+Shift+click an item (quick-move to specific tab).
+     * Move mouse first, then press Ctrl+Shift and click — matches the old working order.
      */
     override suspend fun forceSendItemToCurrentStash(point: ScreenPoint) {
+        mouseOut.moveTo(point)
+        clock.delay(30.milliseconds)
         withModifier("Ctrl") {
             withModifier("Shift") {
-                mouseOut.postClick(point, moveFirst = true)
+                mouseOut.postClick(point, moveFirst = false)
                 clock.delay(30.milliseconds)
             }
         }
