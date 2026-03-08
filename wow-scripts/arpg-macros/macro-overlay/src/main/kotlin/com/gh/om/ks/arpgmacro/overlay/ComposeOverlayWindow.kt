@@ -43,6 +43,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.gh.om.ks.arpgmacro.core.overlay.ActivationContext
 import com.gh.om.ks.arpgmacro.core.overlay.BackgroundMacroState
+import com.gh.om.ks.arpgmacro.core.overlay.BgMacroStatusLine
 import com.gh.om.ks.arpgmacro.core.overlay.MacroRegistration
 import com.gh.om.ks.arpgmacro.core.overlay.OverlayController
 import com.gh.om.ks.arpgmacro.core.overlay.OverlaySelection
@@ -55,7 +56,7 @@ import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
 
 private const val OVERLAY_TITLE = "OMKSM Overlay"
-private const val INACTIVITY_TIMEOUT_MS = 8_000L
+private const val INACTIVITY_TIMEOUT_MS = 120_000L
 private const val CONFIRM_COUNTDOWN_SECS = 3
 
 class ComposeOverlayWindow : OverlayController {
@@ -87,6 +88,9 @@ class ComposeOverlayWindow : OverlayController {
     /** Mirrors the latest selected flask config from the runner's flow. */
     private var bgSelectedFlaskConfig by mutableStateOf<PoeFlasks.Config>(PoeFlasks.mbTincture)
 
+    /** Mirrors the latest background macro status lines from the tracker. */
+    private var bgStatusLines by mutableStateOf<List<BgMacroStatusLine>>(emptyList())
+
     /**
      * Completes when the user selects a macro or cancels.
      * Null when the overlay is not showing.
@@ -104,7 +108,7 @@ class ComposeOverlayWindow : OverlayController {
     override fun start() {
         thread(isDaemon = true, name = "overlay-ui") {
             application(exitProcessOnExit = false) {
-                val isVisible = pickerVisible || runningMacroName != null
+                val isVisible = pickerVisible || runningMacroName != null || bgStatusLines.isNotEmpty()
                 val windowState = rememberWindowState(
                     position = WindowPosition(32.dp, 32.dp),
                     size = PICKER_SIZE,
@@ -129,10 +133,11 @@ class ComposeOverlayWindow : OverlayController {
                     },
                 ) {
                     // Sync window size to current display mode
-                    LaunchedEffect(pickerVisible, runningMacroName) {
+                    LaunchedEffect(pickerVisible, runningMacroName, bgStatusLines.isNotEmpty()) {
                         windowState.size = computeWindowSize(
                             pickerVisible,
                             runningMacroName != null,
+                            bgStatusLines.isNotEmpty(),
                         )
                     }
 
@@ -144,6 +149,9 @@ class ComposeOverlayWindow : OverlayController {
                         }
                         LaunchedEffect(bgState) {
                             bgState.selectedFlaskConfig.collect { bgSelectedFlaskConfig = it }
+                        }
+                        LaunchedEffect(bgState) {
+                            bgState.statusLines.collect { bgStatusLines = it }
                         }
                     }
 
@@ -169,6 +177,8 @@ class ComposeOverlayWindow : OverlayController {
                         val running = runningMacroName
                         if (running != null) {
                             ExecutionStatusContent(running)
+                        } else if (bgStatusLines.isNotEmpty()) {
+                            BgMacroStatusContent(bgStatusLines)
                         }
                     }
 
@@ -220,6 +230,7 @@ class ComposeOverlayWindow : OverlayController {
         bgMacroState = state
         bgMacrosEnabled = state.isEnabled.value
         bgSelectedFlaskConfig = state.selectedFlaskConfig.value
+        bgStatusLines = state.statusLines.value
     }
 
     // -- Internal helpers --
@@ -262,13 +273,16 @@ class ComposeOverlayWindow : OverlayController {
 
 private val PICKER_SIZE = DpSize(320.dp, 460.dp)
 private val STATUS_SIZE = DpSize(240.dp, 36.dp)
+private val BG_STATUS_SIZE = DpSize(480.dp, 36.dp)
 
 private fun computeWindowSize(
     pickerVisible: Boolean,
     hasRunning: Boolean,
+    hasBgStatus: Boolean,
 ): DpSize = when {
     pickerVisible -> PICKER_SIZE
     hasRunning -> STATUS_SIZE
+    hasBgStatus -> BG_STATUS_SIZE
     else -> STATUS_SIZE
 }
 
@@ -640,6 +654,33 @@ private fun ExecutionStatusContent(macroName: String) {
         Text("▶", color = shortcutColor, fontSize = 12.sp)
         Text(macroName, color = labelColor, fontSize = 13.sp)
     }
+}
+
+@Composable
+private fun BgMacroStatusContent(statusLines: List<BgMacroStatusLine>) {
+    Row(
+        modifier = Modifier
+            .background(bgColor.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for ((index, line) in statusLines.withIndex()) {
+            if (index > 0) {
+                Text("│", color = categoryColor.copy(alpha = 0.5f), fontSize = 11.sp)
+            }
+            Text(formatStatusLine(line), color = labelColor, fontSize = 12.sp)
+        }
+    }
+}
+
+private fun formatStatusLine(line: BgMacroStatusLine): String {
+    val keysPart = line.keyCounts.joinToString(", ") { (key, count) ->
+        if (count == 1) key else "$key x$count"
+    }
+    val secs = line.runningDurationSecs
+    val duration = "%02d:%02d".format(secs / 60, secs % 60)
+    return "${line.macroName} [$keysPart] $duration"
 }
 
 @Composable

@@ -1,7 +1,12 @@
 package com.gh.om.ks.arpgmacro.recipe
 
+import com.gh.om.ks.arpgmacro.core.KeyboardOutput
+import com.gh.om.ks.arpgmacro.core.ReportingKeyboardOutput
+import com.gh.om.ks.arpgmacro.core.overlay.BgMacroStatusLine
+import com.gh.om.ks.arpgmacro.core.overlay.BgMacroStatusTracker
 import com.gh.om.ks.arpgmacro.recipe.poe.PoeFlasks
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +22,8 @@ class BackgroundMacroRunner @Inject constructor(
     private val toggleAutoAttackMacro: ToggleAutoAttackMacro,
     private val triggerSkillsD4Macro: TriggerSkillsD4Macro,
     val autoFlaskMacro: AutoFlaskMacro,
+    private val keyboardOutput: KeyboardOutput,
+    private val tracker: BgMacroStatusTracker,
 ) {
     private val _isEnabled = MutableStateFlow(true)
     val isEnabled = _isEnabled.asStateFlow()
@@ -26,6 +33,9 @@ class BackgroundMacroRunner @Inject constructor(
 
     val flaskAvailableConfigs: List<Pair<String, PoeFlasks.Config>>
         get() = autoFlaskMacro.availableConfigs
+
+    val statusLines: StateFlow<List<BgMacroStatusLine>>
+        get() = tracker.status
 
     fun toggle() {
         _isEnabled.value = !_isEnabled.value
@@ -37,11 +47,23 @@ class BackgroundMacroRunner @Inject constructor(
 
     suspend fun run() {
         coroutineScope {
-            // Don't toggle for now.
-            // launch { triggerSkillMacro.run(isEnabled) }
-            // launch { toggleAutoAttackMacro.run(isEnabled) }
-            // launch { triggerSkillsD4Macro.run(isEnabled) }
-            autoFlaskMacro.run(isEnabled)
+            // Periodically evict expired events so the status clears after 15s of inactivity
+            launch {
+                while (true) {
+                    delay(1_000L)
+                    tracker.tick()
+                }
+            }
+
+            val flaskOutput = ReportingKeyboardOutput("flask", keyboardOutput, tracker)
+            val focusOutput = ReportingKeyboardOutput("focus", keyboardOutput, tracker)
+            val autoAtkOutput = ReportingKeyboardOutput("autoAtk", keyboardOutput, tracker)
+            val d4SkillOutput = ReportingKeyboardOutput("d4Skill", keyboardOutput, tracker)
+
+            // launch { triggerSkillMacro.run(isEnabled, focusOutput) }
+            launch { toggleAutoAttackMacro.run(isEnabled, autoAtkOutput) }
+            launch { triggerSkillsD4Macro.run(isEnabled, d4SkillOutput) }
+            autoFlaskMacro.run(isEnabled, flaskOutput)
         }
     }
 }

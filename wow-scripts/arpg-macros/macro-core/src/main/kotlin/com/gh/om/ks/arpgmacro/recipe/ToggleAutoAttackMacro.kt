@@ -29,7 +29,7 @@ class ToggleAutoAttackMacro @Inject constructor(
     private val keyboardOutput: KeyboardOutput,
     private val clock: Clock,
 ) {
-    suspend fun run(isEnabled: StateFlow<Boolean>) {
+    suspend fun run(isEnabled: StateFlow<Boolean>, keyboardOutput: KeyboardOutput = this.keyboardOutput) {
         coroutineScope {
             val isPoe = activeWindowChecker.activeWindowFlow(setOf(GameTitles.from(GameType.POE1)))
                 .stateIn(this)
@@ -63,9 +63,15 @@ class ToggleAutoAttackMacro @Inject constructor(
             toggled.collectLatest { shouldAttack ->
                 if (shouldAttack) {
                     while (canRun()) {
-                        keyboardOutput.postPress("W")
-                        clock.delay(500.milliseconds)
-                        keyboardOutput.postRelease("W")
+                        try {
+                            keyboardOutput.postPress("W")
+                            clock.delay(500.milliseconds)
+                        } finally {
+                            // Always release W — if collectLatest cancels this coroutine
+                            // mid-hold (e.g. E press), the synthetic W keydown would
+                            // otherwise stay stuck in the system.
+                            keyboardOutput.postRelease("W")
+                        }
                         clock.delay(25.milliseconds)
                     }
                     toggled.value = false

@@ -73,7 +73,6 @@ object PoeFlasks {
         return SingleBuffKeeper(
             clock = clock,
             applyBuff = {
-                println("[PoeFlasks] pressing flask key ${flaskIx + 1}")
                 keyboardOutput.postAsciiString("${flaskIx + 1}")
             },
             isBuffInEffect = { isDurationBarActive(flaskIx, screen) },

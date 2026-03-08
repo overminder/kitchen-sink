@@ -28,7 +28,7 @@ class TriggerSkillMacro @Inject constructor(
     private val keyboardOutput: KeyboardOutput,
     private val clock: Clock,
 ) {
-    suspend fun run(isEnabled: StateFlow<Boolean>) {
+    suspend fun run(isEnabled: StateFlow<Boolean>, keyboardOutput: KeyboardOutput = this.keyboardOutput) {
         coroutineScope {
             val isPoe = activeWindowChecker.activeWindowFlow(setOf(GameTitles.from(GameType.POE1)))
                 .stateIn(this)

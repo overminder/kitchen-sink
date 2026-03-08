@@ -29,7 +29,7 @@ class TriggerSkillsD4Macro @Inject constructor(
     private val keyboardOutput: KeyboardOutput,
     private val clock: Clock,
 ) {
-    suspend fun run(isEnabled: StateFlow<Boolean>) {
+    suspend fun run(isEnabled: StateFlow<Boolean>, keyboardOutput: KeyboardOutput = this.keyboardOutput) {
         coroutineScope {
             val isD4 = activeWindowChecker.activeWindowFlow(setOf(GameTitles.from(GameType.Diablo4)))
                 .stateIn(this)

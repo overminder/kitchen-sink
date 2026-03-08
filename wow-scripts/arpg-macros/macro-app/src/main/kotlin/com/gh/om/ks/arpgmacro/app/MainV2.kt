@@ -43,6 +43,7 @@ fun main() {
                 availableFlaskConfigs = backgroundMacroRunner.flaskAvailableConfigs,
                 selectedFlaskConfig = backgroundMacroRunner.flaskSelectedConfig,
                 onSelectFlaskConfig = backgroundMacroRunner::selectFlaskConfig,
+                statusLines = backgroundMacroRunner.statusLines,
             )
         )
 

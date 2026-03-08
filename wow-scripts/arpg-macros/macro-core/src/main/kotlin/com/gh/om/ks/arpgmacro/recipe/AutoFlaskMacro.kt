@@ -41,7 +41,7 @@ class AutoFlaskMacro @Inject constructor(
         _selectedConfig.value = config
     }
 
-    suspend fun run(isEnabled: StateFlow<Boolean>) {
+    suspend fun run(isEnabled: StateFlow<Boolean>, keyboardOutput: KeyboardOutput = this.keyboardOutput) {
         coroutineScope {
             val isPoe = activeWindowChecker.activeWindowFlow(setOf(GameTitles.from(GameType.POE1)))
                 .stateIn(this)

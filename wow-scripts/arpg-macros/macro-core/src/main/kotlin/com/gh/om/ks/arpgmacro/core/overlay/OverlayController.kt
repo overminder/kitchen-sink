@@ -22,6 +22,7 @@ data class BackgroundMacroState(
     val availableFlaskConfigs: List<Pair<String, PoeFlasks.Config>>,
     val selectedFlaskConfig: StateFlow<PoeFlasks.Config>,
     val onSelectFlaskConfig: (PoeFlasks.Config) -> Unit,
+    val statusLines: StateFlow<List<BgMacroStatusLine>>,
 )
 
 /**
