@@ -41,8 +41,14 @@ class Coordinator(
      * No-op if not in Idle state.
      */
     suspend fun onLeaderKey() {
-        // Fast path: skip if not idle (non-blocking check)
-        if (state != CoordinatorState.Idle) return
+        // Fast path: skip if macro is running
+        if (state == CoordinatorState.MacroRunning) return
+
+        // Toggle: cancel overlay if it's open (no lock needed — cancelSelection is thread-safe)
+        if (state == CoordinatorState.Open) {
+            overlayController.cancelSelection()
+            return
+        }
 
         // Serialize to prevent races between rapid Alt+X presses
         mutex.withLock {

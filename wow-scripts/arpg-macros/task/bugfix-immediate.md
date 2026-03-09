@@ -239,7 +239,7 @@ This works because:
 - [x] Bug 2: PrintMousePosMacro prints position immediately on activation
 - [ ] Bug 3: Pressing "6" in macro overlay works regardless of AutoFlaskMacro state
 - [ ] Bug 4: Overlay auto-dismisses when foreground switches to non-game window
-- [ ] Bug 5: Pressing leader key while overlay is open dismisses it
+- [x] Bug 5: Pressing leader key while overlay is open dismisses it
 - [ ] All existing tests pass
 - [ ] No regressions in overlay interaction flow
 

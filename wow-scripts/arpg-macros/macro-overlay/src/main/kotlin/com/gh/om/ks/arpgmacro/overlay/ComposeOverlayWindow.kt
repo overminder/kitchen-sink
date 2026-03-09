@@ -258,6 +258,10 @@ class ComposeOverlayWindow(
         runningMacroName = null
     }
 
+    override fun cancelSelection() {
+        cancel()
+    }
+
     override fun connectBackgroundMacros(state: BackgroundMacroState) {
         bgMacroState = state
         bgMacrosEnabled = state.isEnabled.value

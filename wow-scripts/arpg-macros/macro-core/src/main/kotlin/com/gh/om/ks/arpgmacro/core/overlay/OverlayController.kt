@@ -61,6 +61,12 @@ interface OverlayController {
     fun hideExecutionStatus()
 
     /**
+     * Cancel a pending [awaitSelection] from outside the overlay.
+     * No-op if no selection is pending.
+     */
+    fun cancelSelection()
+
+    /**
      * Connect background macro state to the overlay so controls appear inside the picker.
      * Default no-op for implementations that don't support background macro controls.
      */

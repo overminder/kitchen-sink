@@ -8,6 +8,7 @@ import com.gh.om.ks.arpgmacro.di.GameType
 import com.gh.om.ks.arpgmacro.recipe.GameTitles
 import com.github.kwhat.jnativehook.GlobalScreen
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
@@ -72,9 +73,12 @@ fun main() {
         val jobs = mutableListOf<Job>()
         runBlocking {
             // Leader key → coordinator
+            // Each leader key event launches independently so the flow collector
+            // isn't blocked by onLeaderKey() suspending on awaitSelection/macro execution.
+            // The coordinator's volatile state checks handle concurrent calls safely.
             jobs += async {
                 leaderKeyListener.leaderKeyEvents().collect {
-                    coordinator.onLeaderKey()
+                    launch { coordinator.onLeaderKey() }
                 }
             }
 
