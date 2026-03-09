@@ -86,7 +86,6 @@ object PoeFlasks {
         return SingleBuffKeeper(
             clock = clock,
             applyBuff = {
-                println("[PoeFlasks] pressing tincture key ${ix + 1}")
                 keyboardOutput.postAsciiString("${ix + 1}")
             },
             isBuffInEffect = {

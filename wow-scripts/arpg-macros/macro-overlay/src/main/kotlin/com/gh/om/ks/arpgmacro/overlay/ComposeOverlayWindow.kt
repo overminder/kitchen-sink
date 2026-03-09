@@ -34,6 +34,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -88,7 +89,7 @@ class ComposeOverlayWindow(
     private var runningMacroName by mutableStateOf<String?>(null)
 
     /** Background macro state; set via [connectBackgroundMacros]. */
-    @Volatile private var bgMacroState: BackgroundMacroState? = null
+    private var bgMacroState by mutableStateOf<BackgroundMacroState?>(null)
 
     /** Mirrors the latest value from the background macro runner's isEnabled flow. */
     private var bgMacrosEnabled by mutableStateOf(true)
@@ -119,6 +120,25 @@ class ComposeOverlayWindow(
     override fun start() {
         thread(isDaemon = true, name = "overlay-ui") {
             application(exitProcessOnExit = false) {
+                // Collect background macro state at the application level,
+                // so flows run regardless of Window visibility.
+                val bgState = bgMacroState
+                if (bgState != null) {
+                    LaunchedEffect(bgState) {
+                        bgState.isEnabled.collect { bgMacrosEnabled = it }
+                    }
+                    LaunchedEffect(bgState) {
+                        bgState.selectedFlaskConfig.collect { bgSelectedFlaskConfig = it }
+                    }
+                    LaunchedEffect(bgState) {
+                        bgState.statusLines.collect { bgStatusLines = it }
+                    }
+                    LaunchedEffect(bgState) {
+                        activeWindowChecker.activeWindowFlow(bgState.gameTitles)
+                            .collect { gameInForeground = it }
+                    }
+                }
+
                 val isVisible = pickerVisible || runningMacroName != null || (bgStatusLines.isNotEmpty() && gameInForeground)
                 val windowState = rememberWindowState(
                     position = WindowPosition(32.dp, 32.dp),
@@ -143,31 +163,22 @@ class ComposeOverlayWindow(
                         }
                     },
                 ) {
-                    // Sync window size to current display mode
+                    // Sync window size and position to current display mode
+                    val density = LocalDensity.current.density
                     LaunchedEffect(pickerVisible, runningMacroName, bgStatusLines.isNotEmpty()) {
                         windowState.size = computeWindowSize(
                             pickerVisible,
                             runningMacroName != null,
                             bgStatusLines.isNotEmpty(),
                         )
-                    }
-
-                    // Collect background macro enabled state from the runner's flow
-                    val bgState = bgMacroState
-                    if (bgState != null) {
-                        LaunchedEffect(bgState) {
-                            bgState.isEnabled.collect { bgMacrosEnabled = it }
-                        }
-                        LaunchedEffect(bgState) {
-                            bgState.selectedFlaskConfig.collect { bgSelectedFlaskConfig = it }
-                        }
-                        LaunchedEffect(bgState) {
-                            bgState.statusLines.collect { bgStatusLines = it }
-                        }
-                        // Poll foreground window; hide bg status when not in a game window
-                        LaunchedEffect(bgState) {
-                            activeWindowChecker.activeWindowFlow(bgState.gameTitles)
-                                .collect { gameInForeground = it }
+                        windowState.position = when {
+                            pickerVisible || runningMacroName != null -> WindowPosition(32.dp, 32.dp)
+                            // BG status lines are to be displayed lower, to avoid blocking important game info
+                            bgStatusLines.isNotEmpty() -> WindowPosition(
+                                x = (315 / density).dp,
+                                y = ((1200 - 36) / density).dp,
+                            )
+                            else -> windowState.position
                         }
                     }
 
