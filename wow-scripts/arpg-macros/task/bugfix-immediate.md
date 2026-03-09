@@ -140,6 +140,11 @@ Then the `LaunchedEffect` uses `setOf(currentGameTitle!!, TITLE)` instead of `bg
 
 **Files:** `macro-overlay/.../ComposeOverlayWindow.kt` — add one field, ~10 lines in `LaunchedEffect`.
 
+#### Status
+
+Fixed. Again there's a race (can only focus when window is focusable, so state change must be within composition via effects)
+However alt-tab UX is still bad (overlay dismissed when entering window switcher). Worked around by adding a delay (ugly)
+
 ### Bug 5: Leader key doesn't toggle overlay
 
 **Root cause:** `Coordinator.onLeaderKey()` has two guard checks that both reject non-Idle states:
@@ -238,7 +243,7 @@ This works because:
 - [x] Bug 1: Bg status overlay positioned at (315, 1212) bottom-left
 - [x] Bug 2: PrintMousePosMacro prints position immediately on activation
 - [ ] Bug 3: Pressing "6" in macro overlay works regardless of AutoFlaskMacro state
-- [ ] Bug 4: Overlay auto-dismisses when foreground switches to non-game window
+- [x] Bug 4: Overlay auto-dismisses when foreground switches to non-game window
 - [x] Bug 5: Pressing leader key while overlay is open dismisses it
 - [ ] All existing tests pass
 - [ ] No regressions in overlay interaction flow

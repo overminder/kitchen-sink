@@ -54,6 +54,7 @@ import com.gh.om.ks.arpgmacro.recipe.poe.PoeFlasks
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
@@ -64,6 +65,7 @@ private const val CONFIRM_COUNTDOWN_SECS = 3
 class ComposeOverlayWindow(
     private val activeWindowChecker: ActiveWindowChecker,
     private val setClickThrough: (Boolean) -> Unit,
+    private val stealFocus: () -> Unit,
 ) : OverlayController {
 
     companion object {
@@ -102,6 +104,9 @@ class ComposeOverlayWindow(
 
     /** True when a game window (from [BackgroundMacroState.gameTitles]) is in the foreground. */
     private var gameInForeground by mutableStateOf(false)
+
+    /** Game title from the most recent [awaitSelection] call, for focus monitoring. */
+    private var currentGameTitle by mutableStateOf<String?>(null)
 
     /**
      * Completes when the user selects a macro or cancels.
@@ -176,15 +181,45 @@ class ComposeOverlayWindow(
                             // BG status lines are to be displayed lower, to avoid blocking important game info
                             bgStatusLines.isNotEmpty() -> WindowPosition(
                                 x = (315 / density).dp,
-                                y = ((1200 - 36) / density).dp,
+                                y = ((1090 - 36) / density).dp,
                             )
                             else -> windowState.position
                         }
                     }
 
-                    // Toggle click-through: disabled only while picker is interactive
+                    // Toggle click-through: disabled only while picker is interactive.
+                    // Also steal OS focus after Compose applies focusable=true,
+                    // so SetForegroundWindow succeeds even when the window was
+                    // already visible in non-focusable bg-status mode.
                     LaunchedEffect(pickerVisible) {
                         setClickThrough(!pickerVisible)
+                        if (pickerVisible) {
+                            stealFocus()
+                        }
+                    }
+
+                    // Auto-cancel picker when user switches away from game/overlay.
+                    // Captured outside LaunchedEffect so it resolves to ComposeOverlayWindow.cancel(),
+                    // not CoroutineScope.cancel().
+                    val dismissPicker = { cancel() }
+                    LaunchedEffect(pickerVisible) {
+                        if (!pickerVisible) return@LaunchedEffect
+                        val gameTitles = bgState?.gameTitles ?: setOfNotNull(currentGameTitle)
+                        if (gameTitles.isEmpty()) return@LaunchedEffect
+                        val monitorTitles = gameTitles + TITLE
+                        activeWindowChecker.activeWindowFlow(monitorTitles)
+                            .dropWhile { !it }
+                            .collect { isForeground ->
+                                if (!isForeground) {
+                                    // Debounce: wait for alt-tab switcher to complete
+                                    // before dismissing, so the overlay doesn't vanish
+                                    // from the window list mid-switch.
+                                    delay(5000)
+                                    if (!activeWindowChecker.isActiveWindow(monitorTitles)) {
+                                        dismissPicker()
+                                    }
+                                }
+                            }
                     }
 
                     if (pickerVisible) {
@@ -237,6 +272,7 @@ class ComposeOverlayWindow(
 
         // Update compose state to show the overlay
         this.macros = macros
+        this.currentGameTitle = context.gameTitle
         this.pickerVisible = true
 
         return try {
@@ -246,6 +282,7 @@ class ComposeOverlayWindow(
         } finally {
             this.pickerVisible = false
             this.confirmingMacro = null
+            this.currentGameTitle = null
             pendingSelection = null
         }
     }

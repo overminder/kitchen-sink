@@ -61,10 +61,6 @@ class Coordinator(
             state = CoordinatorState.Open
 
             try {
-                focusManager.stealFocusToOverlay(
-                    overlayController.overlayWindowTitle()
-                )
-
                 val selection = overlayController.awaitSelection(macros, context)
 
                 // Always return focus before running macro or on cancel

@@ -21,6 +21,9 @@ class OverlayModule {
         setClickThrough = { enabled ->
             focusManager.setClickThrough(ComposeOverlayWindow.TITLE, enabled)
         },
+        stealFocus = {
+            focusManager.stealFocusToOverlay(ComposeOverlayWindow.TITLE)
+        },
     )
 
     @Provides
