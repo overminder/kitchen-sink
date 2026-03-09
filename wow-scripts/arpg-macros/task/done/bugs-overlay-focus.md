@@ -243,6 +243,7 @@ This works because:
 - [x] Bug 1: Bg status overlay positioned at (315, 1212) bottom-left
 - [x] Bug 2: PrintMousePosMacro prints position immediately on activation
 - [ ] Bug 3: Pressing "6" in macro overlay works regardless of AutoFlaskMacro state
+  + No longer replicable after fixes to 1/2/4/5
 - [x] Bug 4: Overlay auto-dismisses when foreground switches to non-game window
 - [x] Bug 5: Pressing leader key while overlay is open dismisses it
 - [ ] All existing tests pass
