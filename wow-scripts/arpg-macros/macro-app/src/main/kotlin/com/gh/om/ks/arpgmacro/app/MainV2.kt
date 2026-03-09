@@ -55,6 +55,9 @@ fun main() {
             overlayController = overlayController,
             macroRegistry = macroRegistry,
             macroRunner = macroRunner,
+            onOverlayVisibilityChanged = { visible ->
+                backgroundMacroRunner.outputSuppressed = visible
+            },
         )
 
         // Simplified leader key listener (just detects Alt+X, no command parsing)

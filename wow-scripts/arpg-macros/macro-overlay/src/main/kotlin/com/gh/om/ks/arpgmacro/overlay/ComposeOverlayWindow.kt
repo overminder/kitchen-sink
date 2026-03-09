@@ -383,6 +383,10 @@ private val pillColors = listOf(
 
 // -- Composables --
 
+/**
+ * The macro chooser: a list of long-running macros and their hotkeys.
+ * Also has a BG macro control (enabled toggler, flask config)
+ */
 @Composable
 private fun OverlayContent(
     macros: List<MacroRegistration>,

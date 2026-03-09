@@ -29,6 +29,7 @@ class Coordinator(
     private val overlayController: OverlayController,
     private val macroRegistry: MacroRegistry,
     private val macroRunner: MacroRunner,
+    private val onOverlayVisibilityChanged: (visible: Boolean) -> Unit = {},
 ) {
     @Volatile
     var state: CoordinatorState = CoordinatorState.Idle
@@ -59,6 +60,7 @@ class Coordinator(
             if (macros.isEmpty()) return   // not in a recognized game, skip silently
 
             state = CoordinatorState.Open
+            onOverlayVisibilityChanged(true)
 
             try {
                 val selection = overlayController.awaitSelection(macros, context)
@@ -84,6 +86,7 @@ class Coordinator(
                     }
                 }
             } finally {
+                onOverlayVisibilityChanged(false)
                 state = CoordinatorState.Idle
             }
         }

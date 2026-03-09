@@ -28,6 +28,14 @@ class BackgroundMacroRunner @Inject constructor(
     private val _isEnabled = MutableStateFlow(true)
     val isEnabled = _isEnabled.asStateFlow()
 
+    /**
+     * When true, background macro key output is suppressed.
+     * Set by the Coordinator while the overlay picker is open, so that
+     * macro-generated key presses don't reach the focused overlay window.
+     */
+    @Volatile
+    var outputSuppressed = false
+
     val flaskSelectedConfig: StateFlow<PoeFlasks.Config>
         get() = autoFlaskMacro.selectedConfig
 
@@ -55,10 +63,11 @@ class BackgroundMacroRunner @Inject constructor(
                 }
             }
 
-            val flaskOutput = ReportingKeyboardOutput("flask", keyboardOutput, tracker)
-            val focusOutput = ReportingKeyboardOutput("focus", keyboardOutput, tracker)
-            val autoAtkOutput = ReportingKeyboardOutput("autoAtk", keyboardOutput, tracker)
-            val d4SkillOutput = ReportingKeyboardOutput("d4Skill", keyboardOutput, tracker)
+            val suppress = { outputSuppressed }
+            val flaskOutput = ReportingKeyboardOutput("flask", keyboardOutput, tracker, suppress)
+            val focusOutput = ReportingKeyboardOutput("focus", keyboardOutput, tracker, suppress)
+            val autoAtkOutput = ReportingKeyboardOutput("autoAtk", keyboardOutput, tracker, suppress)
+            val d4SkillOutput = ReportingKeyboardOutput("d4Skill", keyboardOutput, tracker, suppress)
 
             // launch { triggerSkillMacro.run(isEnabled, focusOutput) }
             launch { toggleAutoAttackMacro.run(isEnabled, autoAtkOutput) }

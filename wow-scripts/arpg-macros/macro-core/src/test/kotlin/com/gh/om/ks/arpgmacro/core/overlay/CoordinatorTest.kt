@@ -19,11 +19,14 @@ class CoordinatorTest {
     private val macroRegistry = FakeMacroRegistry()
     private val macroRunner = FakeMacroRunner()
 
+    private val visibilityChanges = mutableListOf<Boolean>()
+
     private fun coordinator() = Coordinator(
         focusManager = focusManager,
         overlayController = overlayController,
         macroRegistry = macroRegistry,
         macroRunner = macroRunner,
+        onOverlayVisibilityChanged = { visibilityChanges += it },
     )
 
     @Test
@@ -149,6 +152,41 @@ class CoordinatorTest {
         assertThat(overlayController.awaitSelectionCalls).isEqualTo(1)
 
         collectorJob.cancel()
+    }
+
+    @Test
+    fun `overlay visibility callback fires on open and close`() = runTest {
+        val coord = coordinator()
+
+        val job = launch { coord.onLeaderKey() }
+        advanceUntilIdle()
+
+        // Overlay opened — callback fired with true
+        assertThat(visibilityChanges).containsExactly(true)
+
+        // User cancels — callback fired with false
+        overlayController.completeSelection(OverlaySelection.Cancelled)
+        advanceUntilIdle()
+        job.join()
+
+        assertThat(visibilityChanges).containsExactly(true, false)
+    }
+
+    @Test
+    fun `overlay visibility callback fires false on toggle-cancel`() = runTest {
+        val coord = coordinator()
+
+        val job = launch { coord.onLeaderKey() }
+        advanceUntilIdle()
+        assertThat(visibilityChanges).containsExactly(true)
+
+        // Second leader key cancels overlay
+        coord.onLeaderKey()
+        advanceUntilIdle()
+        job.join()
+
+        // The finally block ensures false is called even on cancellation
+        assertThat(visibilityChanges).containsExactly(true, false)
     }
 }
 
