@@ -52,7 +52,7 @@ class BgMacroStatusTracker @Inject constructor(private val clock: Clock) : BgMac
         }
         val grouped = events.groupBy { it.macroName }
         firstSeen.keys.retainAll(grouped.keys)
-        val lines = grouped.entries.map { (macroName, macroEvents) ->
+        val lines = grouped.entries.mapTo(mutableListOf()) { (macroName, macroEvents) ->
             val keyCounts = macroEvents
                 .groupingBy { it.key }
                 .eachCount()
@@ -66,6 +66,8 @@ class BgMacroStatusTracker @Inject constructor(private val clock: Clock) : BgMac
                 runningDurationSecs = (now - startTime) / 1000L,
             )
         }
+        // Make sure display stays stable.
+        lines.sortBy { it.macroName }
         _status.value = lines
     }
 }
