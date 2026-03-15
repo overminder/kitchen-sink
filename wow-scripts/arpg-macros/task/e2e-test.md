@@ -18,11 +18,28 @@ As we enforce ux-guardrails.md, I imagine e2e tests are also a core part of it.
 - E2E tests that can run fully automatically, cover my common use cases, and collect useful logs for debugging & replication's purpose in case a test fails.
 - E2E tests should also avoid coupling too much with the internals of the implementation: It should only talk to the macro via its interface.
 
+### Ideas
+
+- Randomized property test (covers more cases without manual test case authoring)
+- Mock environment: encodes game logic (e.g. flask) and win32 behavior so tests can evaluate by themselves
+  + Need a way to verify that the mock is indeed the real behavior.
+
+### Relationship to [observability.md](observability.md)
+
+Testing and observability are complementary:
+- Testing verifies behavior under **controlled** conditions (fake platform, property-based, etc.)
+- Observability captures behavior under **real** conditions (actual game, actual Win32) — see [observability.md](observability.md)
+
+Interlinks:
+- Observability session recordings can feed into **regression extraction** (known-good session → test fixture), largely superseding Layer 4's synthetic recordings
+- Session recordings can **validate the game simulator's fidelity** (compare real pixels vs simulator predictions)
+- The **invariant catalog** is shared between live monitoring (observability) and property-based tests (this task)
+
 ## Plan
 
-See `task/attachment/e2e-test-details.md` for the full design.
+See `task/attachment/e2e-test-details.md` for the full design. See `task/attachment/e2e-test-advanced-approaches.md` for property-based testing and reactive game simulator designs.
 
-The plan is organized into **4 layers**, from fast/deterministic to slow/realistic. Each layer catches a different class of bug. All layers run automatically as JUnit 5 tests; layers 2–4 are Windows-only (`@EnabledOnOs(WINDOWS)`).
+The plan is organized into **4 layers**, from fast/deterministic to slow/realistic, plus two advanced approaches. Each catches a different class of bug. All run automatically as JUnit 5 tests; layers 2–4 are Windows-only (`@EnabledOnOs(WINDOWS)`).
 
 ### Layer 0: Integration harness (fake platform)
 
@@ -200,6 +217,35 @@ Replay a **recorded interaction session** through the full stack (real Win32 API
 | 3 | Rapid Alt+X double-tap (open → immediate cancel) | Timing race between leader key and overlay |
 | 4 | Bg macro output during overlay focus steal | Output suppression timing |
 
+### Approach A: Property-based testing (randomized invariant checking)
+
+Generate random sequences of input events (key presses, focus changes, pixel changes, config switches) on the **fake platform** (Layer 0 harness) and assert system invariants hold after every event. Catches races, deadlocks, and state explosion bugs that handcrafted scenarios miss. Deterministic via seeded `Random`, zero flakiness. See `task/attachment/e2e-test-advanced-approaches.md` for event generator, invariant catalog, and shrinking design.
+
+**What it catches:** Rare race conditions, state explosion from event combinations no one thought to test, deadlocks, liveness violations (system never returns to Idle).
+
+**Invariant catalog** (shared with [observability.md](observability.md) live monitoring):
+
+| ID | Invariant | Guardrail |
+|----|-----------|-----------|
+| I1 | No keyboard output while game not in foreground | G1 |
+| I2 | Leader key in Open → eventually reaches Idle | G2 |
+| I3 | No two fg macros running concurrently | G7 |
+| I4 | Bg macros independent of fg macro lifecycle | G5 |
+| I5 | Flask key only pressed when buff is inactive (per simulator) | Correctness |
+| I6 | No flask key pressed while alt-tabbed | G1 |
+| I7 | System returns to Idle within 30s of last input | Liveness |
+| I8 | No uncaught exceptions or unhandled coroutine cancellation | Correctness |
+
+### Approach B: Reactive game simulator (closed-loop testing)
+
+Replace static pixel recordings with a `GameSimulator` that reacts to macro key output: pressing flask key → buff becomes active → pixel color changes → macro detects buff → stops pressing. Creates a closed feedback loop. See `task/attachment/e2e-test-advanced-approaches.md` for `GameSimulator` design.
+
+**What it catches:** Feedback loop bugs (double-press spam, oscillation), timing sensitivity (buff expires at exactly the macro's polling boundary), recovery after alt-tab in a dynamic environment.
+
+**Combines with Approach A:** Use `GameSimulator` as the `Screen` inside the property-based test. Random inputs + closed-loop feedback + invariant checking = the most powerful practical test approach.
+
+**Simulator validation:** Compare simulator pixel output against real gameplay recordings from [observability.md](observability.md) session logs. Divergences reveal where the simulator model is wrong.
+
 ### Logging & diagnostics (all layers)
 
 When any test fails, produce a log that enables reproduction:
@@ -250,6 +296,11 @@ For Layer 3+: JNativeHook naturally loops back (posted events are seen by hooks)
 - [ ] **Layer 2:** Win32 platform tests pass against test windows (`@EnabledOnOs(WINDOWS)`)
 - [ ] **Layer 3:** JNativeHook loopback tests validate event round-trip
 - [ ] **Layer 4:** At least one full scenario replay test with golden output comparison
+- [ ] **Approach A:** Property-based test runs 1000+ random sequences against Layer 0 harness, checking invariant catalog
+- [ ] **Approach A:** Shrinking produces minimal reproducing sequence on invariant violation
+- [ ] **Approach B:** `GameSimulator` models flask buff lifecycle (activate on key press, expire after duration)
+- [ ] **Approach A+B:** Property-based test with reactive simulator as `Screen` implementation
+- [ ] **Shared:** Invariant catalog is defined once and used by both property tests and [observability](observability.md) live monitoring
 - [ ] Event logging produces useful diagnostics on failure
 - [ ] Each test documents which layer and guardrail(s) it covers
 - [ ] Layers 2–4 are isolated from default `./gradlew test` (separate task or `@Tag`)
