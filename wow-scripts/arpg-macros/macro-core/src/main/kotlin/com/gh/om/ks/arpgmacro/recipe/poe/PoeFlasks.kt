@@ -15,7 +15,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -142,7 +141,7 @@ object PoeFlasks {
     suspend fun runGapFixer(
         buffManager: BuffManager,
         flaskInputs: Flow<InputEvent>,
-        isPoe: StateFlow<Boolean>,
+        isActive: () -> Boolean,
     ) {
         val activelyPlaying = flaskInputs
             .filter { it.shouldUse }
@@ -155,7 +154,7 @@ object PoeFlasks {
 
         buffManager.runGapFixer(
             getTimestampForActivePlaying = activelyPlaying::value,
-            isGameActive = isPoe::value,
+            isGameActive = isActive,
         )
     }
 }

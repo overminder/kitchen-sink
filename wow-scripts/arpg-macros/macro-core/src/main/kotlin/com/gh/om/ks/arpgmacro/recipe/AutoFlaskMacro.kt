@@ -71,7 +71,7 @@ class AutoFlaskMacro @Inject constructor(
 
                     val flaskInputState = flaskInputs.stateIn(this)
 
-                    async { PoeFlasks.runGapFixer(fm, flaskInputs, isPoe) }
+                    async { PoeFlasks.runGapFixer(fm, flaskInputs) { isPoe.value && isEnabled.value } }
 
                     async {
                         keyboardInput.keyPresses().collect { key ->

@@ -32,6 +32,13 @@ private class FakeScreen : Screen {
     override fun captureScreen(): PixelSource = throw UnsupportedOperationException()
 }
 
+private class FakeBuffScreen(var buffActive: Boolean = false) : Screen {
+    // BUFF_COLOR(249,215,153): isDurationBarActive() returns true ↔ buffActive is true.
+    override fun getPixelColor(point: ScreenPoint) =
+        if (buffActive) ScreenColor(249, 215, 153) else ScreenColor(0, 0, 0)
+    override fun captureScreen(): PixelSource = throw UnsupportedOperationException()
+}
+
 // -- Tests --
 
 class AutoFlaskMacroShould {
@@ -87,6 +94,58 @@ class AutoFlaskMacroShould {
         // If the old mbTincture loop survived config switch it would still emit "3" here.
         assertThat(keyboardOutput.pressed).doesNotContain("3")
         assertThat(keyboardOutput.pressed).containsAnyOf("4", "5")
+
+        job.cancel()
+    }
+
+    /**
+     * Regression test for: gap fixer fires flask keys even when BG macro is disabled.
+     *
+     * The gap fixer loop (runGapFixer) was only gated on isPoe, not isEnabled. When the user
+     * toggled BG macros off, the explicit fm.useAll() calls were correctly blocked by active(),
+     * but runGapFixer kept running and could call useAll() whenever a flask had recently been
+     * active and W was recently held — regardless of the isEnabled flag.
+     *
+     * After the fix, runGapFixer receives isActive = { isPoe.value && isEnabled.value }, so it
+     * returns early from once() when isEnabled is false.
+     */
+    @Test
+    fun `gap fixer does not trigger when isEnabled is false`() = runTest {
+        val keyboardInput = FakeKeyboardInput()
+        val keyboardOutput = FakeKeyboardOutput()
+        val screen = FakeBuffScreen(buffActive = true)
+        val isEnabled = MutableStateFlow(true)
+        val macro = AutoFlaskMacro(
+            keyboardInput = keyboardInput,
+            keyboardOutput = keyboardOutput,
+            activeWindowChecker = FakeActiveWindowChecker(),
+            screen = screen,
+            clock = FakeClock(this),
+        )
+
+        val job = launch { macro.run(isEnabled) }
+        runCurrent()
+
+        // Hold W so activelyPlaying is updated and flaskInputs emits shouldUse=true.
+        keyboardInput.press("W")
+        runCurrent()
+
+        // Advance time: isPoe polling re-emits every 100ms, gap fixer runs multiple times.
+        // With buff active, lastTimeBuffHadEffect is set to a recent timestamp.
+        advanceTimeBy(300)
+        runCurrent()
+
+        // Disable BG macro and simulate the buff expiring.
+        isEnabled.value = false
+        screen.buffActive = false
+        keyboardOutput.pressed.clear()
+
+        // Advance within the gap fixer's buffLingering (2s) and inputLingering (5s) windows.
+        // The buggy gap fixer would call useAll() here and press flask keys.
+        advanceTimeBy(500)
+        runCurrent()
+
+        assertThat(keyboardOutput.pressed).isEmpty()
 
         job.cancel()
     }
