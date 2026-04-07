@@ -1,0 +1,19 @@
+name = "LearnLean"
+version = "0.1.0"
+defaultTargets = ["Foundations", "TaPL", "Compilers"]
+
+# Uncomment when you're ready to pull in mathlib (big download, ~30 min first time):
+# [[require]]
+# name = "mathlib"
+# from = git "https://github.com/leanprover-community/mathlib4"
+# revision = "master"
+# Note: mathlib pins its own toolchain; when you enable this, let it override lean-toolchain.
+
+[[lean_lib]]
+name = "Foundations"
+
+[[lean_lib]]
+name = "TaPL"
+
+[[lean_lib]]
+name = "Compilers"
